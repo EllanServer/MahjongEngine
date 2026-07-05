@@ -66,7 +66,7 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Cache native build (CMake)
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             build/native/gbmahjong
