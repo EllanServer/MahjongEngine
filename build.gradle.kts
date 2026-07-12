@@ -143,6 +143,25 @@ tasks {
         inputs.property("kotlinSerializationVersion", kotlinSerializationVersion)
         from(generatedResourcesDir)
         from(generatedNativeResourcesDir)
+        from(rootProject.file("LICENSE")) {
+            into("META-INF")
+            rename { "LICENSE.txt" }
+        }
+        from(rootProject.file("THIRD_PARTY_NOTICES.md")) {
+            into("META-INF")
+        }
+        from(rootProject.file("resourcepack/ATTRIBUTION.md")) {
+            into("META-INF")
+            rename { "RESOURCEPACK_ATTRIBUTION.md" }
+        }
+        from(rootProject.file("native/gbmahjong/vendor/GB-Mahjong/LICENSE")) {
+            into("META-INF/licenses")
+            rename { "GB-Mahjong-LICENSE.txt" }
+        }
+        from(rootProject.file("native/gbmahjong/WINPTHREADS-COPYING.txt")) {
+            into("META-INF/licenses")
+            rename { "winpthreads-COPYING.txt" }
+        }
         filesMatching(listOf("plugin.yml", "paper-plugin.yml")) {
             expand(
                 "version" to project.version,

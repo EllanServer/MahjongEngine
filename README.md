@@ -2,6 +2,10 @@
 
 > This project was created entirely by AI.
 
+> **NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.**
+>
+> `Mahjong Soul` / `雀魂` is referenced only to describe compatible rules and visual style. MahjongPaper is not affiliated with or endorsed by Mahjong Soul or its rightsholders. All product names and trademarks belong to their respective owners.
+
 Chinese documentation: [README.zh-CN.md](./README.zh-CN.md)
 Chinese gameplay and operations wiki: [docs/wiki.zh-CN.md](./docs/wiki.zh-CN.md)
 Contributor notes: [CONTRIBUTING.md](./CONTRIBUTING.md)
@@ -250,19 +254,46 @@ MahjongPaper currently uses CraftEngine for:
 - tracked entity culling integration
 - furniture interaction routing for table interaction
 
-## Resource Assets
+## Credits, Assets, and Upstream Projects
 
-The assets in [resourcepack](./resourcepack) are packaged and delivered through the exported CraftEngine bundle.
+MahjongPaper is an independent rewrite/port and does not claim ownership of third-party code, artwork, recordings, names, or trademarks. The project-level MIT license applies only to material for which this repository's authors can grant that license; third-party components remain under their own licenses or terms.
 
-## Upstream References
+### Code, rules, and platforms
 
-- `MahjongCraft`: <https://github.com/EndlessCheng/MahjongCraft>
-- `MahjongPlay`: <https://github.com/7yunluo/MahjongPlay>
-- `mahjong-utils`: <https://github.com/ssttkkl/mahjong-utils>
-- `Paper`: <https://papermc.io/software/paper>
-- `CraftEngine`: <https://github.com/Xiao-MoMi/craft-engine>
-- `GB-Mahjong`: <https://github.com/zheng-fan/GB-Mahjong>
-- `mahjong_graphic`: <https://github.com/lietxia/mahjong_graphic>
+| Project | Relationship to MahjongPaper | License / terms |
+| --- | --- | --- |
+| [MahjongCraft](https://github.com/doublemoon1119/MahjongCraft), by `doublemoon1119` | Original Fabric mod; primary gameplay/architecture inspiration and source of reused tile textures and base item models | [MIT](https://github.com/doublemoon1119/MahjongCraft/blob/main/LICENSE) |
+| [MahjongPlay](https://github.com/7yunluo/MahjongPlay), by `7yunluo` | Paper-plugin implementation reference | [MIT](https://github.com/7yunluo/MahjongPlay/blob/main/LICENSE) |
+| [mahjong-utils](https://github.com/ssttkkl/mahjong-utils), by `ssttkkl` | Direct runtime library for Riichi hand evaluation and scoring | [MIT](https://github.com/ssttkkl/mahjong-utils/blob/main/LICENSE) |
+| [GB-Mahjong](https://github.com/zheng-fan/GB-Mahjong), by Zheng Fan | Vendored C++ source compiled into the bundled GB rules JNI library | [MIT; local copy](./native/gbmahjong/vendor/GB-Mahjong/LICENSE) |
+| [Paper](https://github.com/PaperMC/Paper) / [Folia](https://github.com/PaperMC/Folia) | Supported server platforms and APIs; supplied separately by the server operator | Their respective upstream licenses |
+| [CraftEngine](https://github.com/Xiao-MoMi/craft-engine) | Required external runtime plugin for custom items, furniture, interaction, culling, and resource delivery; not bundled | [GPL-3.0](https://github.com/Xiao-MoMi/craft-engine/blob/main/LICENSE) |
+| [Adventure](https://github.com/PaperMC/adventure) | Text/component API supplied by Paper | [Apache-2.0](https://github.com/PaperMC/adventure/blob/main/5/license.txt) |
+
+### Resource-pack artwork and sound
+
+The assets in [resourcepack](./resourcepack) are packaged into the exported CraftEngine bundle. The authoritative per-file/source notice is [resourcepack/ATTRIBUTION.md](./resourcepack/ATTRIBUTION.md); keep that file with every redistributed bundle.
+
+- Mahjong tile textures and base item models are reused from [MahjongCraft](https://github.com/doublemoon1119/MahjongCraft) under MIT. The related tile-art lineage also credits [mahjong_graphic](https://github.com/lietxia/mahjong_graphic) by `lietxia`, released under the M+ Fonts License; its documentation identifies partial lineage from [I.Mahjong](https://github.com/SyaoranHinata/I.Mahjong) and GL-MahjongTile.
+- Tile/table sound recordings are adapted from Freesound uploads `329098`, `329099`, and `329100` by **Macif**, `197868` by **Millavsb**, and `745024` by **poenia**, each marked [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). Direct source links and file mappings are in the attribution file.
+- Riichi action voices use `chii_01.wav`, `pon_01.wav`, `kan_01.wav`, `ri-chi_01.wav`, and `ron_01.wav` from [Amitaro's Voice Material Studio](https://amitaro.net/voice/game_01/) under the studio's [custom terms](https://amitaro.net/voice/voice_rule/), not under MIT or CC0.
+
+Required voice credit:
+
+> Voice: Amitaro's Voice Material Studio (<https://amitaro.net/>)<br>
+> 音声素材：あみたろの声素材工房 (<https://amitaro.net/>)
+
+Redistribution of the Amitaro voice files is permitted only as part of a work such as this plugin/resource bundle, subject to the current Amitaro terms. Redistributors must preserve the credit and terms link/readme, must not offer the recordings as a standalone voice/sound pack, and should complete the required post-release usage report within the period stated by those terms. A Japanese report draft is maintained at [docs/amitaro-usage-report.ja.md](./docs/amitaro-usage-report.ja.md).
+
+### Runtime libraries
+
+The build declares the following direct runtime libraries; they are separate works and remain under their own licenses: [MariaDB Connector/J](https://github.com/mariadb-corporation/mariadb-connector-j) (LGPL-2.1), [MySQL Connector/J](https://github.com/mysql/mysql-connector-j) (GPL-2.0 with Oracle's additional permissions and Universal FOSS Exception), [H2](https://github.com/h2database/h2database) (MPL-2.0 or EPL-1.0), [HikariCP](https://github.com/brettwooldridge/HikariCP) (Apache-2.0), [Caffeine](https://github.com/ben-manes/caffeine) (Apache-2.0), [Kotlin](https://github.com/JetBrains/kotlin) (Apache-2.0), and [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) (Apache-2.0). Paper's plugin loader resolves the Maven libraries listed in [MahjongPaperLoader.java](./src/main/java/top/ellan/mahjong/bootstrap/MahjongPaperLoader.java); [build.gradle.kts](./build.gradle.kts) is the authoritative direct dependency/version list.
+
+Platform-native releases also include the compiled GB-Mahjong JNI bridge. A Windows release may include `libwinpthread-1.dll` from [mingw-w64 winpthreads](https://github.com/mingw-w64/mingw-w64/tree/master/mingw-w64-libraries/winpthreads), under its upstream MIT/BSD-style notice. GCC runtime portions, when linked by the native build, are covered by GPL-3.0 plus the [GCC Runtime Library Exception 3.1](https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html).
+
+### Trademark and affiliation notice
+
+Minecraft is a trademark of Microsoft. MahjongPaper is independently developed and is not an official Minecraft product, nor approved by or associated with Mojang or Microsoft. References to Mahjong Soul / 雀魂 describe rules or style only and do not imply affiliation, sponsorship, or endorsement. The names and marks of all upstream projects remain the property of their respective owners.
 
 ## Community
 
@@ -273,4 +304,4 @@ The assets in [resourcepack](./resourcepack) are packaged and delivered through 
 
 ## License
 
-This project is licensed under the [MIT License](./LICENSE).
+Original MahjongPaper code and project-created assets are licensed under the [MIT License](./LICENSE), except where a file or the notices above identify different terms. Third-party notices and licenses must be retained when redistributing their material. This summary is provided for attribution and project hygiene; it is not legal advice and does not replace the governing license texts or service terms.
