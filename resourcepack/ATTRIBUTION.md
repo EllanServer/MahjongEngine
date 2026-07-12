@@ -3,6 +3,12 @@ This resource pack reuses Mahjong tile textures and base item models from the up
 - Project: `doublemoon1119/MahjongCraft`
 - Repository: https://github.com/doublemoon1119/MahjongCraft
 - License: MIT
+- Copyright: Copyright (c) 2021 doublemoon1119
+
+Related tile-art provenance retained by Paper-plugin upstreams:
+
+- `lietxia/mahjong_graphic`: https://github.com/lietxia/mahjong_graphic (M+ Fonts License)
+- `SyaoranHinata/I.Mahjong`: https://github.com/SyaoranHinata/I.Mahjong (M+ Fonts License); its documentation identifies GL-MahjongTile as an earlier source.
 
 The additional `assets/mahjongcraft/items/**` files and the `mahjong_tile_back.json` item model were added for Paper `item_model` support.
 
@@ -13,7 +19,7 @@ Dice textures, table textures, dice item models, and the table furniture model a
 The sound effects under `assets/mahjongcraft/sounds/` use low-risk redistributable sources:
 
 - Real tile/table sounds are from Freesound recordings marked Creative Commons 0 (CC0 1.0).
-- Action call voices are from Amitaro's Voice Material Studio. These are not CC0; use requires credit, terms-link/readme, and a post-release usage report when redistributed in a Minecraft/CraftEngine bundle.
+- Action call voices are from Amitaro's Voice Material Studio. These are not CC0 or MIT; use requires credit, a terms link/readme, and a post-release usage report within the period stated by the current Amitaro terms when redistributed in a Minecraft/CraftEngine bundle.
 - GB and Sichuan variant-specific sounds are derived only from the CC0 Freesound recordings listed below; they do not include third-party voice material.
 - The T-STUDIO Mahjong sound pack is intentionally not included because its redistribution terms are not a good fit for a merged CraftEngine resource bundle.
 
@@ -49,3 +55,30 @@ Sources:
 Required voice credit:
 
 - Voice: Amitaro's Voice Material Studio (https://amitaro.net/)
+- 音声素材：あみたろの声素材工房 (https://amitaro.net/)
+
+The Amitaro recordings may be redistributed only as part of a work such as this plugin/resource bundle and subject to the current terms. Do not redistribute them as a standalone voice or sound pack. Preserve this attribution and the terms link/readme. The repository's MIT license does not relicense these recordings.
+
+## MahjongCraft MIT License Notice
+
+MIT License
+
+Copyright (c) 2021 doublemoon1119
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

@@ -2,6 +2,10 @@
 
 > 本项目完全由 AI 创作。
 
+> **本项目不是官方 MINECRAFT 产品，未经 MOJANG 或 MICROSOFT 批准，也与其无关联。**
+>
+> 文档中的 `Mahjong Soul` / `雀魂` 仅用于描述兼容的规则和视觉风格。MahjongPaper 与雀魂及其权利人无关联，也未获其背书。各产品名称和商标归各自权利人所有。
+
 英文说明见 [README.md](./README.md)。
 贡献与代码边界说明见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
@@ -244,14 +248,47 @@
 - tracked entity 剔除桥接
 - 牌桌交互事件路由
 
-## CraftEngine 资源
+## 致谢、资源与上游项目
 
-[resourcepack](./resourcepack) 中的资源只作为 CraftEngine bundle 的源素材，由 CraftEngine 负责打包和下发。
+MahjongPaper 是独立重写/移植项目，不主张拥有第三方代码、美术、录音、名称或商标。项目根目录的 MIT 许可证只适用于本项目作者有权授权的内容；第三方组件仍受各自的许可证或使用条款约束。
 
-## 上游参考
+### 代码、规则与平台
 
-- `MahjongCraft`
-- `MahjongPlay`: <https://github.com/7yunluo/MahjongPlay>
-- `mahjong-utils`: <https://github.com/ssttkkl/mahjong-utils>
-- `Paper`
-- `CraftEngine`
+| 项目 | 与 MahjongPaper 的关系 | 许可证 / 条款 |
+| --- | --- | --- |
+| [MahjongCraft](https://github.com/doublemoon1119/MahjongCraft)，作者 `doublemoon1119` | 原始 Fabric Mod；主要玩法/架构灵感来源，也是本项目复用麻将牌纹理和基础物品模型的直接来源 | [MIT](https://github.com/doublemoon1119/MahjongCraft/blob/main/LICENSE) |
+| [MahjongPlay](https://github.com/7yunluo/MahjongPlay)，作者 `7yunluo` | Paper 插件实现参考 | [MIT](https://github.com/7yunluo/MahjongPlay/blob/main/LICENSE) |
+| [mahjong-utils](https://github.com/ssttkkl/mahjong-utils)，作者 `ssttkkl` | 立直麻将和牌判定与计分的直接运行时库 | [MIT](https://github.com/ssttkkl/mahjong-utils/blob/main/LICENSE) |
+| [GB-Mahjong](https://github.com/zheng-fan/GB-Mahjong)，作者 Zheng Fan | 以源码形式内置，编译进随包发行的国标麻将 JNI 原生库 | [MIT；仓库内许可证](./native/gbmahjong/vendor/GB-Mahjong/LICENSE) |
+| [Paper](https://github.com/PaperMC/Paper) / [Folia](https://github.com/PaperMC/Folia) | 支持的服务器平台与 API，由服务器运营者另行提供 | 以各自上游许可证为准 |
+| [CraftEngine](https://github.com/Xiao-MoMi/craft-engine) | 自定义物品、家具、交互、剔除和资源下发所需的外部运行时插件；本项目不内置该插件 | [GPL-3.0](https://github.com/Xiao-MoMi/craft-engine/blob/main/LICENSE) |
+| [Adventure](https://github.com/PaperMC/adventure) | 由 Paper 提供的文本/组件 API | [Apache-2.0](https://github.com/PaperMC/adventure/blob/main/5/license.txt) |
+
+### 资源包美术与音效
+
+[resourcepack](./resourcepack) 中的素材会被打包到导出的 CraftEngine bundle 中。每个文件的来源、授权和用途以 [resourcepack/ATTRIBUTION.md](./resourcepack/ATTRIBUTION.md) 为准；二次分发时必须保留该文件。
+
+- 麻将牌纹理和基础物品模型复用自 [MahjongCraft](https://github.com/doublemoon1119/MahjongCraft)，适用 MIT 许可证。相关牌面美术谱系同时致谢 `lietxia` 的 [mahjong_graphic](https://github.com/lietxia/mahjong_graphic)（M+ 字体授权条款）；其文档还记录了部分图形源自 [I.Mahjong](https://github.com/SyaoranHinata/I.Mahjong) 与 GL-MahjongTile。
+- 真实牌/桌面音效取材自 Freesound：**Macif** 的 `329098`、`329099`、`329100`，**Millavsb** 的 `197868`，以及 **poenia** 的 `745024`；这些录音均标记为 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)。原始链接和文件对应关系详见资源署名文件。
+- 立直模式的动作人声 `chii_01.wav`、`pon_01.wav`、`kan_01.wav`、`ri-chi_01.wav` 和 `ron_01.wav` 来自 [あみたろの声素材工房](https://amitaro.net/voice/game_01/)，适用该网站的[专用使用条款](https://amitaro.net/voice/voice_rule/)，**不适用**本项目的 MIT 或 CC0 授权。
+
+必须保留的人声素材署名：
+
+> 音声素材：あみたろの声素材工房 (<https://amitaro.net/>)<br>
+> Voice: Amitaro's Voice Material Studio (<https://amitaro.net/>)
+
+あみたろ人声只能在遵守当前条款的前提下，作为插件/资源 bundle 这类作品的组成部分分发。二次分发者必须保留署名和条款链接/Readme，不得将录音作为独立人声包或音效包提供，并应当按条款规定的期限完成发布后使用报告。日文报告草稿见 [docs/amitaro-usage-report.ja.md](./docs/amitaro-usage-report.ja.md)。
+
+### 直接运行时库
+
+构建脚本声明了以下直接运行时库；它们是独立作品，仍适用各自许可证：[MariaDB Connector/J](https://github.com/mariadb-corporation/mariadb-connector-j) (LGPL-2.1)、[MySQL Connector/J](https://github.com/mysql/mysql-connector-j) (GPL-2.0，附 Oracle 额外许可与 Universal FOSS Exception)、[H2](https://github.com/h2database/h2database) (MPL-2.0 或 EPL-1.0)、[HikariCP](https://github.com/brettwooldridge/HikariCP) (Apache-2.0)、[Caffeine](https://github.com/ben-manes/caffeine) (Apache-2.0)、[Kotlin](https://github.com/JetBrains/kotlin) (Apache-2.0) 以及 [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) (Apache-2.0)。Paper 插件加载器会解析 [MahjongPaperLoader.java](./src/main/java/top/ellan/mahjong/bootstrap/MahjongPaperLoader.java) 中列出的 Maven 库；[build.gradle.kts](./build.gradle.kts) 是直接依赖和版本的准确来源。
+
+各平台发行包还包含编译后的 GB-Mahjong JNI 桥接库。Windows 发行包可能包含 [mingw-w64 winpthreads](https://github.com/mingw-w64/mingw-w64/tree/master/mingw-w64-libraries/winpthreads) 的 `libwinpthread-1.dll`，适用其上游 MIT/BSD 类许可通知。原生构建链接的 GCC 运行时部分适用 GPL-3.0 及 [GCC Runtime Library Exception 3.1](https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html)。
+
+### 商标与无关联声明
+
+Minecraft 是 Microsoft 的商标。MahjongPaper 为独立开发项目，不是官方 Minecraft 产品，未经 Mojang 或 Microsoft 批准，也与其无关联。对 Mahjong Soul / 雀魂的引用只用于描述规则或风格，不构成关联、赞助或背书。各上游项目的名称和商标归各自权利人所有。
+
+## 许可证
+
+MahjongPaper 原创代码和项目自制资源适用 [MIT License](./LICENSE)，但文件或上述通知另有标注的除外。二次分发第三方内容时必须保留对应署名、许可证和使用条款。本节只用于项目署名和合规整理，不构成法律意见，也不替代具有约束力的许可证或服务条款原文。
