@@ -3,12 +3,17 @@ package top.ellan.mahjong.render.scene;
 import top.ellan.mahjong.model.SeatWind;
 import top.ellan.mahjong.render.display.DisplayClickAction;
 import top.ellan.mahjong.render.display.DisplayEntities;
+import top.ellan.mahjong.render.display.DisplayInteractionRayRegistry;
 import top.ellan.mahjong.render.layout.TableRenderLayout;
 import top.ellan.mahjong.render.TableRenderSubject;
 import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot;
+import top.ellan.mahjong.presentation.TableFeedbackPolicy;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -20,7 +25,7 @@ import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 
 /**
- * Renders seat visuals, status labels and the seat action labels/interactions.
+ * Renders seat visuals, status labels and zero-entity seat action hit planes.
  */
 public final class SeatRenderer {
     private SeatRenderer() {
@@ -40,7 +45,10 @@ public final class SeatRenderer {
         DisplayClickAction action = seatVisualAction(session, wind);
         Component text = playerId == null
             ? Component.text(session.publicSeatStatus(wind))
-            : Component.text(session.publicSeatStatus(wind) + "\n" + session.displayName(playerId, session.publicLocale()));
+            : Component.text(TableFeedbackPolicy.compactSeatLabel(
+                session.publicSeatStatus(wind),
+                session.displayName(playerId, session.publicLocale())
+            ));
         spawned.add(DisplayEntities.spawnLabel(
             session.bukkitPlugin(),
             statusLabelLocation,
@@ -76,7 +84,7 @@ public final class SeatRenderer {
         DisplayClickAction action = seatVisualAction(session, seat.wind());
         Component text = seat.playerId() == null
             ? Component.text(seat.publicSeatStatus())
-            : Component.text(seat.publicSeatStatus() + "\n" + seat.displayName());
+            : Component.text(TableFeedbackPolicy.compactSeatLabel(seat.publicSeatStatus(), seat.displayName()));
         spawned.add(DisplayEntities.spawnLabel(
             session.bukkitPlugin(),
             statusLabelLocation,
@@ -97,7 +105,17 @@ public final class SeatRenderer {
         TableSeatRenderSnapshot seat,
         TableRenderLayout.SeatLayoutPlan plan
     ) {
+        return renderSeatLabelPlan(session, seat, plan).entitySpecs();
+    }
+
+    public static SeatLabelRenderPlan renderSeatLabelPlan(
+        TableRenderSubject session,
+        TableSeatRenderSnapshot seat,
+        TableRenderLayout.SeatLayoutPlan plan
+    ) {
         List<DisplayEntities.EntitySpec> specs = new ArrayList<>(5);
+        Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> rayInteractions = new LinkedHashMap<>();
+        List<PublicJoinBinding> publicJoinBindings = new ArrayList<>(1);
         boolean active = seat.wind() == session.currentSeat();
         Location statusLabelLocation = withSeatLabelDepthOffset(
             TableGeometry.toLocation(session, plan.statusLabelLocation()),
@@ -107,7 +125,7 @@ public final class SeatRenderer {
         DisplayClickAction action = seatVisualAction(session, seat.wind());
         Component text = seat.playerId() == null
             ? Component.text(seat.publicSeatStatus())
-            : Component.text(seat.publicSeatStatus() + "\n" + seat.displayName());
+            : Component.text(TableFeedbackPolicy.compactSeatLabel(seat.publicSeatStatus(), seat.displayName()));
         specs.add(DisplayEntities.labelSpec(
             statusLabelLocation,
             text,
@@ -119,8 +137,28 @@ public final class SeatRenderer {
             true
         ));
         Location handBase = TableGeometry.handDirectionBase(TableGeometry.displayCenter(session), seat.wind());
-        appendSeatActionSpecs(session, seat.wind(), seat.playerId(), seat.ready(), handBase, action, specs);
-        return List.copyOf(specs);
+        appendSeatActions(
+            session,
+            seat.wind(),
+            seat.playerId(),
+            seat.ready(),
+            handBase,
+            action,
+            specs,
+            (target, data) -> {
+                int actionSpecIndex = target.size();
+                appendSeatActionSpecsFromData(target, data);
+                DisplayInteractionRayRegistry.RayInteraction interaction = appendSeatActionRayInteractions(
+                    data,
+                    seat.viewerIdsExcluding(),
+                    rayInteractions
+                );
+                if (data.action().actionType() == DisplayClickAction.ActionType.JOIN_SEAT) {
+                    publicJoinBindings.add(new PublicJoinBinding(actionSpecIndex, interaction));
+                }
+            }
+        );
+        return new SeatLabelRenderPlan(specs, rayInteractions, publicJoinBindings);
     }
 
     public static Location seatAnchorLocation(TableRenderSubject session, SeatWind wind) {
@@ -207,10 +245,6 @@ public final class SeatRenderer {
     private static Location withSeatLabelDepthOffset(Location location, SeatWind wind, double amount) {
         TableGeometry.Offset offset = TableGeometry.offsetTowardSeatFront(wind, amount);
         return location.clone().add(offset.x(), 0.0D, offset.z());
-    }
-
-    private static Location seatLabelInteractionLocation(Location labelLocation) {
-        return labelLocation.clone().subtract(0.0D, TableRenderConstants.LABEL_INTERACTION_Y_OFFSET, 0.0D);
     }
 
     private static Location seatPlacementLocation(Location location, SeatWind wind) {
@@ -309,7 +343,9 @@ public final class SeatRenderer {
 
     private static float seatActionInteractionWidth(Component label) {
         String plain = label == null ? "" : net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(label);
-        float estimated = TableRenderConstants.SEAT_ACTION_INTERACTION_BASE_WIDTH + Math.max(0, plain.length()) * TableRenderConstants.SEAT_ACTION_INTERACTION_PER_CHAR_WIDTH;
+        int visualUnits = TableFeedbackPolicy.visualUnits(plain);
+        float estimated = TableRenderConstants.SEAT_ACTION_INTERACTION_BASE_WIDTH
+            + visualUnits * TableRenderConstants.SEAT_ACTION_INTERACTION_PER_VISUAL_UNIT_WIDTH;
         return Math.max(TableRenderConstants.SEAT_ACTION_INTERACTION_MIN_WIDTH, Math.min(TableRenderConstants.SEAT_ACTION_INTERACTION_MAX_WIDTH, estimated));
     }
 
@@ -364,15 +400,20 @@ public final class SeatRenderer {
             return;
         }
         if (action.actionType() == DisplayClickAction.ActionType.TOGGLE_READY && seatedPlayerId != null && !session.isStarted()) {
-            appendSeatAction(session, wind, seatedPlayerId, handBase, action, ready, -TableRenderConstants.SEAT_SIDE_ACTION_HORIZONTAL_OFFSET, target, appender);
+            DisplayClickAction leaveAction = DisplayClickAction.playerCommand(session.id(), seatedPlayerId, "lobby:leave");
+            float readyActionWidth = seatActionInteractionWidth(seatActionLabel(session, action, ready));
+            float leaveActionWidth = seatActionInteractionWidth(seatActionLabel(session, leaveAction, ready));
+            double readyActionOffset = -(leaveActionWidth + TableRenderConstants.SEAT_SIDE_ACTION_GAP) / 2.0D;
+            double leaveActionOffset = (readyActionWidth + TableRenderConstants.SEAT_SIDE_ACTION_GAP) / 2.0D;
+            appendSeatAction(session, wind, seatedPlayerId, handBase, action, ready, readyActionOffset, target, appender);
             appendSeatAction(
                 session,
                 wind,
                 seatedPlayerId,
                 handBase,
-                DisplayClickAction.playerCommand(session.id(), seatedPlayerId, "lobby:leave"),
+                leaveAction,
                 ready,
-                TableRenderConstants.SEAT_SIDE_ACTION_HORIZONTAL_OFFSET,
+                leaveActionOffset,
                 target,
                 appender
             );
@@ -425,17 +466,6 @@ public final class SeatRenderer {
             0.0F,
             true
         ));
-        Entity interaction = DisplayEntities.spawnInteraction(
-            data.session().bukkitPlugin(),
-            seatLabelInteractionLocation(data.actionLabelLocation()),
-            data.actionWidth(),
-            TableRenderConstants.SEAT_ACTION_INTERACTION_HEIGHT,
-            data.action(),
-            data.actionViewers()
-        );
-        if (interaction != null) {
-            spawned.add(interaction);
-        }
     }
 
     private static void appendSeatActionSpecsFromData(List<DisplayEntities.EntitySpec> specs, SeatActionRenderData data) {
@@ -449,13 +479,39 @@ public final class SeatRenderer {
             0.0F,
             true
         ));
-        specs.add(DisplayEntities.interactionSpec(
-            seatLabelInteractionLocation(data.actionLabelLocation()),
+    }
+
+    private static DisplayInteractionRayRegistry.RayInteraction appendSeatActionRayInteractions(
+        SeatActionRenderData data,
+        Collection<UUID> publicViewers,
+        Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> rayInteractions
+    ) {
+        Location labelLocation = data.actionLabelLocation();
+        UUID worldId = labelLocation.getWorld() == null ? null : labelLocation.getWorld().getUID();
+        TableGeometry.Offset acrossAxis = TableGeometry.offsetAcrossSeat(data.wind(), 1.0D);
+        DisplayInteractionRayRegistry.RayInteraction interaction = new DisplayInteractionRayRegistry.RayInteraction(
+            worldId,
+            labelLocation.getX(),
+            labelLocation.getY() - TableRenderConstants.LABEL_INTERACTION_Y_OFFSET
+                + TableRenderConstants.SEAT_ACTION_INTERACTION_HEIGHT / 2.0D,
+            labelLocation.getZ(),
+            acrossAxis.x(),
+            acrossAxis.z(),
             data.actionWidth(),
             TableRenderConstants.SEAT_ACTION_INTERACTION_HEIGHT,
-            data.action(),
-            data.actionViewers()
-        ));
+            0.0F,
+            data.action()
+        );
+        Collection<UUID> viewers = data.actionViewers() == null ? publicViewers : data.actionViewers();
+        if (viewers == null || viewers.isEmpty()) {
+            return interaction;
+        }
+        for (UUID viewerId : viewers) {
+            if (viewerId != null) {
+                rayInteractions.computeIfAbsent(viewerId, ignored -> new ArrayList<>()).add(interaction);
+            }
+        }
+        return interaction;
     }
 
     private static Location seatActionLabelLocation(Location handBase, SeatWind wind, double acrossOffset) {
@@ -500,5 +556,42 @@ public final class SeatRenderer {
         Collection<UUID> actionViewers,
         Location actionLabelLocation
     ) {
+    }
+
+    public record SeatLabelRenderPlan(
+        List<DisplayEntities.EntitySpec> entitySpecs,
+        Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> rayInteractions,
+        List<PublicJoinBinding> publicJoinBindings
+    ) {
+        public SeatLabelRenderPlan(
+            List<DisplayEntities.EntitySpec> entitySpecs,
+            Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> rayInteractions
+        ) {
+            this(entitySpecs, rayInteractions, List.of());
+        }
+
+        public List<DisplayInteractionRayRegistry.RayInteraction> publicJoinInteractions() {
+            return this.publicJoinBindings.stream().map(PublicJoinBinding::interaction).toList();
+        }
+
+        public SeatLabelRenderPlan {
+            entitySpecs = List.copyOf(entitySpecs);
+            Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> immutable = new LinkedHashMap<>();
+            rayInteractions.forEach((viewerId, interactions) -> immutable.put(viewerId, List.copyOf(interactions)));
+            rayInteractions = Collections.unmodifiableMap(immutable);
+            publicJoinBindings = List.copyOf(publicJoinBindings);
+        }
+    }
+
+    public record PublicJoinBinding(
+        int specIndex,
+        DisplayInteractionRayRegistry.RayInteraction interaction
+    ) {
+        public PublicJoinBinding {
+            if (specIndex < 0) {
+                throw new IllegalArgumentException("Public join spec index must be non-negative");
+            }
+            java.util.Objects.requireNonNull(interaction, "interaction");
+        }
     }
 }

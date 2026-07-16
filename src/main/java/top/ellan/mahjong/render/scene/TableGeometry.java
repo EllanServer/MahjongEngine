@@ -1,6 +1,7 @@
 package top.ellan.mahjong.render.scene;
 
 import top.ellan.mahjong.model.MahjongTile;
+import top.ellan.mahjong.model.MahjongVariant;
 import top.ellan.mahjong.model.SeatWind;
 import top.ellan.mahjong.render.display.DisplayEntities;
 import top.ellan.mahjong.render.layout.DiscardLayout;
@@ -137,8 +138,28 @@ public final class TableGeometry {
         int seatCount = SeatWind.values().length;
         int dicePoints = session.dicePoints();
         int breakDice = session.breakDicePoints();
-        int directionIndex = 4 - (((dicePoints % seatCount) - 1 + session.roundIndex()) % seatCount);
-        return Math.floorMod(directionIndex * TableRenderConstants.WALL_TILES_PER_SIDE + breakDice * 2, TableRenderConstants.TOTAL_WALL_TILES);
+        int openDoorIndex = Math.floorMod(session.dealerSeat().index() + dicePoints - 1, seatCount);
+        int openingStackCount = usesDeadWall(session) ? breakDice : dicePoints + breakDice;
+        return Math.floorMod(
+            openDoorIndex * wallTilesPerSide(session) + openingStackCount * 2,
+            wallCapacity(session)
+        );
+    }
+
+    public static boolean usesDeadWall(TableRenderSubject session) {
+        return variant(session) == MahjongVariant.RIICHI;
+    }
+
+    public static int wallCapacity(TableRenderSubject session) {
+        return switch (variant(session)) {
+            case RIICHI -> 136;
+            case GB -> 144;
+            case SICHUAN -> 108;
+        };
+    }
+
+    public static int wallTilesPerSide(TableRenderSubject session) {
+        return wallCapacity(session) / SeatWind.values().length;
     }
 
     public static int deadWallAnchorSlot(TableRenderSubject session) {
@@ -150,17 +171,27 @@ public final class TableGeometry {
     }
 
     public static Location wallSlotLocation(Location center, int wallSlot) {
-        SeatWind wind = WallLayout.wallSeat(wallSlot);
-        int stackIndex = WallLayout.wallColumn(wallSlot);
+        return wallSlotLocation(center, wallSlot, TableRenderConstants.WALL_TILES_PER_SIDE);
+    }
+
+    public static Location wallSlotLocation(Location center, int wallSlot, int tilesPerSide) {
+        SeatWind wind = WallLayout.wallSeat(wallSlot, tilesPerSide);
+        int stackIndex = WallLayout.wallColumn(wallSlot, tilesPerSide);
         double stackWidth = stackIndex * TableRenderConstants.WALL_TILE_STEP;
-        double startingPos = (TableRenderConstants.WALL_START_POSITION_MULTIPLIER * TableRenderConstants.TILE_WIDTH) / 2.0D - TableRenderConstants.TILE_HEIGHT;
-        double yOffset = TableRenderConstants.FLAT_TILE_Y + wallLayerYOffset(WallLayout.wallLayer(wallSlot));
+        int stackCount = (tilesPerSide + 1) / 2;
+        double startingPos = (stackCount * TableRenderConstants.TILE_WIDTH) / 2.0D - TableRenderConstants.TILE_HEIGHT;
+        double yOffset = TableRenderConstants.FLAT_TILE_Y + wallLayerYOffset(WallLayout.wallLayer(wallSlot, tilesPerSide));
         return switch (displayDirection(wind)) {
             case EAST -> center.clone().add(TableRenderConstants.WALL_DIRECTION_OFFSET, yOffset, -startingPos + stackWidth);
             case SOUTH -> center.clone().add(startingPos - stackWidth, yOffset, TableRenderConstants.WALL_DIRECTION_OFFSET);
             case WEST -> center.clone().add(-TableRenderConstants.WALL_DIRECTION_OFFSET, yOffset, startingPos - stackWidth);
             case NORTH -> center.clone().add(-startingPos + stackWidth, yOffset, -TableRenderConstants.WALL_DIRECTION_OFFSET);
         };
+    }
+
+    private static MahjongVariant variant(TableRenderSubject session) {
+        MahjongVariant variant = session.currentVariant();
+        return variant == null ? MahjongVariant.RIICHI : variant;
     }
 
     public static double wallLayerYOffset(int layer) {

@@ -3,6 +3,7 @@ package top.ellan.mahjong.ui;
 import top.ellan.mahjong.i18n.MessageService;
 import top.ellan.mahjong.compat.PaperCompatibility;
 import top.ellan.mahjong.model.MahjongTile;
+import top.ellan.mahjong.model.MahjongVariant;
 import top.ellan.mahjong.riichi.RoundResolution;
 import top.ellan.mahjong.riichi.model.RankedScoreItem;
 import top.ellan.mahjong.riichi.model.ScoreSettlement;
@@ -16,6 +17,7 @@ import java.text.NumberFormat;
 import java.util.UUID;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -143,7 +145,9 @@ public final class SettlementUi {
                 TableFinalStanding standing = finalStanding(session, item.getScoreItem().getStringUUID());
                 if (standing != null) {
                     lore.add(messages.render(locale, "ui.score.place", messages.number(locale, "value", standing.place())));
-                    lore.add(messages.render(locale, "ui.score.majsoul", messages.tag("value", formatGameScore(locale, standing.gameScore()))));
+                    if (shouldShowMahjongSoulGameScore(session)) {
+                        lore.add(messages.render(locale, "ui.score.majsoul", messages.tag("value", formatGameScore(locale, standing.gameScore()))));
+                    }
                 }
             }
             Material material = item.getScoreItem().getScoreChange() > 0
@@ -151,6 +155,10 @@ public final class SettlementUi {
                 : item.getScoreItem().getScoreChange() < 0 ? Material.REDSTONE : Material.NAME_TAG;
             inventory.setItem(slots[i], namedItem(material, Component.text(SettlementPaymentFormatter.displayName(session, item.getScoreItem().getStringUUID())), lore));
         }
+    }
+
+    static boolean shouldShowMahjongSoulGameScore(MahjongTableSession session) {
+        return session != null && session.currentVariant() == MahjongVariant.RIICHI;
     }
 
     private static void placeSettlementDetails(Inventory inventory, Locale locale, MahjongTableSession session, RoundResolution resolution) {
@@ -254,7 +262,7 @@ public final class SettlementUi {
         ItemStack customItem = session.plugin().craftEngine().resolveTileItem(session.currentVariant(), tile, faceDown);
         if (customItem != null) {
             ItemMeta customMeta = customItem.getItemMeta();
-            customMeta.displayName(name.colorIfAbsent(NamedTextColor.GOLD));
+            customMeta.displayName(name.colorIfAbsent(NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false));
             customItem.setItemMeta(customMeta);
             return customItem;
         }
@@ -262,7 +270,7 @@ public final class SettlementUi {
         ItemStack itemStack = new ItemStack(Material.PAPER);
         ItemMeta meta = itemStack.getItemMeta();
         PaperCompatibility.applyItemModel(meta, new NamespacedKey("mahjongcraft", path));
-        meta.displayName(name.colorIfAbsent(NamedTextColor.GOLD));
+        meta.displayName(name.colorIfAbsent(NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false));
         itemStack.setItemMeta(meta);
         return itemStack;
     }
@@ -274,9 +282,11 @@ public final class SettlementUi {
     private static ItemStack namedItem(Material material, Component name, List<Component> loreLines) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
-        meta.displayName(name.colorIfAbsent(NamedTextColor.YELLOW));
+        meta.displayName(name.colorIfAbsent(NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
         if (!loreLines.isEmpty()) {
-            meta.lore(loreLines);
+            meta.lore(loreLines.stream()
+                .map(line -> line.colorIfAbsent(NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false))
+                .toList());
         }
         item.setItemMeta(meta);
         return item;
@@ -384,6 +394,3 @@ public final class SettlementUi {
         }
     }
 }
-
-
-

@@ -1,9 +1,9 @@
 package top.ellan.mahjong.render.scene
 
-import top.ellan.mahjong.model.SeatWind
 import org.bukkit.Location
 import org.bukkit.World
 import org.mockito.Mockito.mock
+import top.ellan.mahjong.model.SeatWind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -17,7 +17,7 @@ class TableRendererFurnitureAnchorTest {
         val anchor = TableRenderer.tableFurnitureAnchor(tableCenter, "custom:table")
 
         assertEquals(10.0, anchor.x, 0.000001)
-        assertEquals(63.645, anchor.y, 0.000001)
+        assertEquals(63.52, anchor.y, 0.000001)
         assertEquals(-3.0, anchor.z, 0.000001)
     }
 
@@ -28,7 +28,7 @@ class TableRendererFurnitureAnchorTest {
         val anchor = TableRenderer.tableFurnitureAnchor(tableCenter, "mahjongpaper:table_visual")
 
         assertEquals(10.0, anchor.x, 0.000001)
-        assertEquals(65.02, anchor.y, 0.000001)
+        assertEquals(64.895, anchor.y, 0.000001)
         assertEquals(-3.0, anchor.z, 0.000001)
     }
 
@@ -44,4 +44,3 @@ class TableRendererFurnitureAnchorTest {
         assertEquals(90.0f, anchor.yaw)
     }
 }
-

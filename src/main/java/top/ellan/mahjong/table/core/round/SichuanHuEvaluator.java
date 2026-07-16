@@ -94,6 +94,9 @@ final class SichuanHuEvaluator {
                 return null;
             }
             counts[index]++;
+            if (counts[index] > 4) {
+                return null;
+            }
         }
         return counts;
     }

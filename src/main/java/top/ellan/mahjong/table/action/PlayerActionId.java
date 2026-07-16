@@ -7,6 +7,7 @@ public enum PlayerActionId {
     CHII,
     SKIP,
     TSUMO,
+    FLOWER,
     KAN,
     ANKAN,
     KAKAN,
@@ -16,6 +17,7 @@ public enum PlayerActionId {
     DINGQUE_TONG,
     DINGQUE_SUO,
     MENU_REACT_CHII,
+    MENU_TURN_FLOWER,
     MENU_TURN_KAN,
     MENU_TURN_RIICHI,
     MENU_BACK

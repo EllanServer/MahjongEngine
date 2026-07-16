@@ -16,12 +16,26 @@ public final class MahjongPaperLoader implements PluginLoader {
             "default",
             this.mavenCentralRepositoryUrl()
         ).build());
+        resolver.addRepository(new RemoteRepository.Builder(
+            "momirealms-releases",
+            "default",
+            "https://repo.momirealms.net/releases/"
+        ).build());
+        resolver.addRepository(new RemoteRepository.Builder(
+            "catnies-releases",
+            "default",
+            "https://repo.catnies.top/releases/"
+        ).build());
 
         this.addDependency(resolver, "io.github.ssttkkl:mahjong-utils-jvm:0.7.7");
         this.addDependency(resolver, "org.mariadb.jdbc:mariadb-java-client:3.5.9");
         this.addDependency(resolver, "com.mysql:mysql-connector-j:9.7.0");
         this.addDependency(resolver, "com.h2database:h2:2.4.240");
         this.addDependency(resolver, "com.zaxxer:HikariCP:7.1.0");
+        this.addDependency(resolver, "com.github.ben-manes.caffeine:caffeine:3.2.4");
+        this.addDependency(resolver, "net.momirealms:antigrieflib:1.0.14");
+        this.addDependency(resolver, "net.momirealms:sparrow-heart:0.72");
+        this.addDependency(resolver, "net.momirealms:sparrow-yaml:1.0.7");
         this.addDependency(resolver, "org.jetbrains.kotlin:kotlin-stdlib:2.4.0");
         this.addDependency(resolver, "org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0");
 
@@ -44,4 +58,3 @@ public final class MahjongPaperLoader implements PluginLoader {
         return "https://repo.maven.apache.org/maven2/";
     }
 }
-

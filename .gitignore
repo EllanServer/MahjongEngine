@@ -5,6 +5,7 @@
 /buildSrc/.gradle/
 /buildSrc/.kotlin/
 /buildSrc/build/
+/buildSrc/.codex-build/
 /logs/
 /_upstream/
 /.tmp-gb-ref/
@@ -16,3 +17,8 @@ Thumbs.db
 .DS_Store
 .narrafork/
 .worktrees/
+hs_err_pid*.log
+replay_pid*.log
+__pycache__/
+*.py[cod]
+/perf/live/client/node_modules/

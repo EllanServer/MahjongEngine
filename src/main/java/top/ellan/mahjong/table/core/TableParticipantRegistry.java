@@ -230,6 +230,24 @@ final class TableParticipantRegistry {
         return wind == null ? -1 : wind.index();
     }
 
+    /**
+     * O(1) reverse lookup by playerId. Used by MahjongTableSession.seatOf to
+     * avoid the previous O(4) linear scan over SeatWind.values() that called
+     * playerAt(wind) for each wind. The underlying seatByPlayer map is
+     * maintained as an invariant of occupySeat/vacateSeat so a single
+     * HashMap.get is sufficient.
+     *
+     * Thread-safety: same contract as the rest of this class — callers run
+     * on the table's region thread for correctness; cross-thread callers
+     * get a best-effort read (HashMap.get is not synchronized but does not
+     * throw ConcurrentModificationException, and the worst case is a stale
+     * null which the caller treats as "not seated"). See MahjongTableSession.seatOf
+     * for the full contract.
+     */
+    SeatWind seatOf(UUID playerId) {
+        return playerId == null ? null : this.seatByPlayer.get(playerId);
+    }
+
     void clearReadyPlayers() {
         this.readyPlayers.clear();
     }

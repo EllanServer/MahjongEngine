@@ -7,7 +7,6 @@ import org.mockito.Mockito.lenient
 import org.mockito.Mockito.mock
 import top.ellan.mahjong.table.core.MahjongTableSession
 import java.util.UUID
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
 /**

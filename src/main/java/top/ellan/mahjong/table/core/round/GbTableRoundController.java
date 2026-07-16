@@ -52,7 +52,6 @@ public final class GbTableRoundController implements TableRoundController {
     private static final int SICHUAN_CONCEALED_KAN_UNIT = 2;
     private static final int SICHUAN_ADDED_KAN_UNIT = 1;
     private static final int SICHUAN_OPEN_KAN_UNIT = 2;
-    private static final int SICHUAN_HUA_ZHU_UNIT = 16;
 
     enum SichuanPreparationPhase {
         NONE,
@@ -68,6 +67,7 @@ public final class GbTableRoundController implements TableRoundController {
     private final Map<UUID, SeatWind> seatByPlayerId = new HashMap<>();
     private final Map<UUID, String> displayNames;
     private final IntSupplier dicePointsSupplier;
+    private final Supplier<OpeningDiceRoll> openingDiceRollSupplier;
     private final Supplier<List<MahjongTile>> wallSupplier;
     private final MahjongRound round;
     private final GbBotDecisionService botDecisionService;
@@ -82,14 +82,16 @@ public final class GbTableRoundController implements TableRoundController {
     private final Map<UUID, Integer> roundStartPoints = new HashMap<>();
     private final Set<UUID> settledSichuanPlayers = new HashSet<>();
     private final List<GbReactionResolver.ResolvedGbWin> sichuanWinHistory = new ArrayList<>();
+    private final Map<UUID, Integer> sichuanWinScoreDeltas = new HashMap<>();
     private final List<SichuanGangEvent> sichuanGangEvents = new ArrayList<>();
+    private final List<SichuanGangEvent> pendingSichuanCallTransferEvents = new ArrayList<>();
+    private final Map<UUID, Integer> sichuanPassedWinUnits = new HashMap<>();
     private final Map<UUID, LinkedHashSet<Integer>> selectedExchangeTileIndices = new HashMap<>();
     private final Set<UUID> confirmedExchangePlayers = new HashSet<>();
     private final Map<UUID, SichuanSuit> chosenMissingSuits = new HashMap<>();
     private final SichuanRulesEngine sichuanRulesEngine;
     private final SichuanPreparationFlow sichuanPreparationFlow;
     private final ArrayDeque<MahjongTile> wall = new ArrayDeque<>();
-    private final ArrayDeque<MahjongTile> deadWall = new ArrayDeque<>();
     private boolean started;
     private boolean gameFinished;
     private int dicePoints;
@@ -100,6 +102,8 @@ public final class GbTableRoundController implements TableRoundController {
     private GbReactionResolver.PendingReactionWindow pendingReactionWindow;
     private OpeningDiceRoll pendingDiceRoll;
     private UUID afterKanTsumoPlayer;
+    private SeatWind sichuanDealerSeat = SeatWind.EAST;
+    private SeatWind nextSichuanDealerSeat;
     private SichuanPreparationPhase sichuanPreparationPhase = SichuanPreparationPhase.NONE;
 
     public GbTableRoundController(MahjongRule rule, EnumMap<SeatWind, UUID> seats, Map<UUID, String> displayNames, GbNativeRulesGateway nativeGateway) {
@@ -113,7 +117,7 @@ public final class GbTableRoundController implements TableRoundController {
         GbNativeRulesGateway nativeGateway,
         GbRuleProfile ruleProfile
     ) {
-        this(rule, seats, displayNames, nativeGateway, ruleProfile, GbRoundSupport::rollDicePoints, () -> GbRoundSupport.buildWall(ruleProfile));
+        this(rule, seats, displayNames, nativeGateway, ruleProfile, null, OpeningDiceRoll::random, () -> GbRoundSupport.buildWall(ruleProfile));
     }
 
     public GbTableRoundController(
@@ -124,7 +128,7 @@ public final class GbTableRoundController implements TableRoundController {
         IntSupplier dicePointsSupplier,
         Supplier<List<MahjongTile>> wallSupplier
     ) {
-        this(rule, seats, displayNames, nativeGateway, GbRuleProfile.GB, dicePointsSupplier, wallSupplier);
+        this(rule, seats, displayNames, nativeGateway, GbRuleProfile.GB, dicePointsSupplier, null, wallSupplier);
     }
 
     public GbTableRoundController(
@@ -134,6 +138,19 @@ public final class GbTableRoundController implements TableRoundController {
         GbNativeRulesGateway nativeGateway,
         GbRuleProfile ruleProfile,
         IntSupplier dicePointsSupplier,
+        Supplier<List<MahjongTile>> wallSupplier
+    ) {
+        this(rule, seats, displayNames, nativeGateway, ruleProfile, dicePointsSupplier, null, wallSupplier);
+    }
+
+    private GbTableRoundController(
+        MahjongRule rule,
+        EnumMap<SeatWind, UUID> seats,
+        Map<UUID, String> displayNames,
+        GbNativeRulesGateway nativeGateway,
+        GbRuleProfile ruleProfile,
+        IntSupplier dicePointsSupplier,
+        Supplier<OpeningDiceRoll> openingDiceRollSupplier,
         Supplier<List<MahjongTile>> wallSupplier
     ) {
         this.rule = rule;
@@ -148,6 +165,7 @@ public final class GbTableRoundController implements TableRoundController {
         }
         this.displayNames = new HashMap<>(displayNames);
         this.dicePointsSupplier = dicePointsSupplier;
+        this.openingDiceRollSupplier = openingDiceRollSupplier;
         this.wallSupplier = wallSupplier;
         this.sichuanRulesEngine = new DefaultSichuanRulesEngine();
         this.sichuanPreparationFlow = new SichuanPreparationFlow(
@@ -204,22 +222,34 @@ public final class GbTableRoundController implements TableRoundController {
 
     @Override
     public void startRound() {
+        if (this.usesSichuanBloodBattle() && this.nextSichuanDealerSeat != null) {
+            this.sichuanDealerSeat = this.nextSichuanDealerSeat;
+            this.nextSichuanDealerSeat = null;
+        }
         OpeningDiceRoll diceRoll = this.pendingDiceRoll;
         this.pendingDiceRoll = null;
+        if (diceRoll == null && this.openingDiceRollSupplier != null) {
+            diceRoll = this.openingDiceRollSupplier.get();
+        }
+        int sichuanBreakStacks;
         if (diceRoll == null) {
             int roll1 = GbRoundSupport.requireValidDicePoints(this.dicePointsSupplier.getAsInt());
             int roll2 = GbRoundSupport.requireValidDicePoints(this.dicePointsSupplier.getAsInt());
             this.dicePoints = roll1;
             this.dicePoints2 = roll2;
+            // Legacy deterministic test constructors supply only totals. Production and exact
+            // wall tests use OpeningDiceRoll, which retains the individual dice required by T/TFMJ.
+            sichuanBreakStacks = Math.max(1, Math.min(6, roll1 / 2));
         } else {
             this.dicePoints = diceRoll.total();
             this.dicePoints2 = diceRoll.total2();
+            sichuanBreakStacks = Math.min(diceRoll.firstDie(), diceRoll.secondDie());
         }
-        List<MahjongTile> fullWall = GbRoundSupport.reorderWallForDice(this.wallSupplier.get(), this.dicePoints, this.dicePoints2, this.round.getRound());
-        this.deadWall.clear();
-        this.deadWall.addAll(fullWall.subList(fullWall.size() - GbRoundSupport.DEAD_WALL_SIZE, fullWall.size()));
+        List<MahjongTile> fullWall = this.usesSichuanBloodBattle()
+            ? GbRoundSupport.reorderSichuanWallForDice(this.wallSupplier.get(), this.dicePoints, sichuanBreakStacks, this.dealerSeat().index())
+            : GbRoundSupport.reorderWallForDice(this.wallSupplier.get(), this.dicePoints, this.dicePoints2, this.dealerSeat().index());
         this.wall.clear();
-        this.wall.addAll(fullWall.subList(0, fullWall.size() - GbRoundSupport.DEAD_WALL_SIZE));
+        this.wall.addAll(fullWall);
         this.pendingReactionWindow = null;
         this.lastResolution = null;
         this.started = true;
@@ -231,7 +261,10 @@ public final class GbTableRoundController implements TableRoundController {
         this.roundStartPoints.putAll(this.points);
         this.settledSichuanPlayers.clear();
         this.sichuanWinHistory.clear();
+        this.sichuanWinScoreDeltas.clear();
         this.sichuanGangEvents.clear();
+        this.pendingSichuanCallTransferEvents.clear();
+        this.sichuanPassedWinUnits.clear();
         this.sichuanPreparationFlow.reset(this.ruleProfile.useSichuanHuEvaluator(), this.dicePoints);
         for (UUID playerId : this.seats.values()) {
             if (playerId == null) {
@@ -244,12 +277,26 @@ public final class GbTableRoundController implements TableRoundController {
             this.melds.get(playerId).clear();
         }
 
-        for (int draw = 0; draw < 13; draw++) {
-            for (SeatWind wind : SeatWind.values()) {
-                this.drawTile(this.playerAt(wind), false, false, false);
+        SeatWind dealer = this.dealerSeat();
+        for (int block = 0; block < 3; block++) {
+            for (int offset = 0; offset < SeatWind.values().length; offset++) {
+                UUID playerId = this.playerAt(this.seatFromDealerOffset(dealer, offset));
+                for (int tile = 0; tile < 4; tile++) {
+                    this.dealInitialTile(playerId);
+                }
             }
         }
-        this.drawTile(this.currentPlayerId(), false, false, true);
+        UUID dealerId = this.playerAt(dealer);
+        this.dealInitialTile(dealerId);
+        for (int offset = 1; offset < SeatWind.values().length; offset++) {
+            this.dealInitialTile(this.playerAt(this.seatFromDealerOffset(dealer, offset)));
+        }
+        this.dealInitialTile(dealerId);
+        for (int offset = 0; offset < SeatWind.values().length; offset++) {
+            UUID playerId = this.playerAt(this.seatFromDealerOffset(dealer, offset));
+            this.hasDrawnTile.put(playerId, playerId.equals(dealerId));
+            this.sortHand(playerId);
+        }
         if (this.ruleProfile.useSichuanHuEvaluator()) {
             this.seedSichuanPreparationTing();
         } else {
@@ -257,11 +304,16 @@ public final class GbTableRoundController implements TableRoundController {
         }
     }
 
+    private SeatWind seatFromDealerOffset(SeatWind dealer, int offset) {
+        return SeatWind.fromIndex(Math.floorMod(dealer.index() + offset, SeatWind.values().length));
+    }
+
     @Override
     public boolean discard(UUID playerId, int tileIndex) {
         if (!this.canSelectHandTile(playerId, tileIndex)) {
             return false;
         }
+        boolean afterKongDiscard = this.usesSichuanBloodBattle() && Objects.equals(this.afterKanTsumoPlayer, playerId);
         MahjongTile discarded = this.hands.get(playerId).remove(tileIndex);
         this.hasDrawnTile.put(playerId, false);
         this.sortHand(playerId);
@@ -269,6 +321,9 @@ public final class GbTableRoundController implements TableRoundController {
         this.pendingReactionWindow = this.buildPendingReactionWindow(playerId, discarded);
         this.afterKanTsumoPlayer = null;
         if (this.pendingReactionWindow == null) {
+            if (afterKongDiscard) {
+                this.clearPendingSichuanCallTransferChain();
+            }
             this.advanceAfterDiscard();
         }
         this.refreshAllTing();
@@ -298,7 +353,7 @@ public final class GbTableRoundController implements TableRoundController {
             return false;
         }
         ReactionOptions options = this.pendingReactionWindow.options().get(playerId);
-        if (options == null) {
+        if (options == null || this.pendingReactionWindow.responses().containsKey(playerId)) {
             return false;
         }
         switch (response.getType()) {
@@ -323,10 +378,11 @@ public final class GbTableRoundController implements TableRoundController {
                 }
             }
             case SKIP -> {
-                if (this.mustWinInSichuanLastTiles(options)) {
-                    return false;
-                }
+                // Passing a win is legal in the T/TFMJ profile, including in the last four draws.
             }
+        }
+        if (response.getType() != ReactionType.RON) {
+            this.rememberSichuanPassedWin(playerId, options);
         }
         this.pendingReactionWindow.responses().put(playerId, response);
         if (!this.pendingReactionWindow.responses().keySet().containsAll(this.pendingReactionWindow.options().keySet())) {
@@ -365,7 +421,7 @@ public final class GbTableRoundController implements TableRoundController {
             GbMeldState meld = this.melds.get(playerId).get(i);
             if (meld.type() == GbMeldType.PUNG
                 && GbRoundSupport.sameKind(meld.baseTile(), target)
-                && GbRoundSupport.countMatchingTiles(hand, target) >= 1) {
+                && this.canUseTileForAddedKong(playerId, hand, target)) {
                 GbReactionResolver.PendingReactionWindow robbingKongWindow = this.buildRobbingKongWindow(playerId, target, i);
                 if (robbingKongWindow != null) {
                     this.pendingReactionWindow = robbingKongWindow;
@@ -426,7 +482,7 @@ public final class GbTableRoundController implements TableRoundController {
 
     @Override
     public SeatWind dealerSeat() {
-        return SeatWind.fromIndex(this.round.getRound());
+        return this.usesSichuanBloodBattle() ? this.sichuanDealerSeat : SeatWind.fromIndex(this.round.getRound());
     }
 
     @Override
@@ -452,11 +508,8 @@ public final class GbTableRoundController implements TableRoundController {
 
     @Override
     public List<MahjongTile> remainingWall() {
-        List<MahjongTile> hiddenWall = new ArrayList<>(this.wall.size() + this.deadWall.size());
+        List<MahjongTile> hiddenWall = new ArrayList<>(this.wall.size());
         for (int i = 0; i < this.wall.size(); i++) {
-            hiddenWall.add(MahjongTile.UNKNOWN);
-        }
-        for (int i = 0; i < this.deadWall.size(); i++) {
             hiddenWall.add(MahjongTile.UNKNOWN);
         }
         return List.copyOf(hiddenWall);
@@ -582,9 +635,6 @@ public final class GbTableRoundController implements TableRoundController {
         if (!this.isCurrentPlayer(playerId)) {
             return false;
         }
-        if (this.usesSichuanBloodBattle() && this.wall.size() <= 4 && this.canWinByTsumo(playerId)) {
-            return false;
-        }
         List<MahjongTile> hand = this.hands.get(playerId);
         if (hand == null || tileIndex < 0 || tileIndex >= hand.size()) {
             return false;
@@ -633,6 +683,57 @@ public final class GbTableRoundController implements TableRoundController {
     }
 
     @Override
+    public boolean canDeclareFlower(UUID playerId) {
+        if (!this.ruleProfile.includesFlowers()
+            || !this.started
+            || playerId == null
+            || !this.isCurrentPlayer(playerId)
+            || this.hasPendingReaction()
+            || this.isSichuanPreparationPhase()
+            || this.wall.isEmpty()) {
+            return false;
+        }
+        return this.hands.getOrDefault(playerId, List.of()).stream().anyMatch(MahjongTile::isFlower);
+    }
+
+    @Override
+    public List<Integer> suggestedFlowerIndices(UUID playerId) {
+        if (!this.canDeclareFlower(playerId)) {
+            return List.of();
+        }
+        List<MahjongTile> hand = this.hands.getOrDefault(playerId, List.of());
+        List<Integer> indices = new ArrayList<>();
+        for (int index = 0; index < hand.size(); index++) {
+            if (hand.get(index).isFlower()) {
+                indices.add(index);
+            }
+        }
+        return List.copyOf(indices);
+    }
+
+    @Override
+    public boolean declareFlower(UUID playerId, int tileIndex) {
+        if (!this.canDeclareFlower(playerId)) {
+            return false;
+        }
+        List<MahjongTile> hand = this.hands.get(playerId);
+        if (hand == null || tileIndex < 0 || tileIndex >= hand.size() || !hand.get(tileIndex).isFlower()) {
+            return false;
+        }
+
+        MahjongTile flower = hand.remove(tileIndex);
+        this.flowers.computeIfAbsent(playerId, ignored -> new ArrayList<>()).add(flower);
+        MahjongTile replacement = this.wall.removeLast();
+        hand.add(replacement);
+        this.hasDrawnTile.put(playerId, true);
+        this.afterKanTsumoPlayer = null;
+        this.sortHand(playerId);
+        this.clearSichuanPassedWinAfterDraw(playerId);
+        this.refreshAllTing();
+        return true;
+    }
+
+    @Override
     public boolean canDeclareKan(UUID playerId) {
         return this.canDeclareConcealedKan(playerId) || this.canDeclareAddedKan(playerId);
     }
@@ -658,7 +759,7 @@ public final class GbTableRoundController implements TableRoundController {
         }
         List<MahjongTile> hand = this.hands.getOrDefault(playerId, List.of());
         for (GbMeldState meld : this.melds.getOrDefault(playerId, List.of())) {
-            if (meld.type() == GbMeldType.PUNG && GbRoundSupport.countMatchingTiles(hand, meld.baseTile()) >= 1) {
+            if (meld.type() == GbMeldType.PUNG && this.canUseTileForAddedKong(playerId, hand, meld.baseTile())) {
                 return true;
             }
         }
@@ -704,7 +805,7 @@ public final class GbTableRoundController implements TableRoundController {
         List<String> suggestions = new ArrayList<>();
         List<MahjongTile> hand = this.hands.getOrDefault(playerId, List.of());
         for (GbMeldState meld : this.melds.getOrDefault(playerId, List.of())) {
-            if (meld.type() == GbMeldType.PUNG && GbRoundSupport.countMatchingTiles(hand, meld.baseTile()) >= 1) {
+            if (meld.type() == GbMeldType.PUNG && this.canUseTileForAddedKong(playerId, hand, meld.baseTile())) {
                 String lowered = meld.baseTile().name().toLowerCase(Locale.ROOT);
                 if (!suggestions.contains(lowered)) {
                     suggestions.add(lowered);
@@ -714,6 +815,13 @@ public final class GbTableRoundController implements TableRoundController {
         return List.copyOf(suggestions);
     }
 
+    private boolean canUseTileForAddedKong(UUID playerId, List<MahjongTile> hand, MahjongTile target) {
+        if (GbRoundSupport.countMatchingTiles(hand, target) < 1) {
+            return false;
+        }
+        return !this.usesSichuanBloodBattle() || GbRoundSupport.sameKind(this.drawnTile(playerId), target);
+    }
+
     public int suggestedBotDiscardIndex(UUID playerId) {
         if (playerId == null || !this.isCurrentPlayer(playerId) || this.hasPendingReaction() || this.isSichuanPreparationPhase()) {
             return -1;
@@ -721,6 +829,13 @@ public final class GbTableRoundController implements TableRoundController {
         List<MahjongTile> hand = this.hands.getOrDefault(playerId, List.of());
         if (hand.isEmpty()) {
             return -1;
+        }
+        if (this.ruleProfile.includesFlowers()) {
+            for (int i = hand.size() - 1; i >= 0; i--) {
+                if (hand.get(i).isFlower() && this.canSelectHandTile(playerId, i)) {
+                    return i;
+                }
+            }
         }
         if (this.ruleProfile.useSichuanHuEvaluator()) {
             for (int i = hand.size() - 1; i >= 0; i--) {
@@ -818,17 +933,17 @@ public final class GbTableRoundController implements TableRoundController {
             && !this.hasPendingReaction()
             && this.hasDrawnTile(playerId)
             && !this.isSichuanPreparationPhase()
-            && !(this.usesSichuanBloodBattle() && this.wall.size() <= 4);
+            && this.hasReplacementTileAvailable();
     }
 
     private GbReactionResolver.PendingReactionWindow buildPendingReactionWindow(UUID discarderId, MahjongTile discardedTile) {
-        if (this.isSichuanPreparationPhase()) {
+        if (this.isSichuanPreparationPhase() || discardedTile == null || discardedTile.isFlower()) {
             return null;
         }
         SeatWind discarderSeat = this.seatOf(discarderId);
         EnumMap<SeatWind, UUID> reactionSeats = this.reactionSeats();
         List<String> flags = new ArrayList<>(this.discardWinFlags(discardedTile, false));
-        if (Objects.equals(this.afterKanTsumoPlayer, discarderId)) {
+        if (this.usesSichuanBloodBattle() && Objects.equals(this.afterKanTsumoPlayer, discarderId)) {
             flags.add("AFTER_KONG");
         }
         GbReactionResolver.PendingReactionWindow window = GbReactionResolver.buildPendingReactionWindow(
@@ -841,12 +956,28 @@ public final class GbTableRoundController implements TableRoundController {
             this::availableChiiPairs,
             flags
         );
-        if (window != null && this.usesSichuanBloodBattle() && this.wall.size() <= 4) {
-            window.options().replaceAll((ignored, options) -> new ReactionOptions(options.getCanRon(), false, false, List.of()));
-            window.options().entrySet().removeIf(entry -> !entry.getValue().getCanRon());
-            return window.options().isEmpty() ? null : window;
+        if (window != null && !this.hasReplacementTileAvailable()) {
+            window.options().replaceAll((ignored, options) -> new ReactionOptions(
+                options.getCanRon(),
+                options.getCanPon(),
+                false,
+                options.getChiiPairs()
+            ));
+            window.options().entrySet().removeIf(entry -> !hasAnyReaction(entry.getValue()));
+            if (window.options().isEmpty()) {
+                return null;
+            }
         }
         return window;
+    }
+
+    private boolean hasReplacementTileAvailable() {
+        return !this.wall.isEmpty();
+    }
+
+    private static boolean hasAnyReaction(ReactionOptions options) {
+        return options != null
+            && (options.getCanRon() || options.getCanPon() || options.getCanMinkan() || !options.getChiiPairs().isEmpty());
     }
 
     private boolean resolvePendingReactions() {
@@ -868,6 +999,9 @@ public final class GbTableRoundController implements TableRoundController {
             }
         );
         if (!resolution.wins().isEmpty()) {
+            if (pending.robbingKong()) {
+                this.consumeRobbedAddedKongTile(pending.discarderId(), pending.tile());
+            }
             this.finishWins(resolution.wins());
             return true;
         }
@@ -878,6 +1012,7 @@ public final class GbTableRoundController implements TableRoundController {
         }
         GbReactionResolver.Claim claim = resolution.claim();
         if (claim != null) {
+            this.clearSichuanCallTransferAfterUnclaimedKongDiscard(pending);
             this.consumeClaimedDiscard(pending.discarderId(), pending.tile());
             this.pendingReactionWindow = null;
             this.currentPlayerIndex = this.seatOf(claim.playerId()).index();
@@ -893,11 +1028,21 @@ public final class GbTableRoundController implements TableRoundController {
             return true;
         }
         if (resolution.advanceAfterDiscard()) {
+            this.clearSichuanCallTransferAfterUnclaimedKongDiscard(pending);
             this.pendingReactionWindow = null;
             this.advanceAfterDiscard();
             return true;
         }
         return false;
+    }
+
+    private void consumeRobbedAddedKongTile(UUID playerId, MahjongTile robbedTile) {
+        List<MahjongTile> hand = this.hands.get(playerId);
+        if (hand == null || !removeFirstMatchingTile(hand, robbedTile)) {
+            throw new IllegalStateException("Robbed added-kong tile is missing from the declarer's hand.");
+        }
+        this.hasDrawnTile.put(playerId, false);
+        this.sortHand(playerId);
     }
 
     @Override
@@ -935,14 +1080,48 @@ public final class GbTableRoundController implements TableRoundController {
         if (playerId == null || this.isSettledInSichuan(playerId)) {
             return false;
         }
+        List<String> flags = new ArrayList<>(this.discardWinFlags(winningTile, false));
+        if (this.usesSichuanBloodBattle() && Objects.equals(this.afterKanTsumoPlayer, this.playerAt(discarderSeat))) {
+            flags.add("AFTER_KONG");
+        }
         GbFanResponse response = this.evaluateFanResponse(
             playerId,
             winningTile,
             "DISCARD",
             discarderSeat,
-            this.discardWinFlags(winningTile, false)
+            flags
         );
-        return this.canWinResponse(response);
+        return this.canWinResponse(response) && this.exceedsSichuanPassedWin(playerId, response);
+    }
+
+    private void rememberSichuanPassedWin(UUID playerId, ReactionOptions options) {
+        if (!this.usesSichuanBloodBattle() || options == null || !options.getCanRon() || this.pendingReactionWindow == null) {
+            return;
+        }
+        GbFanResponse response = this.evaluateFanResponse(
+            playerId,
+            this.pendingReactionWindow.tile(),
+            "DISCARD",
+            this.seatOf(this.pendingReactionWindow.discarderId()),
+            this.pendingReactionWindow.flags()
+        );
+        if (!this.canWinResponse(response)) {
+            return;
+        }
+        int scoreUnit = this.sichuanRulesEngine.scoreUnit(Math.max(0, response.getTotalFan()));
+        this.sichuanPassedWinUnits.merge(playerId, scoreUnit, Math::max);
+    }
+
+    private boolean exceedsSichuanPassedWin(UUID playerId, GbFanResponse response) {
+        if (!this.usesSichuanBloodBattle()) {
+            return true;
+        }
+        Integer passedUnit = this.sichuanPassedWinUnits.get(playerId);
+        if (passedUnit == null) {
+            return true;
+        }
+        int candidateUnit = this.sichuanRulesEngine.scoreUnit(Math.max(0, response.getTotalFan()));
+        return candidateUnit > passedUnit;
     }
 
     private GbFanResponse evaluateSelfDraw(UUID playerId) {
@@ -1028,11 +1207,25 @@ public final class GbTableRoundController implements TableRoundController {
     }
 
     private boolean canWinResponse(GbFanResponse response) {
-        return response != null && response.getValid() && response.getTotalFan() >= this.minimumFan();
+        return response != null
+            && response.getValid()
+            && qualifyingFan(response.getTotalFan(), response.getFans()) >= this.minimumFan();
     }
 
     private boolean canWinResponse(GbWinResponse response) {
-        return response != null && response.getValid() && response.getTotalFan() >= this.minimumFan();
+        return response != null
+            && response.getValid()
+            && qualifyingFan(response.getTotalFan(), response.getFans()) >= this.minimumFan();
+    }
+
+    private static int qualifyingFan(int totalFan, List<GbFanEntry> fans) {
+        int flowerFan = 0;
+        for (GbFanEntry fan : fans == null ? List.<GbFanEntry>of() : fans) {
+            if ("HUAPAI".equals(fan.getName())) {
+                flowerFan += fan.getFan() * fan.getCount();
+            }
+        }
+        return Math.max(0, totalFan - flowerFan);
     }
 
     private List<MahjongTile> concealedHandForWin(UUID playerId, String winType) {
@@ -1045,6 +1238,9 @@ public final class GbTableRoundController implements TableRoundController {
 
     private GbFanResponse evaluateFanResponse(UUID playerId, MahjongTile winningTile, String winType, SeatWind discarderSeat, List<String> flags) {
         if (!this.ruleProfile.useSichuanHuEvaluator()) {
+            if (this.hasUnexposedFlowerForWin(playerId, winningTile, winType)) {
+                return new GbFanResponse(false, 0, List.of(), "Flowers retained in the concealed hand cannot form a winning hand.");
+            }
             return this.nativeGateway.evaluateFan(this.buildFanRequest(playerId, winningTile, winType, discarderSeat, flags));
         }
         if (playerId == null || winningTile == null) {
@@ -1072,13 +1268,16 @@ public final class GbTableRoundController implements TableRoundController {
 
     private GbWinResponse evaluateWinResponse(UUID winnerId, UUID discarderId, MahjongTile winningTile, String winType, List<String> flags) {
         if (!this.ruleProfile.useSichuanHuEvaluator()) {
+            if (this.hasUnexposedFlowerForWin(winnerId, winningTile, winType)) {
+                return new GbWinResponse(false, "WIN", 0, List.of(), List.of(), "Flowers retained in the concealed hand cannot form a winning hand.");
+            }
             return this.nativeGateway.evaluateWin(this.buildWinRequest(winnerId, discarderId, winningTile, winType, flags));
         }
         GbFanResponse fanResponse = this.evaluateFanResponse(winnerId, winningTile, winType, this.seatOf(discarderId), flags);
         if (!this.canWinResponse(fanResponse)) {
             return new GbWinResponse(false, "WIN", 0, List.of(), List.of(), fanResponse.getError());
         }
-        int totalFan = Math.max(1, fanResponse.getTotalFan());
+        int totalFan = Math.max(0, fanResponse.getTotalFan());
         int scoreUnit = this.sichuanRulesEngine.scoreUnit(totalFan);
         return new GbWinResponse(
             true,
@@ -1141,11 +1340,16 @@ public final class GbTableRoundController implements TableRoundController {
             return;
         }
         Map<UUID, Integer> pointsBeforeWin = new HashMap<>(this.points);
+        if (this.usesSichuanBloodBattle() && winners.stream().anyMatch(this::isSichuanAfterKongDiscardWin)) {
+            this.transferPendingSichuanGangIncome(winners.get(0).discarderId(), winners);
+        } else if (this.usesSichuanBloodBattle()) {
+            this.clearPendingSichuanCallTransferChain();
+        }
         for (GbReactionResolver.ResolvedGbWin winner : winners) {
             this.applyScoreDeltas(winner.response().getScoreDeltas());
         }
         if (this.usesSichuanBloodBattle()) {
-            this.recordSichuanWins(winners);
+            this.recordSichuanWins(winners, pointsBeforeWin);
             this.pendingReactionWindow = null;
             this.afterKanTsumoPlayer = null;
             if (this.activeSichuanPlayerCount() <= 1) {
@@ -1159,7 +1363,12 @@ public final class GbTableRoundController implements TableRoundController {
         this.finishRoundWithWinners(winners.get(0).response().getTitle(), winners, pointsBeforeWin);
     }
 
-    private void recordSichuanWins(List<GbReactionResolver.ResolvedGbWin> winners) {
+    private void recordSichuanWins(List<GbReactionResolver.ResolvedGbWin> winners, Map<UUID, Integer> pointsBeforeWin) {
+        if (this.sichuanWinHistory.isEmpty() && !winners.isEmpty()) {
+            GbReactionResolver.ResolvedGbWin first = winners.get(0);
+            UUID nextDealerId = winners.size() > 1 && first.discarderId() != null ? first.discarderId() : first.winnerId();
+            this.nextSichuanDealerSeat = this.seatOf(nextDealerId);
+        }
         for (GbReactionResolver.ResolvedGbWin winner : winners) {
             UUID winnerId = winner.winnerId();
             if (winnerId == null || this.settledSichuanPlayers.contains(winnerId)) {
@@ -1167,7 +1376,17 @@ public final class GbTableRoundController implements TableRoundController {
             }
             this.settledSichuanPlayers.add(winnerId);
             this.sichuanWinHistory.add(winner);
+            int pointsBefore = pointsBeforeWin.getOrDefault(winnerId, this.points.getOrDefault(winnerId, 0));
+            this.sichuanWinScoreDeltas.put(winnerId, this.points.getOrDefault(winnerId, pointsBefore) - pointsBefore);
         }
+    }
+
+    private boolean isSichuanAfterKongDiscardWin(GbReactionResolver.ResolvedGbWin winner) {
+        if (winner == null || winner.discarderId() == null || winner.response() == null) {
+            return false;
+        }
+        List<GbFanEntry> fans = winner.response().getFans();
+        return fans != null && fans.stream().anyMatch(fan -> "GANG_SHANG_PAO".equals(fan.getName()));
     }
 
     private int nextTurnPivotIndexAfterWins(List<GbReactionResolver.ResolvedGbWin> winners) {
@@ -1208,7 +1427,10 @@ public final class GbTableRoundController implements TableRoundController {
             if (winnerId == null) {
                 continue;
             }
-            int winnerDelta = this.points.getOrDefault(winnerId, originalPoints.getOrDefault(winnerId, 0)) - originalPoints.getOrDefault(winnerId, 0);
+            Integer eventScoreDelta = this.sichuanWinScoreDeltas.get(winnerId);
+            int winnerDelta = eventScoreDelta != null
+                ? eventScoreDelta
+                : this.points.getOrDefault(winnerId, originalPoints.getOrDefault(winnerId, 0)) - originalPoints.getOrDefault(winnerId, 0);
             settlements.add(new YakuSettlement(
                 this.displayNames.getOrDefault(winnerId, winnerId.toString()),
                 winnerId.toString(),
@@ -1236,13 +1458,52 @@ public final class GbTableRoundController implements TableRoundController {
     }
 
     private void applyScoreDeltas(List<GbScoreDelta> scoreDeltas) {
+        if (scoreDeltas == null) {
+            throw new IllegalStateException("Score deltas are required.");
+        }
+        EnumMap<SeatWind, Integer> aggregated = new EnumMap<>(SeatWind.class);
+        long totalDelta = 0L;
         for (GbScoreDelta delta : scoreDeltas) {
-            SeatWind wind = SeatWind.valueOf(delta.getSeat());
-            UUID playerId = this.playerAt(wind);
-            if (playerId != null) {
-                this.points.put(playerId, this.points.getOrDefault(playerId, 0) + delta.getDelta());
+            if (delta == null || delta.getSeat() == null) {
+                throw new IllegalStateException("Score delta contains an unknown seat.");
+            }
+            SeatWind logicalWind;
+            try {
+                logicalWind = SeatWind.valueOf(delta.getSeat());
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalStateException("Score delta contains an unknown seat: " + delta.getSeat(), ex);
+            }
+            try {
+                aggregated.merge(logicalWind, delta.getDelta(), (left, right) -> Math.addExact(left, right));
+                totalDelta = Math.addExact(totalDelta, (long) delta.getDelta());
+            } catch (ArithmeticException ex) {
+                throw new IllegalStateException("Score delta overflow.", ex);
             }
         }
+        if (totalDelta != 0L) {
+            throw new IllegalStateException("Score deltas must conserve table points but summed to " + totalDelta + '.');
+        }
+
+        Map<UUID, Integer> updatedPoints = new HashMap<>();
+        for (Map.Entry<SeatWind, Integer> entry : aggregated.entrySet()) {
+            SeatWind logicalWind = entry.getKey();
+            SeatWind physicalWind = this.ruleProfile.useSichuanHuEvaluator()
+                ? logicalWind
+                : SeatWind.fromIndex(Math.floorMod(
+                    logicalWind.index() + this.dealerSeat().index(),
+                    SeatWind.values().length
+                ));
+            UUID playerId = this.playerAt(physicalWind);
+            if (playerId == null) {
+                throw new IllegalStateException("Score delta references an unoccupied seat: " + logicalWind);
+            }
+            try {
+                updatedPoints.put(playerId, Math.addExact(this.points.getOrDefault(playerId, 0), entry.getValue()));
+            } catch (ArithmeticException ex) {
+                throw new IllegalStateException("Player score overflow for seat " + logicalWind + '.', ex);
+            }
+        }
+        this.points.putAll(updatedPoints);
     }
 
     @Override
@@ -1337,7 +1598,7 @@ public final class GbTableRoundController implements TableRoundController {
 
     private int sichuanFanTotal(UUID playerId, List<MahjongTile> concealedHand, List<GbMeldState> meldStates, MahjongTile winningTile) {
         SichuanRulesEngine.FanResult result = this.sichuanFanResult(playerId, concealedHand, meldStates, winningTile, "DISCARD", List.of());
-        return result.valid() ? Math.max(1, result.totalFan()) : 1;
+        return result.valid() ? Math.max(0, result.totalFan()) : 0;
     }
 
     private List<MahjongTile> tilesForSichuanWin(UUID playerId, List<MahjongTile> concealedHand, List<GbMeldState> meldStates, MahjongTile winningTile) {
@@ -1497,6 +1758,7 @@ public final class GbTableRoundController implements TableRoundController {
             return;
         }
         List<SeatWind> payerSeats = new ArrayList<>();
+        Map<UUID, Integer> payments = new LinkedHashMap<>();
         for (UUID payerId : payers) {
             if (payerId == null || payerId.equals(winnerId) || this.isSettledInSichuan(payerId)) {
                 continue;
@@ -1504,13 +1766,104 @@ public final class GbTableRoundController implements TableRoundController {
             SeatWind payerSeat = this.seatOf(payerId);
             if (payerSeat != null) {
                 payerSeats.add(payerSeat);
+                payments.merge(payerId, unit, Integer::sum);
             }
         }
-        int collected = payerSeats.size() * unit;
-        if (collected > 0) {
+        if (!payments.isEmpty()) {
             this.applyScoreDeltas(this.sichuanRulesEngine.kanDeltas(winnerSeat, payerSeats, unit));
-            this.sichuanGangEvents.add(new SichuanGangEvent(winnerId, unit, collected));
+            if (!this.pendingSichuanCallTransferEvents.isEmpty()
+                && !winnerId.equals(this.pendingSichuanCallTransferEvents.get(0).winnerId())) {
+                this.clearPendingSichuanCallTransferChain();
+            }
+            SichuanGangEvent event = new SichuanGangEvent(winnerId, Map.copyOf(payments));
+            this.sichuanGangEvents.add(event);
+            this.pendingSichuanCallTransferEvents.add(event);
         }
+    }
+
+    private void transferPendingSichuanGangIncome(UUID discarderId, List<GbReactionResolver.ResolvedGbWin> winners) {
+        if (discarderId == null || winners == null || winners.isEmpty() || this.pendingSichuanCallTransferEvents.isEmpty()) {
+            this.clearPendingSichuanCallTransferChain();
+            return;
+        }
+        int totalIncome = 0;
+        for (SichuanGangEvent event : this.pendingSichuanCallTransferEvents) {
+            if (!discarderId.equals(event.winnerId())) {
+                this.clearPendingSichuanCallTransferChain();
+                return;
+            }
+            totalIncome += event.payments().values().stream().mapToInt(amount -> Math.max(0, amount)).sum();
+        }
+        LinkedHashSet<UUID> recipientIds = new LinkedHashSet<>();
+        for (GbReactionResolver.ResolvedGbWin winner : winners) {
+            if (winner != null && winner.winnerId() != null && this.seatOf(winner.winnerId()) != null) {
+                recipientIds.add(winner.winnerId());
+            }
+        }
+        SeatWind discarderSeat = this.seatOf(discarderId);
+        if (totalIncome <= 0 || recipientIds.isEmpty() || discarderSeat == null) {
+            this.clearPendingSichuanCallTransferChain();
+            return;
+        }
+        int share = Math.floorDiv(totalIncome + recipientIds.size() - 1, recipientIds.size());
+        List<GbScoreDelta> deltas = new ArrayList<>();
+        deltas.add(new GbScoreDelta(discarderSeat.name(), -(share * recipientIds.size())));
+        for (UUID recipientId : recipientIds) {
+            deltas.add(new GbScoreDelta(this.seatOf(recipientId).name(), share));
+        }
+        this.applyScoreDeltas(deltas);
+        Set<SichuanGangEvent> transferredByIdentity = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        transferredByIdentity.addAll(this.pendingSichuanCallTransferEvents);
+        this.sichuanGangEvents.removeIf(transferredByIdentity::contains);
+        this.clearPendingSichuanCallTransferChain();
+    }
+
+    private void clearSichuanCallTransferAfterUnclaimedKongDiscard(GbReactionResolver.PendingReactionWindow pending) {
+        if (pending != null && pending.flags().contains("AFTER_KONG")) {
+            this.clearPendingSichuanCallTransferChain();
+        }
+    }
+
+    private void clearPendingSichuanCallTransferChain() {
+        this.pendingSichuanCallTransferEvents.clear();
+    }
+
+    private void refundSichuanGangIncome(Set<UUID> refundingPlayers) {
+        if (refundingPlayers == null || refundingPlayers.isEmpty()) {
+            return;
+        }
+        for (int index = this.sichuanGangEvents.size() - 1; index >= 0; index--) {
+            SichuanGangEvent event = this.sichuanGangEvents.get(index);
+            if (!refundingPlayers.contains(event.winnerId())) {
+                continue;
+            }
+            this.refundSichuanGangEvent(event);
+            this.pendingSichuanCallTransferEvents.removeIf(pending -> pending == event);
+            this.sichuanGangEvents.remove(index);
+        }
+    }
+
+    private void refundSichuanGangEvent(SichuanGangEvent event) {
+        SeatWind winnerSeat = this.seatOf(event.winnerId());
+        if (winnerSeat == null) {
+            return;
+        }
+        List<GbScoreDelta> refund = new ArrayList<>();
+        int collected = 0;
+        for (Map.Entry<UUID, Integer> payment : event.payments().entrySet()) {
+            SeatWind payerSeat = this.seatOf(payment.getKey());
+            int amount = Math.max(0, payment.getValue());
+            if (payerSeat == null || amount == 0) {
+                continue;
+            }
+            refund.add(new GbScoreDelta(payerSeat.name(), amount));
+            collected += amount;
+        }
+        if (collected == 0) {
+            return;
+        }
+        refund.add(new GbScoreDelta(winnerSeat.name(), -collected));
+        this.applyScoreDeltas(refund);
     }
 
     private List<UUID> sichuanActiveOpponents(UUID playerId) {
@@ -1527,8 +1880,8 @@ public final class GbTableRoundController implements TableRoundController {
     private void applySichuanExhaustiveDrawSettlement() {
         List<UUID> activePlayers = this.seats.values().stream().filter(player -> player != null && !this.isSettledInSichuan(player)).toList();
         List<SeatWind> activeSeats = new ArrayList<>();
-        Set<SeatWind> huaZhuSeats = new HashSet<>();
         Set<SeatWind> readySeats = new HashSet<>();
+        Set<UUID> notReadyPlayers = new HashSet<>();
         Map<SeatWind, Integer> readyUnits = new EnumMap<>(SeatWind.class);
         for (UUID playerId : activePlayers) {
             SeatWind seat = this.seatOf(playerId);
@@ -1536,36 +1889,25 @@ public final class GbTableRoundController implements TableRoundController {
                 continue;
             }
             activeSeats.add(seat);
-            if (!this.isMissingChosenSuit(playerId, this.tilesForSichuanSettlement(playerId))) {
-                huaZhuSeats.add(seat);
+            boolean huaZhu = !this.isMissingChosenSuit(playerId, this.tilesForSichuanSettlement(playerId));
+            if (huaZhu) {
+                notReadyPlayers.add(playerId);
+                continue;
             }
-            GbTingResponse ting = this.tingOptions(playerId);
+            GbTingResponse ting = this.evaluateTing(
+                playerId,
+                this.currentConcealedHand(playerId),
+                this.melds.getOrDefault(playerId, List.of())
+            );
             if (ting != null && ting.getValid() && !ting.getWaits().isEmpty()) {
                 readySeats.add(seat);
                 readyUnits.put(seat, this.sichuanRulesEngine.bestReadyUnit(ting.getWaits()));
+            } else {
+                notReadyPlayers.add(playerId);
             }
         }
-        List<GbScoreDelta> deltas = new ArrayList<>();
-        for (SeatWind huaZhuSeat : huaZhuSeats) {
-            for (SeatWind receiver : activeSeats) {
-                if (receiver == null || receiver == huaZhuSeat) {
-                    continue;
-                }
-                deltas.add(new GbScoreDelta(huaZhuSeat.name(), -SICHUAN_HUA_ZHU_UNIT));
-                deltas.add(new GbScoreDelta(receiver.name(), SICHUAN_HUA_ZHU_UNIT));
-            }
-        }
-        for (SeatWind payer : activeSeats) {
-            if (payer == null || huaZhuSeats.contains(payer) || readySeats.contains(payer)) {
-                continue;
-            }
-            for (SeatWind receiver : readySeats) {
-                int unit = Math.max(1, readyUnits.getOrDefault(receiver, 1));
-                deltas.add(new GbScoreDelta(payer.name(), -unit));
-                deltas.add(new GbScoreDelta(receiver.name(), unit));
-            }
-        }
-        this.applyScoreDeltas(deltas);
+        this.refundSichuanGangIncome(notReadyPlayers);
+        this.applyScoreDeltas(this.sichuanRulesEngine.exhaustiveDrawDeltas(activeSeats, readySeats, readyUnits));
     }
 
     private int bestSichuanReadyUnit(UUID playerId) {
@@ -1576,7 +1918,7 @@ public final class GbTableRoundController implements TableRoundController {
         return this.sichuanRulesEngine.bestReadyUnit(response.getWaits());
     }
 
-    private record SichuanGangEvent(UUID winnerId, int unit, int collected) {
+    private record SichuanGangEvent(UUID winnerId, Map<UUID, Integer> payments) {
     }
 
     private EnumMap<SeatWind, UUID> reactionSeats() {
@@ -1651,6 +1993,16 @@ public final class GbTableRoundController implements TableRoundController {
         return true;
     }
 
+    private void dealInitialTile(UUID playerId) {
+        if (playerId == null) {
+            throw new IllegalStateException("Cannot deal an initial tile to an unoccupied seat.");
+        }
+        if (this.wall.isEmpty()) {
+            throw new IllegalStateException("Wall exhausted during the initial deal.");
+        }
+        this.hands.get(playerId).add(this.wall.removeFirst());
+    }
+
     private boolean drawTile(UUID playerId, boolean fromBack) {
         return this.drawTile(playerId, fromBack, false, true);
     }
@@ -1668,42 +2020,39 @@ public final class GbTableRoundController implements TableRoundController {
         }
         while (!this.wall.isEmpty()) {
             MahjongTile tile = this.wall.removeFirst();
-            if (tile.isFlower()) {
-                if (!this.ruleProfile.includesFlowers()) {
-                    continue;
-                }
-                this.flowers.get(playerId).add(tile);
+            if (tile.isFlower() && !this.ruleProfile.includesFlowers()) {
                 continue;
             }
             this.hands.get(playerId).add(tile);
             this.hasDrawnTile.put(playerId, markAsDrawn);
             this.sortHand(playerId);
-            this.afterKanTsumoPlayer = markAfterKong ? playerId : null;
+            this.afterKanTsumoPlayer = markAfterKong && !tile.isFlower() ? playerId : null;
+            this.clearSichuanPassedWinAfterDraw(playerId);
             return true;
         }
         return false;
     }
 
     private boolean drawReplacementTile(UUID playerId, boolean markAfterKong, boolean markAsDrawn) {
-        if (this.deadWall.isEmpty()) {
+        if (this.wall.isEmpty()) {
             return false;
         }
-        MahjongTile tile = this.deadWall.removeLast();
-        if (!this.wall.isEmpty()) {
-            this.deadWall.addFirst(this.wall.removeLast());
-        }
-        if (tile.isFlower()) {
-            if (!this.ruleProfile.includesFlowers()) {
-                return this.drawReplacementTile(playerId, markAfterKong, markAsDrawn);
-            }
-            this.flowers.get(playerId).add(tile);
+        MahjongTile tile = this.wall.removeLast();
+        if (tile.isFlower() && !this.ruleProfile.includesFlowers()) {
             return this.drawReplacementTile(playerId, markAfterKong, markAsDrawn);
         }
         this.hands.get(playerId).add(tile);
         this.hasDrawnTile.put(playerId, markAsDrawn);
         this.sortHand(playerId);
-        this.afterKanTsumoPlayer = markAfterKong ? playerId : null;
+        this.afterKanTsumoPlayer = markAfterKong && !tile.isFlower() ? playerId : null;
+        this.clearSichuanPassedWinAfterDraw(playerId);
         return true;
+    }
+
+    private void clearSichuanPassedWinAfterDraw(UUID playerId) {
+        if (this.usesSichuanBloodBattle() && playerId != null) {
+            this.sichuanPassedWinUnits.remove(playerId);
+        }
     }
 
     private void finishExhaustiveDraw() {
@@ -1730,6 +2079,10 @@ public final class GbTableRoundController implements TableRoundController {
             this.gameFinished = false;
             return;
         }
+        if (this.usesSichuanBloodBattle()) {
+            this.gameFinished = true;
+            return;
+        }
         if (this.points.values().stream().anyMatch(score -> score >= this.rule.getMinPointsToWin())) {
             this.gameFinished = true;
             return;
@@ -1753,7 +2106,7 @@ public final class GbTableRoundController implements TableRoundController {
                 continue;
             }
             GbFanResponse response = this.evaluateFanResponse(playerId, claimedTile, "DISCARD", discarderSeat, flags);
-            boolean canRon = this.canWinResponse(response);
+            boolean canRon = this.canWinResponse(response) && this.exceedsSichuanPassedWin(playerId, response);
             if (canRon) {
                 options.put(playerId, new ReactionOptions(true, false, false, List.of()));
             }
@@ -1800,14 +2153,11 @@ public final class GbTableRoundController implements TableRoundController {
         if (robbingKong) {
             flags.add("ROBBING_KONG");
         }
-        if (this.visibleTileCount(winningTile) >= 3) {
+        int visibleTilesRequired = robbingKong ? 3 : 4;
+        if (this.visibleTileCount(winningTile) >= visibleTilesRequired) {
             flags.add("LAST_OF_KIND");
         }
         return List.copyOf(flags);
-    }
-
-    private boolean mustWinInSichuanLastTiles(ReactionOptions options) {
-        return this.usesSichuanBloodBattle() && options != null && options.getCanRon() && this.wall.size() <= 4;
     }
 
     private int visibleTileCount(MahjongTile target) {
@@ -1911,18 +2261,24 @@ public final class GbTableRoundController implements TableRoundController {
         if (this.isSichuanPreparationPhase()) {
             return new GbTingResponse(false, List.of(), "Complete Sichuan opening actions first.");
         }
+        if (!this.ruleProfile.useSichuanHuEvaluator()
+            && concealedHand != null
+            && concealedHand.stream().anyMatch(MahjongTile::isFlower)) {
+            return new GbTingResponse(false, List.of(), "Expose or discard retained flowers before declaring a ready hand.");
+        }
         if (this.ruleProfile.useSichuanHuEvaluator()) {
             if (playerId == null) {
                 return new GbTingResponse(false, List.of(), "Player is unavailable.");
             }
             List<MahjongTile> waits = this.sichuanRulesEngine.waitingTiles(concealedHand, meldStates.size());
             List<GbTingCandidate> candidates = waits.stream()
+                .filter(tile -> this.canPhysicallyWaitOnSichuanTile(tile, concealedHand, meldStates))
                 .filter(tile -> this.isMissingChosenSuit(playerId, this.tilesForSichuanWin(playerId, concealedHand, meldStates, tile)))
                 .map(tile -> {
                     SichuanRulesEngine.FanResult result = this.sichuanFanResult(
                         playerId, concealedHand, meldStates, tile, "DISCARD", List.of()
                     );
-                    int totalFan = result.valid() ? Math.max(1, result.totalFan()) : 1;
+                    int totalFan = result.valid() ? Math.max(0, result.totalFan()) : 0;
                     List<GbFanEntry> fans = result.valid() ? result.fans() : List.of();
                     return new GbTingCandidate(GbTileEncoding.encode(tile), totalFan, fans);
                 })
@@ -1930,6 +2286,24 @@ public final class GbTableRoundController implements TableRoundController {
             return new GbTingResponse(!candidates.isEmpty(), candidates, candidates.isEmpty() ? "No valid Sichuan waits." : null);
         }
         return this.nativeGateway.evaluateTing(this.buildTingRequest(playerId, concealedHand, meldStates));
+    }
+
+    private boolean hasUnexposedFlowerForWin(UUID playerId, MahjongTile winningTile, String winType) {
+        return winningTile == null
+            || winningTile.isFlower()
+            || this.concealedHandForWin(playerId, winType).stream().anyMatch(MahjongTile::isFlower);
+    }
+
+    private boolean canPhysicallyWaitOnSichuanTile(
+        MahjongTile candidate,
+        List<MahjongTile> concealedHand,
+        List<GbMeldState> meldStates
+    ) {
+        int ownedCopies = GbRoundSupport.countMatchingTiles(concealedHand, candidate);
+        for (GbMeldState meld : meldStates == null ? List.<GbMeldState>of() : meldStates) {
+            ownedCopies += GbRoundSupport.countMatchingTiles(meld.tiles(), candidate);
+        }
+        return ownedCopies < 4;
     }
 
     private List<MahjongTile> currentConcealedHand(UUID playerId) {
@@ -1950,7 +2324,7 @@ public final class GbTableRoundController implements TableRoundController {
     }
 
     private SeatWind seatOf(UUID playerId) {
-        return playerId == null ? SeatWind.EAST : this.seatByPlayerId.getOrDefault(playerId, SeatWind.EAST);
+        return playerId == null ? null : this.seatByPlayerId.get(playerId);
     }
 
     private boolean isSeatedPlayer(UUID playerId) {
@@ -1963,7 +2337,7 @@ public final class GbTableRoundController implements TableRoundController {
 
     private SeatWind logicalSeat(SeatWind physicalSeat) {
         if (physicalSeat == null) {
-            return SeatWind.EAST;
+            return null;
         }
         return SeatWind.fromIndex(Math.floorMod(physicalSeat.index() - this.dealerSeat().index(), SeatWind.values().length));
     }

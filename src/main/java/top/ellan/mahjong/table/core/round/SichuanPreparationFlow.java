@@ -40,7 +40,7 @@ final class SichuanPreparationFlow {
         this.confirmedExchangePlayers.clear();
         this.chosenMissingSuits.clear();
         this.exchangeDirection = SichuanExchangeDirection.fromDicePoints(dicePoints);
-        this.setPhase(enabled ? GbTableRoundController.SichuanPreparationPhase.EXCHANGE : GbTableRoundController.SichuanPreparationPhase.NONE);
+        this.setPhase(enabled ? GbTableRoundController.SichuanPreparationPhase.DING_QUE : GbTableRoundController.SichuanPreparationPhase.NONE);
     }
 
     boolean isPreparationPhase() {

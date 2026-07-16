@@ -1,5 +1,104 @@
 # Changelog
 
+## 1.5.0 - 2026-07-16
+
+Feature release for table interaction, river viewing, rules accuracy, storage integration, runtime compatibility, and performance.
+
+中文更新日志：
+
+- **升级要求**：发行包改用 Java 21 字节码，并要求 CraftEngine 26.7 或更高版本。更换 MahjongPaper、CraftEngine 或 InvSync 后必须完整重启服务器。
+- **牌河俯视与操作恢复**：新增无需客户端 Mod 的平滑客户端俯视镜头。按 Shift 返回座位后会按当前实时状态恢复定缺、吃碰杠、出牌等操作；俯视期间 ActionBar 倒计时继续运行，超时操作仍会正常执行。
+- **倒计时与托管**：连续自动出牌后的下一次时限依次为 60、30、15、10 秒，之后保持 10 秒；玩家手动出牌后恢复 60 秒。只有实际离座或掉线才会交给机器人托管，快速按 Shift 或切换俯视镜头不再夺走玩家控制权。
+- **射线交互与隐藏信息**：麻将牌和扁平文字改由精确服务端射线盒决定操作，并仅向相关观察者发送必要的客户端代理，修复加入、定缺、吃碰和出牌偶发无法点击的问题。自己的手牌保持明牌，其他玩家手牌和牌墙只发送未知牌面。
+- **牌桌显示与反馈**：修复牌墙上层失去下层支撑后仍悬空、牌面和交互区域不一致、提示文字重叠等布局问题，并统一 ActionBar、聊天提示、牌桌音效和玩家操作反馈。
+- **三种玩法校正**：GB 模式对齐 144 张牌、花牌、8 个非花番门槛、单和与固定 16 局流程；立直模式修正鸣牌优先级、振听、杠宝牌时机、流局与延长赛边界；四川模式对齐 T/TFMJ 的直接定缺、无换三张、三番封顶、血战到底、杠分转移和查叫流程。
+- **段位与服务器集成**：新增可选 InvSync 2.x 玩家段位存储，并在 InvSync 缺失或不兼容时仅向已启用且健康的 SQL 后端回退。当前自动段位与统计更新仍只适用于四名真人完成的立直对局。
+- **资源与本地化**：加入 GB、立直和四川模式对应的摸牌、出牌、鸣牌、流局与和牌音效；新增完整日语游戏消息、安装文档和三种玩法说明。
+- **性能与稳定性**：减少牌桌区域更新、展示实体复用、观察者集合和 GB Bot 决策热路径中的排序、装箱及临时分配；缓存调度器反射解析，并加入由八个 runner 并行采样、可信汇总的 GitHub Actions 配对 A/B 性能回归门禁。
+- **分发说明**：发行 JAR 现在内嵌并重定位 Sparrow Reflection 与 ASM。第三方声明和运行软件分发条款已更新，重新分发时应保留对应许可证与源码义务说明。
+
+English Release Notes:
+
+- **Upgrade requirements**: Release artifacts now use Java 21 bytecode and require CraftEngine 26.7 or newer. Fully restart the server after replacing MahjongPaper, CraftEngine, or InvSync.
+- **River view and control restoration**: Added a smooth client-only overhead camera that requires no client mod. Returning with Shift rebuilds ding-que, reaction, and discard controls from live game state. ActionBar deadlines continue running while viewing the river, and expired decisions still resolve normally.
+- **Deadlines and bot ownership**: Consecutive automatic discards shorten the next turn from 60 to 30, 15, and then 10 seconds; later automatic turns remain at 10 seconds. A manual discard restores 60 seconds. Bot control now begins only after a real dismount or disconnect, not a quick Shift press or camera transition.
+- **Ray interaction and hidden information**: Mahjong tiles and flat text now use exact server-side ray geometry, backed only by the per-viewer client proxies needed to make vanilla clients report a click. This fixes intermittent join, ding-que, reaction, and discard input failures. Owners receive their visible hand while other hands and wall tiles use unknown faces.
+- **Table rendering and feedback**: Fixed unsupported upper wall tiles remaining suspended, mismatched visual and interaction geometry, overlapping controls, and inconsistent ActionBar, chat, sound, and table feedback.
+- **Rules corrections**: GB now follows the 144-tile flower flow, eight non-flower-fan floor, single-ron priority, and fixed 16-hand profile. Riichi fixes cover reaction priority, furiten, kan-dora timing, draws, and match extensions. Sichuan now follows the documented T/TFMJ direct ding-que, no exchange-three, three-fan cap, Bloody Battle, kong-transfer, and cha-jiao flow.
+- **Rank and server integrations**: Added optional InvSync 2.x player-rank storage, with fallback only to an enabled and healthy SQL backend. Automatic rank and personal-stat updates remain limited to completed four-human Riichi matches.
+- **Assets and localization**: Added mode-specific draw, discard, reaction, draw-result, and win sounds for GB, Riichi, and Sichuan, plus complete Japanese game messages and player documentation.
+- **Performance and reliability**: Reduced sorting, boxing, and temporary allocations in region updates, display reconciliation, viewer membership handling, and GB bot decisions; cached scheduler reflection resolution and added a paired GitHub Actions A/B gate with eight parallel measurement runners and trusted aggregation.
+- **Distribution notice**: Release jars now embed and relocate Sparrow Reflection and ASM. Third-party notices and runnable-distribution terms were updated; redistributors must preserve the applicable license and source-obligation notices.
+
+## 1.4.1 - 2026-06-18
+
+Hotfix for game room exit countdown behavior.
+
+中文更新日志:
+
+- **棋牌室离开倒计时结束时踢出玩家**: 修复玩家离开棋牌室后倒计时结束仅强制结束对局、但未将该玩家从牌桌移除的问题。现在倒计时到期时会同时把离开房间的玩家从牌桌无位移移除。
+
+English Release Notes:
+
+- **Game room exit countdown now removes the player**: Fixed an issue where the countdown only force-ended the match when a player left the game room, but left the player attached to the table. The countdown expiry now also removes the leaving player from the table without moving them.
+
+## 1.4.0 - 2026-06-18
+
+Visual asset release for the MahjongPaper table furniture, seat chair, and dice resources.
+
+中文更新日志:
+
+- **棋牌桌视觉重做**: 使用新的 Blockbench 源文件重建 CraftEngine 牌桌家具模型，加入木纹桌脚、绿色毡面、低矮护边、对称中央底座和四面腰线，让桌面在游戏内更接近真实棋牌桌。
+- **桌面对齐优化**: 桌面绿布扩大到与外圈贴合，外圈护边压薄并加高 1 像素，毡面与牌底齐平，避免悬空和 z-fighting。
+- **椅子模型自制**: 替换之前的占位 `seat_chair`，自制带木腿、横档、坐板、绿色坐垫、黄铜边和低靠背的胡桃木风格凳子，与新牌桌风格统一。
+- **资源包贴图补全**: 新增 `item/table` 系列表格贴图，并将模型引用切换到项目自生成资源，避免继续依赖占位纹理。
+- **骰子资源刷新**: 更新骰子贴图和基础模型显示参数，使开局骰子动画在手持、地面、GUI 和固定展示场景下尺寸更稳定。
+- **家具锚点调整**: 把牌桌视觉锚点从 0.5 调到 0.375，模型本体保持在 Minecraft 合法坐标范围内，避免越界导致紫色缺失方块。
+- **资源归属说明**: 更新资源包 attribution，明确骰子、牌桌贴图、椅子模型与家具模型均为 MahjongPaper 项目生成资产。
+
+English Release Notes:
+
+- **Table visual overhaul**: Rebuilt the CraftEngine table furniture from the new Blockbench source with walnut legs, green felt, low rim guards, a centered base column, and four-sided waistlines so in-game tables look closer to a real mahjong table.
+- **Tabletop alignment**: Expanded the felt to meet the rim, raised the rim by 1 px, and aligned the felt top with the tile bottom plane to remove the floating gap and z-fighting.
+- **Custom seat chair**: Replaced the placeholder `seat_chair` with a hand-built walnut-style stool featuring wood legs, stretchers, a seat board, a green felt cushion, brass trim, and a low backrest matching the new table.
+- **Resource pack textures**: Added the `item/table` texture set and switched the table model to project-generated textures instead of placeholder assets.
+- **Dice asset refresh**: Updated dice textures and base-model display transforms for steadier sizing across animation, handheld, ground, GUI, and fixed-display contexts.
+- **Furniture anchor tuning**: Lowered the table visual anchor from 0.5 to 0.375 while keeping every cube within Minecraft's legal element range so the model never falls back to a missing-texture purple block.
+- **Asset attribution**: Updated the resource-pack attribution to identify dice textures, table textures, the seat chair model, and the table furniture model as MahjongPaper-generated assets.
+
+
+## 1.3.2 - 2026-06-18
+
+Maintenance release for release-build formatting and clearer game room documentation.
+
+中文更新日志:
+
+- **发布构建修复**: 格式化 UI 测试文件，修复 Release 工作流在 Windows 平台执行 `spotlessKotlinCheck` 时失败的问题。
+- **棋牌室教程强化**: README 和中文 wiki 新增“先创建棋牌室，再创建牌桌”的开服推荐流程，补充魔棒选区、青色粒子范围确认、主厅创建和快速测试示例。
+
+English Release Notes:
+
+- **Release build fix**: Formatted UI test sources so the Windows Release build no longer fails in `spotlessKotlinCheck`.
+- **Game room documentation**: README and the Chinese wiki now emphasize creating a game room before placing tables, with wand selection, particle-outline confirmation, main-hall setup, and quick-test examples.
+
+## 1.3.1 - 2026-06-18
+
+Hotfix and usability release for CI reliability, command help navigation, and game room selection confirmation.
+
+中文更新日志:
+
+- **Java 编译修复**: 修复 `TableEventCoordinator` 对 Caffeine `Cache` 的旧式 `get(key)` 调用，改为 `getIfPresent`，恢复 Java 编译。
+- **Gradle 下载稳定性**: 提高 Gradle Wrapper 下载超时时间并启用重试，降低 GitHub Actions 首次拉取 Gradle 发行包时的超时概率。
+- **命令帮助排版**: `/mahjong help` 改为分页式帮助列表，加入标题、副标题、页码状态以及上一页/下一页点击导航。
+- **棋室选区粒子预览**: 借鉴 Residence 的领地选择可视化思路，使用粒子描出已选择方块或完整长方体边框，方便创建棋室前确认范围。
+
+English Release Notes:
+
+- **Java compilation fix**: Fixed the outdated Caffeine `Cache#get(key)` call in `TableEventCoordinator` by switching to `getIfPresent`, restoring Java compilation.
+- **Gradle download reliability**: Increased the Gradle Wrapper network timeout and enabled retries to reduce first-download timeouts in GitHub Actions.
+- **Command help layout**: `/mahjong help` now renders as a paged command list with header, subtitle, page status, and clickable previous/next navigation.
+- **Game room selection preview**: Added Residence-inspired particle outlines for the selected block or full cuboid, helping admins confirm the room range before creation.
+
 ## 1.3.0 - 2026-06-17
 
 Game room system with core restrictions, wand selection tool, room management commands, bossbar/text mode adaptation, and documentation alignment.

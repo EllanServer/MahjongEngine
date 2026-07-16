@@ -1,23 +1,23 @@
 package top.ellan.mahjong.table.runtime
 
-import top.ellan.mahjong.table.core.TableRuntimeServices
-import top.ellan.mahjong.model.MahjongTile
-import top.ellan.mahjong.model.SeatWind
-import top.ellan.mahjong.table.core.MahjongTableSession
-import top.ellan.mahjong.model.MahjongVariant
-import top.ellan.mahjong.runtime.PluginTask
-import top.ellan.mahjong.runtime.ServerScheduler
 import org.bukkit.Location
 import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.contains
 import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito.doAnswer
-import org.mockito.Mockito.`when`
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.`when`
+import top.ellan.mahjong.model.MahjongTile
+import top.ellan.mahjong.model.MahjongVariant
+import top.ellan.mahjong.model.SeatWind
+import top.ellan.mahjong.runtime.PluginTask
+import top.ellan.mahjong.runtime.ServerScheduler
+import top.ellan.mahjong.table.core.MahjongTableSession
+import top.ellan.mahjong.table.core.TableRuntimeServices
 import java.util.UUID
 import java.util.logging.Logger
 import kotlin.test.Test
@@ -91,6 +91,41 @@ class BotActionSchedulerTest {
 
         verify(session).discard(botId, 2)
         verify(session, never()).discard(botId, 0)
+    }
+
+    @Test
+    fun `gb bot exposes a flower before considering kan or discard`() {
+        val session = mock(MahjongTableSession::class.java)
+        val plugin = mock(TableRuntimeServices::class.java)
+        val scheduler = mock(ServerScheduler::class.java)
+        val task = mock(PluginTask::class.java)
+        val center = mock(Location::class.java)
+        val botId = UUID.fromString("00000000-0000-0000-0000-00000000b008")
+
+        `when`(session.currentVariant()).thenReturn(MahjongVariant.GB)
+        `when`(session.isStarted()).thenReturn(true)
+        `when`(session.players()).thenReturn(listOf(botId))
+        `when`(session.isBot(botId)).thenReturn(true)
+        stubGbTurnSnapshot(session, botId)
+        `when`(session.plugin()).thenReturn(plugin)
+        `when`(plugin.scheduler()).thenReturn(scheduler)
+        `when`(session.center()).thenReturn(center)
+        `when`(scheduler.runRegionDelayed(any(Location::class.java), any(Runnable::class.java), eq(20L))).thenReturn(task)
+        `when`(session.hasPendingReaction()).thenReturn(false)
+        `when`(session.canDeclareFlower(botId)).thenReturn(true)
+        `when`(session.hand(botId)).thenReturn(listOf(MahjongTile.M1, MahjongTile.PLUM))
+        `when`(session.suggestedFlowerIndices(botId)).thenReturn(listOf(1))
+        `when`(session.declareFlower(botId, 1)).thenReturn(true)
+
+        BotActionScheduler.schedule(session)
+
+        val runnableCaptor = ArgumentCaptor.forClass(Runnable::class.java)
+        verify(scheduler).runRegionDelayed(any(Location::class.java), runnableCaptor.capture(), eq(20L))
+        runnableCaptor.value.run()
+
+        verify(session).declareFlower(botId, 1)
+        verify(session, never()).gbSuggestedKanTile(botId)
+        verify(session, never()).discard(eq(botId), any(Int::class.java))
     }
 
     @Test
@@ -230,6 +265,7 @@ class BotActionSchedulerTest {
         `when`(session.availableReactions(botId)).thenReturn(null)
         `when`(session.currentSeat()).thenReturn(SeatWind.EAST)
         `when`(session.playerAt(SeatWind.EAST)).thenReturn(botId)
+        `when`(session.isCurrentPlayer(botId)).thenReturn(true)
         `when`(session.plugin()).thenReturn(plugin)
         `when`(plugin.scheduler()).thenReturn(scheduler)
         `when`(session.center()).thenReturn(center)
@@ -263,10 +299,18 @@ class BotActionSchedulerTest {
         `when`(session.center()).thenReturn(center)
         `when`(session.hand(botId)).thenReturn(
             listOf(
-                MahjongTile.M1, MahjongTile.M2, MahjongTile.M3,
-                MahjongTile.P1, MahjongTile.P2, MahjongTile.P3, MahjongTile.P4,
-                MahjongTile.S1, MahjongTile.S2, MahjongTile.S3, MahjongTile.S4
-            )
+                MahjongTile.M1,
+                MahjongTile.M2,
+                MahjongTile.M3,
+                MahjongTile.P1,
+                MahjongTile.P2,
+                MahjongTile.P3,
+                MahjongTile.P4,
+                MahjongTile.S1,
+                MahjongTile.S2,
+                MahjongTile.S3,
+                MahjongTile.S4,
+            ),
         )
         `when`(session.submitSichuanExchangeSelection(botId, listOf(0, 1, 2))).thenReturn(true)
         `when`(scheduler.runRegionDelayed(any(Location::class.java), any(Runnable::class.java), eq(1L))).thenReturn(task)
@@ -302,9 +346,12 @@ class BotActionSchedulerTest {
         `when`(session.hand(botId)).thenReturn(
             listOf(
                 MahjongTile.M1,
-                MahjongTile.P1, MahjongTile.P2,
-                MahjongTile.S1, MahjongTile.S2, MahjongTile.S3
-            )
+                MahjongTile.P1,
+                MahjongTile.P2,
+                MahjongTile.S1,
+                MahjongTile.S2,
+                MahjongTile.S3,
+            ),
         )
         `when`(session.chooseSichuanMissingSuit(botId, "wan")).thenReturn(true)
         `when`(scheduler.runRegionDelayed(any(Location::class.java), any(Runnable::class.java), eq(1L))).thenReturn(task)
@@ -328,11 +375,17 @@ class BotActionSchedulerTest {
         val botId = UUID.fromString("00000000-0000-0000-0000-00000000c002")
 
         // Hand with 4 M tiles, 3 P tiles, 1 S tile — should discard from S suit (fewest)
-        val hand = listOf(
-            MahjongTile.M1, MahjongTile.M2, MahjongTile.M3, MahjongTile.M4,
-            MahjongTile.P1, MahjongTile.P2, MahjongTile.P3,
-            MahjongTile.S1
-        )
+        val hand =
+            listOf(
+                MahjongTile.M1,
+                MahjongTile.M2,
+                MahjongTile.M3,
+                MahjongTile.M4,
+                MahjongTile.P1,
+                MahjongTile.P2,
+                MahjongTile.P3,
+                MahjongTile.S1,
+            )
 
         `when`(session.id()).thenReturn("SC001")
         `when`(session.currentVariant()).thenReturn(MahjongVariant.SICHUAN)
@@ -342,6 +395,7 @@ class BotActionSchedulerTest {
         `when`(session.availableReactions(botId)).thenReturn(null)
         `when`(session.currentSeat()).thenReturn(SeatWind.EAST)
         `when`(session.playerAt(SeatWind.EAST)).thenReturn(botId)
+        `when`(session.isCurrentPlayer(botId)).thenReturn(true)
         `when`(session.plugin()).thenReturn(plugin)
         `when`(plugin.scheduler()).thenReturn(scheduler)
         `when`(session.center()).thenReturn(center)
@@ -372,10 +426,15 @@ class BotActionSchedulerTest {
         val botId = UUID.fromString("00000000-0000-0000-0000-00000000c003")
 
         // Hand with only M and P tiles (already missing S suit)
-        val hand = listOf(
-            MahjongTile.M1, MahjongTile.M2, MahjongTile.M3,
-            MahjongTile.P1, MahjongTile.P2, MahjongTile.P3
-        )
+        val hand =
+            listOf(
+                MahjongTile.M1,
+                MahjongTile.M2,
+                MahjongTile.M3,
+                MahjongTile.P1,
+                MahjongTile.P2,
+                MahjongTile.P3,
+            )
 
         `when`(session.currentVariant()).thenReturn(MahjongVariant.SICHUAN)
         `when`(session.isStarted()).thenReturn(true)
@@ -384,6 +443,7 @@ class BotActionSchedulerTest {
         `when`(session.availableReactions(botId)).thenReturn(null)
         `when`(session.currentSeat()).thenReturn(SeatWind.EAST)
         `when`(session.playerAt(SeatWind.EAST)).thenReturn(botId)
+        `when`(session.isCurrentPlayer(botId)).thenReturn(true)
         `when`(session.plugin()).thenReturn(plugin)
         `when`(plugin.scheduler()).thenReturn(scheduler)
         `when`(session.center()).thenReturn(center)
@@ -421,6 +481,7 @@ class BotActionSchedulerTest {
         `when`(session.availableReactions(botId)).thenReturn(null)
         `when`(session.currentSeat()).thenReturn(SeatWind.EAST)
         `when`(session.playerAt(SeatWind.EAST)).thenReturn(botId)
+        `when`(session.isCurrentPlayer(botId)).thenReturn(true)
         `when`(session.plugin()).thenReturn(plugin)
         `when`(plugin.scheduler()).thenReturn(scheduler)
         `when`(session.center()).thenReturn(center)
@@ -468,7 +529,10 @@ class BotActionSchedulerTest {
         verify(session).react(eq(botId), any())
     }
 
-    private fun stubGbTurnSnapshot(session: MahjongTableSession, botId: UUID) {
+    private fun stubGbTurnSnapshot(
+        session: MahjongTableSession,
+        botId: UUID,
+    ) {
         `when`(session.hasRoundController()).thenReturn(true)
         `when`(session.isSpectator(botId)).thenReturn(false)
         `when`(session.availableReactions(botId)).thenReturn(null)
@@ -477,5 +541,6 @@ class BotActionSchedulerTest {
         `when`(session.currentSeat()).thenReturn(SeatWind.EAST)
         `when`(session.seatOf(botId)).thenReturn(SeatWind.EAST)
         `when`(session.playerAt(SeatWind.EAST)).thenReturn(botId)
+        `when`(session.isCurrentPlayer(botId)).thenReturn(true)
     }
 }

@@ -64,6 +64,14 @@ public final class TableRenderer {
         return SeatRenderer.renderSeatLabelSpecs(session, seat, plan);
     }
 
+    public SeatRenderer.SeatLabelRenderPlan renderSeatLabelPlan(
+        TableRenderSubject session,
+        TableSeatRenderSnapshot seat,
+        TableRenderLayout.SeatLayoutPlan plan
+    ) {
+        return SeatRenderer.renderSeatLabelPlan(session, seat, plan);
+    }
+
     public List<Entity> renderSticks(TableRenderSubject session, SeatWind wind) {
         return StickRenderer.renderSticks(session, wind);
     }
@@ -158,23 +166,6 @@ public final class TableRenderer {
         return DiscardRenderer.renderDiscardTileSpecs(session, seat, plan, discardIndex);
     }
 
-    public List<Entity> renderHandPrivate(
-        TableRenderSubject session,
-        TableSeatRenderSnapshot seat,
-        TableRenderLayout.SeatLayoutPlan plan
-    ) {
-        return HandRenderer.renderHandPrivate(session, seat, plan);
-    }
-
-    public List<Entity> renderHandPrivateTile(
-        TableRenderSubject session,
-        TableSeatRenderSnapshot seat,
-        TableRenderLayout.SeatLayoutPlan plan,
-        int tileIndex
-    ) {
-        return HandRenderer.renderHandPrivateTile(session, seat, plan, tileIndex);
-    }
-
     public List<Entity> renderHandPublic(
         TableRenderSubject session,
         TableRenderSnapshot snapshot,
@@ -216,13 +207,13 @@ public final class TableRenderer {
         return MeldRenderer.renderMelds(session, seat, plan);
     }
 
-    public List<DisplayEntities.EntitySpec> renderHandPrivateTileSpecs(
+    public HandRenderer.HandTileRenderPlan renderHandPrivateTilePlan(
         TableRenderSubject session,
         TableSeatRenderSnapshot seat,
         TableRenderLayout.SeatLayoutPlan plan,
         int tileIndex
     ) {
-        return HandRenderer.renderHandPrivateTileSpecs(session, seat, plan, tileIndex);
+        return HandRenderer.renderHandPrivateTilePlan(session, seat, plan, tileIndex);
     }
 
     public List<DisplayEntities.EntitySpec> renderMeldSpecs(
@@ -258,8 +249,11 @@ public final class TableRenderer {
         return ViewerOverlayRenderer.renderViewerPromptSpecs(session, snapshot);
     }
 
-    public List<DisplayEntities.EntitySpec> renderViewerActionOverlaySpecs(TableRenderSubject session, TableViewerActionOverlaySnapshot snapshot) {
-        return ViewerOverlayRenderer.renderViewerActionOverlaySpecs(session, snapshot);
+    public ViewerOverlayRenderer.ViewerActionOverlayPlan renderViewerActionOverlayPlan(
+        TableRenderSubject session,
+        TableViewerActionOverlaySnapshot snapshot
+    ) {
+        return ViewerOverlayRenderer.renderViewerActionOverlayPlan(session, snapshot);
     }
 
     static Location tableFurnitureAnchor(Location tableCenter, String furnitureId) {

@@ -9,12 +9,13 @@ import top.ellan.mahjong.riichi.ReactionOptions;
 import top.ellan.mahjong.riichi.ReactionResponse;
 import top.ellan.mahjong.riichi.ReactionResponses;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import kotlin.Pair;
 
 final class GbBotDecisionService {
+    private static final int TILE_KIND_COUNT = MahjongTile.values().length;
+
     private final int minimumFan;
 
     GbBotDecisionService(int minimumFan) {
@@ -185,19 +186,40 @@ final class GbBotDecisionService {
         if (hand == null || hand.isEmpty()) {
             return null;
         }
-        DiscardChoice best = null;
-        EnumMap<MahjongTile, GbTingResponse> tingMemo = new EnumMap<>(MahjongTile.class);
+        int bestIndex = -1;
+        long bestReadyScore = 0;
+        int bestDiscardPreference = 0;
+        GbTingResponse[] tingMemo = new GbTingResponse[TILE_KIND_COUNT];
+        MahjongTile previousDiscarded = null;
+        int previousDiscardPreference = 0;
         for (int i = 0; i < hand.size(); i++) {
             MahjongTile discarded = hand.get(i);
-            List<MahjongTile> remaining = new ArrayList<>(hand);
-            remaining.remove(i);
-            GbTingResponse ting = tingMemo.computeIfAbsent(discarded, ignored -> tingEvaluator.evaluate(remaining, melds));
-            DiscardChoice candidate = new DiscardChoice(i, readyScore(ting), discardPreference(hand, discarded));
-            if (best == null || candidate.compareTo(best) > 0) {
-                best = candidate;
+            int discardedOrdinal = discarded.ordinal();
+            GbTingResponse ting = tingMemo[discardedOrdinal];
+            boolean tingMemoHit = ting != null;
+            if (ting == null) {
+                List<MahjongTile> remaining = new ArrayList<>(hand);
+                remaining.remove(i);
+                ting = tingEvaluator.evaluate(remaining, melds);
+                if (ting != null) {
+                    tingMemo[discardedOrdinal] = ting;
+                }
+            }
+            long candidateReadyScore = readyScore(ting);
+            int candidateDiscardPreference = tingMemoHit && discarded == previousDiscarded
+                ? previousDiscardPreference
+                : discardPreference(hand, discarded);
+            previousDiscarded = discarded;
+            previousDiscardPreference = candidateDiscardPreference;
+            if (bestIndex < 0
+                || candidateReadyScore > bestReadyScore
+                || (candidateReadyScore == bestReadyScore && candidateDiscardPreference > bestDiscardPreference)) {
+                bestIndex = i;
+                bestReadyScore = candidateReadyScore;
+                bestDiscardPreference = candidateDiscardPreference;
             }
         }
-        return best;
+        return bestIndex < 0 ? null : new DiscardChoice(bestIndex, bestReadyScore, bestDiscardPreference);
     }
 
     private BotState simulateKan(List<MahjongTile> sourceHand, List<GbMeldState> sourceMelds, MahjongTile target) {

@@ -1,18 +1,18 @@
 package top.ellan.mahjong.gameroom
 
-import java.nio.file.Files
-import java.nio.file.Path
-import java.util.UUID
-import java.util.concurrent.atomic.AtomicReference
-import org.bukkit.configuration.file.YamlConfiguration
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.io.TempDir
 import org.mockito.Mockito.mock
 import top.ellan.mahjong.config.PluginSettings
 import top.ellan.mahjong.debug.DebugService
 import top.ellan.mahjong.i18n.MessageService
+import top.ellan.mahjong.pluginSettings
 import top.ellan.mahjong.runtime.ServerScheduler
 import top.ellan.mahjong.table.core.MahjongTableManager
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -53,7 +53,7 @@ class GameRoomManagerTest {
                 maxX: 10
                 maxY: 75
                 maxZ: 12
-            """.trimIndent()
+            """.trimIndent(),
         )
         val manager = createManager(settingsRef)
 
@@ -80,7 +80,7 @@ class GameRoomManagerTest {
                 maxX: 5
                 maxY: 70
                 maxZ: 5
-            """.trimIndent()
+            """.trimIndent(),
         )
         writeRoomsFile(
             tempDir.resolve("rooms-b.yml"),
@@ -95,7 +95,7 @@ class GameRoomManagerTest {
                 maxX: 20
                 maxY: 65
                 maxZ: 20
-            """.trimIndent()
+            """.trimIndent(),
         )
         val manager = createManager(settingsRef)
         manager.load()
@@ -130,34 +130,38 @@ class GameRoomManagerTest {
         assertFalse(manager.hasActiveCountdown(playerId))
     }
 
-    private fun createManager(settingsRef: AtomicReference<PluginSettings>): GameRoomManager {
-        return GameRoomManager(
+    private fun createManager(settingsRef: AtomicReference<PluginSettings>): GameRoomManager =
+        GameRoomManager(
             tableManager,
             { debug },
             scheduler,
             messages,
             { settingsRef.get() },
-            tempDir.resolve(settingsRef.get().gameRooms().file())
+            tempDir.resolve(settingsRef.get().gameRooms().file()),
         )
-    }
 
     private fun settings(
         enabled: Boolean = true,
-        file: String = "game-rooms.yml"
-    ): PluginSettings {
-        val config = YamlConfiguration()
-        config.set("gameRooms.enabled", enabled)
-        config.set("gameRooms.file", file)
-        return PluginSettings.from(config)
-    }
+        file: String = "game-rooms.yml",
+    ): PluginSettings =
+        pluginSettings(
+            "gameRooms.enabled" to enabled,
+            "gameRooms.file" to file,
+        )
 
-    private fun writeRoomsFile(path: Path, content: String) {
+    private fun writeRoomsFile(
+        path: Path,
+        content: String,
+    ) {
         Files.createDirectories(path.parent)
         Files.writeString(path, content)
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun <K, V> mutableMapField(manager: GameRoomManager, fieldName: String): MutableMap<K, V> {
+    private fun <K, V> mutableMapField(
+        manager: GameRoomManager,
+        fieldName: String,
+    ): MutableMap<K, V> {
         val field = GameRoomManager::class.java.getDeclaredField(fieldName)
         field.isAccessible = true
         return field.get(manager) as MutableMap<K, V>

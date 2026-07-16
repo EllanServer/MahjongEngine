@@ -1,5 +1,7 @@
 package top.ellan.mahjong.command
 
+import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver
 import org.bukkit.command.Command
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
@@ -14,6 +16,7 @@ import org.mockito.Mockito.`when`
 import top.ellan.mahjong.debug.DebugService
 import top.ellan.mahjong.i18n.MessageService
 import top.ellan.mahjong.table.core.MahjongTableManager
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
@@ -48,35 +51,39 @@ class MahjongCommandDispatchTest {
         tableManager = mock(MahjongTableManager::class.java)
         debug = mock(DebugService::class.java)
         bukkitCommand = mock(Command::class.java)
-        context = MahjongCommandContext(
-            messages,
-            tableManager,
-            debug,
-            mock(top.ellan.mahjong.runtime.AsyncService::class.java),
-            mock(top.ellan.mahjong.runtime.ServerScheduler::class.java),
-            { null },
-            { null },
-            { null },
-            null
-        )
+        stubHelpRendering()
+        context =
+            MahjongCommandContext(
+                messages,
+                tableManager,
+                debug,
+                mock(top.ellan.mahjong.runtime.AsyncService::class.java),
+                mock(top.ellan.mahjong.runtime.ServerScheduler::class.java),
+                { null },
+                { null },
+                { null },
+                null,
+            )
         joinCalls.set(0)
         createCalls.set(0)
-        val join = MahjongSubcommand(
-            "join",
-            listOf("j"),
-            false,
-            true,
-            { _, _, _ -> joinCalls.incrementAndGet() },
-            { _, _ -> joinSuggestion }
-        )
-        val create = MahjongSubcommand(
-            "create",
-            listOf(),
-            true,
-            false,
-            { _, _, _ -> createCalls.incrementAndGet() },
-            { _, _ -> listOf("created") }
-        )
+        val join =
+            MahjongSubcommand(
+                "join",
+                listOf("j"),
+                false,
+                true,
+                { _, _, _ -> joinCalls.incrementAndGet() },
+                { _, _ -> joinSuggestion },
+            )
+        val create =
+            MahjongSubcommand(
+                "create",
+                listOf(),
+                true,
+                false,
+                { _, _, _ -> createCalls.incrementAndGet() },
+                { _, _ -> listOf("created") },
+            )
         command = MahjongCommand(context, listOf(join, create))
     }
 
@@ -95,9 +102,10 @@ class MahjongCommandDispatchTest {
     @Test
     fun `empty args from player triggers help`() {
         val player = playerWith(rootPermission = true)
-        // sendHelp delegates to messages, which is mocked; we simply assert it was invoked at least once.
+
         command.onCommand(player, bukkitCommand, "mahjong", emptyArray())
-        verify(messages, times(1)).send(player, "command.usage")
+
+        verify(messages, times(1)).render(Locale.ENGLISH, "command.help.header")
     }
 
     @Test
@@ -125,7 +133,7 @@ class MahjongCommandDispatchTest {
         val player = playerWith(rootPermission = true)
         command.onCommand(player, bukkitCommand, "mahjong", arrayOf("nothing"))
 
-        verify(messages, times(1)).send(player, "command.usage")
+        verify(messages, times(1)).render(Locale.ENGLISH, "command.help.header")
         verify(debug).log(safeEq("command"), anyString())
     }
 
@@ -219,13 +227,45 @@ class MahjongCommandDispatchTest {
         assertTrue(suggestions.isEmpty(), "non-admin must not see create suggestions")
     }
 
-    private fun playerWith(rootPermission: Boolean, adminPermission: Boolean = false): Player {
+    private fun playerWith(
+        rootPermission: Boolean,
+        adminPermission: Boolean = false,
+    ): Player {
         val player = mock(Player::class.java)
         lenient().`when`(player.hasPermission("mahjongpaper.command")).thenReturn(rootPermission)
         lenient().`when`(player.hasPermission("mahjongpaper.admin")).thenReturn(adminPermission)
         lenient().`when`(player.uniqueId).thenReturn(UUID.randomUUID())
         lenient().`when`(player.name).thenReturn("tester")
         return player
+    }
+
+    private fun stubHelpRendering() {
+        lenient().`when`(messages.resolveLocale(any(CommandSender::class.java))).thenReturn(Locale.ENGLISH)
+        lenient().`when`(messages.render(any(Locale::class.java), anyString())).thenAnswer { invocation ->
+            Component.text(invocation.getArgument<String>(1))
+        }
+        lenient()
+            .`when`(
+                messages.render(any(Locale::class.java), anyString(), any(TagResolver::class.java), any(TagResolver::class.java)),
+            ).thenAnswer { invocation ->
+                Component.text(invocation.getArgument<String>(1))
+            }
+        lenient()
+            .`when`(
+                messages.render(
+                    any(Locale::class.java),
+                    anyString(),
+                    any(TagResolver::class.java),
+                    any(TagResolver::class.java),
+                    any(TagResolver::class.java),
+                ),
+            ).thenAnswer { invocation ->
+                Component.text(invocation.getArgument<String>(1))
+            }
+        lenient().`when`(messages.plain(any(Locale::class.java), anyString())).thenAnswer { invocation ->
+            invocation.getArgument<String>(1)
+        }
+        lenient().`when`(messages.number(any(Locale::class.java), anyString(), any(Number::class.java))).thenReturn(TagResolver.empty())
     }
 
     private fun eq(value: String): String = org.mockito.ArgumentMatchers.eq(value)
@@ -235,7 +275,5 @@ class MahjongCommandDispatchTest {
      * compiler: replace null with the same value so the matcher still records a
      * non-null argument matcher in the test thread.
      */
-    private fun safeEq(value: String): String {
-        return org.mockito.ArgumentMatchers.eq(value) ?: value
-    }
+    private fun safeEq(value: String): String = org.mockito.ArgumentMatchers.eq(value) ?: value
 }

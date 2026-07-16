@@ -781,6 +781,12 @@ std::string invalidWinResponse(const std::string& error) {
     return "{\"valid\":false,\"title\":\"WIN\",\"totalFan\":0,\"fans\":[],\"scoreDeltas\":[],\"error\":" + jsonString(error) + "}";
 }
 
+int nonFlowerFan(const mahjong::Fan& fan) {
+    const int flowerFan = static_cast<int>(fan.fan_table_res[mahjong::FAN_HUAPAI].size())
+        * mahjong::FAN_SCORE[mahjong::FAN_HUAPAI];
+    return fan.tot_fan_res - flowerFan;
+}
+
 std::string evaluateFanJson(const FanRequest& request) {
     try {
         std::string handString = buildHandString(request, request.winningTile, request.winType);
@@ -820,8 +826,25 @@ std::string evaluateTingJson(const TingRequest& request) {
                 continue;
             }
             candidateFan.CountFan(candidate);
-            if (candidateFan.tot_fan_res < 8) {
-                continue;
+
+            // Preserve the historical discard-win fan result whenever it is
+            // already legal. If it falls short, also evaluate the same wait
+            // as a self draw: an open hand with seven fan may legally win by
+            // adding the one-fan ZIMO pattern even though it cannot ron.
+            mahjong::Fan selfDrawFan;
+            mahjong::Fan* displayedFan = &candidateFan;
+            if (nonFlowerFan(candidateFan) < 8) {
+                mahjong::Handtiles selfDrawCandidate = handtiles;
+                selfDrawCandidate.DrawTile(wait);
+                selfDrawCandidate.SetZimo(1);
+                if (!selfDrawFan.JudgeHu(selfDrawCandidate)) {
+                    continue;
+                }
+                selfDrawFan.CountFan(selfDrawCandidate);
+                if (nonFlowerFan(selfDrawFan) < 8) {
+                    continue;
+                }
+                displayedFan = &selfDrawFan;
             }
             if (!firstWait) {
                 output << ",";
@@ -829,8 +852,8 @@ std::string evaluateTingJson(const TingRequest& request) {
             firstWait = false;
             output << "{"
                    << "\"tile\":" << jsonString(encodeNativeTile(wait)) << ","
-                   << "\"totalFan\":" << candidateFan.tot_fan_res << ","
-                   << "\"fans\":" << encodeFans(collectFans(candidateFan))
+                   << "\"totalFan\":" << displayedFan->tot_fan_res << ","
+                   << "\"fans\":" << encodeFans(collectFans(*displayedFan))
                    << "}";
         }
         output << "]}";
@@ -841,24 +864,34 @@ std::string evaluateTingJson(const TingRequest& request) {
 }
 
 std::vector<ScoreDelta> buildScoreDeltas(const WinRequest& request, int totalFan) {
+    constexpr int BASIC_SCORE = 8;
     std::vector<ScoreDelta> deltas;
     if (request.winType == "SELF_DRAW") {
+        const int payment = BASIC_SCORE + totalFan;
         int loserCount = 0;
         for (const SeatPointsInput& seat : request.seatPoints) {
             if (seat.seat == request.winnerSeat) {
                 continue;
             }
-            deltas.push_back(ScoreDelta{seat.seat, -totalFan});
+            deltas.push_back(ScoreDelta{seat.seat, -payment});
             ++loserCount;
         }
-        deltas.push_back(ScoreDelta{request.winnerSeat, totalFan * loserCount});
+        deltas.push_back(ScoreDelta{request.winnerSeat, payment * loserCount});
         return deltas;
     }
     if (!request.discarderSeat.has_value()) {
         return deltas;
     }
-    deltas.push_back(ScoreDelta{*request.discarderSeat, -totalFan});
-    deltas.push_back(ScoreDelta{request.winnerSeat, totalFan});
+    int winnerDelta = 0;
+    for (const SeatPointsInput& seat : request.seatPoints) {
+        if (seat.seat == request.winnerSeat) {
+            continue;
+        }
+        const int payment = BASIC_SCORE + (seat.seat == *request.discarderSeat ? totalFan : 0);
+        deltas.push_back(ScoreDelta{seat.seat, -payment});
+        winnerDelta += payment;
+    }
+    deltas.push_back(ScoreDelta{request.winnerSeat, winnerDelta});
     return deltas;
 }
 
@@ -889,6 +922,15 @@ std::string evaluateWinJson(const WinRequest& request) {
                 asInt(object.at("fan")),
                 asInt(object.at("count"))
             });
+        }
+        int flowerFan = 0;
+        for (const FanEntry& fan : fans) {
+            if (fan.name == "HUAPAI") {
+                flowerFan += fan.fan * fan.count;
+            }
+        }
+        if (totalFan - flowerFan < 8) {
+            return invalidWinResponse("GB Mahjong winning hand must have at least 8 non-flower fan.");
         }
         std::vector<ScoreDelta> deltas = buildScoreDeltas(request, totalFan);
         std::ostringstream output;

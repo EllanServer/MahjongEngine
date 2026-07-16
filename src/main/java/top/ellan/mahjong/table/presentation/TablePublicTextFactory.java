@@ -95,6 +95,22 @@ public final class TablePublicTextFactory {
         if (!this.session.hasRoundController()) {
             return this.session.plugin().messages().plain(locale, "table.round_not_started");
         }
+        if (this.session.currentVariant() == MahjongVariant.SICHUAN) {
+            int handNumber = this.session.roundWind().index() * SeatWind.values().length + this.session.roundIndex() + 1;
+            return this.session.plugin().messages().plain(
+                locale,
+                "table.round_display.sichuan",
+                this.session.plugin().messages().number(locale, "hand", handNumber)
+            );
+        }
+        if (this.session.currentVariant() == MahjongVariant.GB) {
+            return this.session.plugin().messages().plain(
+                locale,
+                "table.round_display.gb",
+                this.session.plugin().messages().tag("wind", this.roundWindText(locale)),
+                this.session.plugin().messages().number(locale, "round", this.session.roundIndex() + 1)
+            );
+        }
         return this.session.plugin().messages().plain(
             locale,
             "table.round_display",
@@ -143,22 +159,8 @@ public final class TablePublicTextFactory {
     public String publicCenterText() {
         Locale locale = this.session.publicLocale();
         if (this.session.isStarted()) {
-            MahjongVariant variant = this.session.currentVariant();
-            String messageKey = variant == MahjongVariant.RIICHI ? "table.public.center_active" : "table.public.center_active_gb";
-            String diceDisplay = variant == MahjongVariant.RIICHI
-                ? String.valueOf(this.session.dicePoints())
-                : this.session.dicePoints() + "+" + this.session.breakDicePoints();
-            String center = this.session.plugin().messages().plain(
-                locale,
-                messageKey,
-                this.session.plugin().messages().tag("round", this.roundDisplay(locale)),
-                this.session.plugin().messages().number(locale, "wall", this.session.remainingWallCount()),
-                this.session.plugin().messages().tag("dice", diceDisplay),
-                this.session.plugin().messages().tag("dealer", this.dealerName(locale)),
-                this.session.plugin().messages().tag("last_discard", this.centerLastDiscardSummary(locale))
-            );
             String lastAction = this.centerLastActionSummary(locale);
-            return lastAction.isBlank() ? center : center + "\n" + lastAction;
+            return lastAction.isBlank() ? "" : lastAction;
         }
         return this.session.plugin().messages().plain(
             locale,
@@ -217,17 +219,6 @@ public final class TablePublicTextFactory {
         return this.session.plugin().messages().plain(locale, value ? "common.true" : "common.false");
     }
 
-    private String centerLastDiscardSummary(Locale locale) {
-        if (this.session.lastPublicDiscardPlayerId() == null || this.session.lastPublicDiscardTile() == null) {
-            return this.session.plugin().messages().plain(locale, "table.last_discard_none");
-        }
-        return this.session.plugin().messages().plain(
-            locale,
-            "table.last_discard_player",
-            this.session.plugin().messages().tag("player", this.session.displayName(this.session.lastPublicDiscardPlayerId(), locale))
-        );
-    }
-
     private String centerLastActionSummary(Locale locale) {
         return this.session.publicLastActionSummary(locale);
     }
@@ -251,5 +242,3 @@ public final class TablePublicTextFactory {
         return this.session.plugin().messages().plain(locale, this.session.isReady(playerId) ? "table.status.ready" : "table.status.waiting");
     }
 }
-
-

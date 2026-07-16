@@ -20,14 +20,18 @@ final class SessionRulePresetResolver {
                 new Preset(MahjongVariant.RIICHI, majsoulRule(MahjongRule.GameLength.TWO_WIND));
             case "GB", "GUOBIAO", "ZHONGGUO", "CHINESE_OFFICIAL" ->
                 new Preset(MahjongVariant.GB, gbRule());
-            case "SICHUAN", "SCMJ", "SICHUAN_MAHJONG", "SICHUAN_TOURNAMENT" ->
+            case "SICHUAN", "SCMJ", "SICHUAN_MAHJONG" ->
                 new Preset(MahjongVariant.SICHUAN, sichuanRule());
             default -> null;
         };
     }
 
     static MahjongRule defaultRuleFor(MahjongVariant variant) {
-        return variant == MahjongVariant.RIICHI ? majsoulRule(MahjongRule.GameLength.TWO_WIND) : gbRule();
+        return switch (variant) {
+            case RIICHI -> majsoulRule(MahjongRule.GameLength.TWO_WIND);
+            case GB -> gbRule();
+            case SICHUAN -> sichuanRule();
+        };
     }
 
     static MahjongRule majsoulRule(MahjongRule.GameLength length) {
@@ -47,11 +51,24 @@ final class SessionRulePresetResolver {
     }
 
     static MahjongRule gbRule() {
+        // MCR accumulates net table points over a fixed sixteen-hand match.
+        // Zero is therefore both the score origin and a harmless end threshold;
+        // advanceMatchState reaches it only after the configured four winds.
+        return chineseRule(MahjongRule.GameLength.FOUR_WIND, 0, 0);
+    }
+
+    static MahjongRule sichuanRule() {
+        // T/TFMJ records the eight-hand room score as net gains and losses,
+        // rather than borrowing the 25,000-point ledger used by riichi.
+        return chineseRule(MahjongRule.GameLength.TWO_WIND, 0, 0);
+    }
+
+    private static MahjongRule chineseRule(MahjongRule.GameLength length, int startingPoints, int goalPoints) {
         return new MahjongRule(
-            MahjongRule.GameLength.TWO_WIND,
+            length,
             MahjongRule.ThinkingTime.NORMAL,
-            25000,
-            30000,
+            startingPoints,
+            goalPoints,
             MahjongRule.MinimumHan.ONE,
             true,
             MahjongRule.RedFive.NONE,
@@ -62,11 +79,6 @@ final class SessionRulePresetResolver {
         );
     }
 
-    static MahjongRule sichuanRule() {
-        return gbRule();
-    }
-
     record Preset(MahjongVariant variant, MahjongRule rule) {
     }
 }
-

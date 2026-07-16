@@ -1,17 +1,11 @@
 package top.ellan.mahjong.compat;
 
-import top.ellan.mahjong.render.display.DisplayClickAction;
-import top.ellan.mahjong.render.display.TableDisplayRegistry;
-import java.lang.reflect.Array;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
+import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
+import net.momirealms.craftengine.bukkit.api.CraftEngineFurniture;
+import net.momirealms.craftengine.bukkit.entity.furniture.BukkitFurniture;
+import net.momirealms.craftengine.core.entity.furniture.hitbox.FurnitureHitBox;
+import net.momirealms.craftengine.core.entity.seat.Seat;
+import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
@@ -22,6 +16,13 @@ import org.bukkit.entity.Interaction;
 import org.bukkit.entity.Player;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
+import top.ellan.mahjong.render.display.DisplayClickAction;
+import top.ellan.mahjong.render.display.TableDisplayRegistry;
+
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 final class CraftEngineFurnitureBridge {
     static final String TABLE_HITBOX_ITEM_ID = "mahjongpaper:table_hitbox";
@@ -34,15 +35,7 @@ final class CraftEngineFurnitureBridge {
 
     private final CraftEngineBridgeContext context;
     private final boolean preferFurnitureHitbox;
-    private final Map<Class<?>, Method> furnitureEntityMethods = new ConcurrentHashMap<>();
-    private final Map<Class<?>, Method> furnitureHitboxesMethods = new ConcurrentHashMap<>();
-    private final Map<Class<?>, Method> furniturePositionMethods = new ConcurrentHashMap<>();
-    private final Map<Class<?>, Method> hitboxSeatsMethods = new ConcurrentHashMap<>();
-    private final Map<Class<?>, Method> seatOccupiedMethods = new ConcurrentHashMap<>();
     private final Set<String> warnedUnavailableFurnitureIds = ConcurrentHashMap.newKeySet();
-    private volatile boolean reflectionUnavailable;
-    private volatile FurnitureReflection reflection;
-    private volatile NamespacedKey furnitureDataKey;
     private volatile NamespacedKey managedFurnitureKey;
 
     CraftEngineFurnitureBridge(CraftEngineBridgeContext context, boolean preferFurnitureHitbox) {
@@ -51,17 +44,8 @@ final class CraftEngineFurnitureBridge {
     }
 
     int cleanupMahjongFurniture() {
-        if (this.reflectionUnavailable) {
-            return 0;
-        }
-
         Plugin craftEngine = this.context.craftEnginePlugin();
         if (craftEngine == null || !craftEngine.isEnabled()) {
-            return 0;
-        }
-
-        NamespacedKey furnitureKey = this.resolveFurnitureDataKey(craftEngine);
-        if (furnitureKey == null) {
             return 0;
         }
 
@@ -79,8 +63,7 @@ final class CraftEngineFurnitureBridge {
                     }
                     int scheduledFallbackRemovals = 0;
                     for (Entity entity : world.getChunkAt(chunkX, chunkZ).getEntities()) {
-                        String furnitureId = entity.getPersistentDataContainer().get(furnitureKey, PersistentDataType.STRING);
-                        if (furnitureId == null || !furnitureId.startsWith(MAHJONGPAPER_FURNITURE_PREFIX)) {
+                        if (!this.isManagedFurnitureEntity(entity) && !this.isMahjongFurnitureEntity(entity)) {
                             continue;
                         }
                         boolean removedByCraftEngine = this.removeFurniture(entity);
@@ -147,94 +130,70 @@ final class CraftEngineFurnitureBridge {
     }
 
     Entity placeFurniture(Location location, String furnitureItemId) {
-        if (!this.preferFurnitureHitbox || this.reflectionUnavailable) {
-            return null;
-        }
-
-        Plugin craftEngine = this.context.craftEnginePlugin();
-        FurnitureReflection bridge = this.reflection(craftEngine);
-        if (bridge == null) {
+        if (!this.preferFurnitureHitbox || !this.isCraftEngineAvailable()) {
             return null;
         }
 
         try {
-            Object key = this.context.craftEngineKey(furnitureItemId, bridge.keyOfMethod());
-            Object furniture = bridge.placeMethod().invoke(null, location, key);
+            BukkitFurniture furniture = CraftEngineFurniture.place(location, Key.of(furnitureItemId));
             if (furniture == null) {
                 this.warnUnavailableFurnitureId(furnitureItemId);
                 return null;
             }
-            Object bukkitEntity = this.resolveFurnitureEntityMethod(furniture.getClass()).invoke(furniture);
-            if (bukkitEntity instanceof Entity entity) {
+            Entity entity = furniture.bukkitEntity();
+            if (entity != null) {
                 this.markManagedFurnitureEntity(entity);
                 entity.setPersistent(false);
                 return entity;
             }
             return null;
-        } catch (ReflectiveOperationException | RuntimeException exception) {
+        } catch (RuntimeException | LinkageError exception) {
             this.context.plugin().getLogger().warning(
                 "CraftEngine was detected, but MahjongPaper could not place CraftEngine furniture. CraftEngine-based interaction may be unavailable."
             );
             this.context.plugin().debug().log(
                 "lifecycle",
-                "CraftEngine furniture bridge failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
+                "CraftEngine furniture API failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
             );
             return null;
         }
     }
 
     boolean removeFurniture(Entity entity) {
-        if (entity == null || this.reflectionUnavailable) {
-            return false;
-        }
-
-        Plugin craftEngine = this.context.craftEnginePlugin();
-        FurnitureReflection bridge = this.reflection(craftEngine);
-        if (bridge == null) {
+        if (entity == null || !this.isCraftEngineAvailable()) {
             return false;
         }
 
         try {
-            Object isFurniture = bridge.isFurnitureMethod().invoke(null, entity);
-            if (!(isFurniture instanceof Boolean isFurnitureEntity) || !isFurnitureEntity) {
+            if (!CraftEngineFurniture.isFurniture(entity)) {
                 return false;
             }
-            if (bridge.removeWithFlagsMethod() != null) {
-                bridge.removeWithFlagsMethod().invoke(null, entity, false, false);
-            } else if (bridge.removeMethod() != null) {
-                bridge.removeMethod().invoke(null, entity);
-            } else {
-                return false;
-            }
-            return true;
-        } catch (ReflectiveOperationException | RuntimeException exception) {
+            return CraftEngineFurniture.remove(entity, false, false);
+        } catch (RuntimeException | LinkageError exception) {
             this.context.plugin().debug().log(
                 "lifecycle",
-                "CraftEngine furniture remove bridge failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
+                "CraftEngine furniture remove API failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
             );
             return false;
         }
     }
 
     boolean isFurnitureEntity(Entity entity) {
-        if (entity == null || this.reflectionUnavailable) {
+        if (entity == null) {
             return false;
         }
         if (this.isManagedFurnitureEntity(entity)) {
             return true;
         }
-        Plugin craftEngine = this.context.craftEnginePlugin();
-        FurnitureReflection bridge = this.reflection(craftEngine);
-        if (bridge == null) {
+        if (!this.isCraftEngineAvailable()) {
             return false;
         }
         try {
-            Object isFurniture = bridge.isFurnitureMethod().invoke(null, entity);
-            return isFurniture instanceof Boolean flag && flag;
-        } catch (ReflectiveOperationException | RuntimeException exception) {
+            return CraftEngineFurniture.isFurniture(entity);
+        } catch (RuntimeException | LinkageError exception) {
             this.context.plugin().debug().log(
                 "lifecycle",
-                "CraftEngine furniture detection bridge failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
+                "CraftEngine furniture detection API failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
             );
             return false;
         }
@@ -270,112 +229,84 @@ final class CraftEngineFurnitureBridge {
     }
 
     String furnitureItemId(Entity entity) {
-        if (entity == null || this.reflectionUnavailable) {
+        if (entity == null || !this.isCraftEngineAvailable()) {
             return null;
         }
-        Plugin craftEngine = this.context.craftEnginePlugin();
-        if (craftEngine == null || !craftEngine.isEnabled()) {
+        try {
+            BukkitFurniture furniture = CraftEngineFurniture.getLoadedFurnitureByMetaEntity(entity);
+            return furniture == null ? null : furniture.id().toString();
+        } catch (RuntimeException | LinkageError exception) {
+            this.context.plugin().debug().log(
+                "lifecycle",
+                "CraftEngine furniture id API failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
+            );
             return null;
         }
-        NamespacedKey furnitureKey = this.resolveFurnitureDataKey(craftEngine);
-        if (furnitureKey == null) {
-            return null;
-        }
-        return entity.getPersistentDataContainer().get(furnitureKey, PersistentDataType.STRING);
     }
 
     boolean isSeatEntity(Entity entity) {
-        if (entity == null || this.reflectionUnavailable) {
-            return false;
-        }
-        Plugin craftEngine = this.context.craftEnginePlugin();
-        FurnitureReflection bridge = this.reflection(craftEngine);
-        if (bridge == null || bridge.isSeatMethod() == null) {
+        if (entity == null || !this.isCraftEngineAvailable()) {
             return false;
         }
         try {
-            Object isSeat = bridge.isSeatMethod().invoke(null, entity);
-            return isSeat instanceof Boolean flag && flag;
-        } catch (ReflectiveOperationException | RuntimeException exception) {
+            return CraftEngineFurniture.isSeat(entity);
+        } catch (RuntimeException | LinkageError exception) {
             this.context.plugin().debug().log(
                 "lifecycle",
-                "CraftEngine seat detection bridge failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
+                "CraftEngine seat detection API failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
             );
             return false;
         }
     }
 
     Entity furnitureEntityForSeat(Entity seatEntity) {
-        if (seatEntity == null || this.reflectionUnavailable) {
-            return null;
-        }
-        Plugin craftEngine = this.context.craftEnginePlugin();
-        FurnitureReflection bridge = this.reflection(craftEngine);
-        if (bridge == null || bridge.loadedFurnitureBySeatMethod() == null) {
+        if (seatEntity == null || !this.isCraftEngineAvailable()) {
             return null;
         }
         try {
-            Object furniture = bridge.loadedFurnitureBySeatMethod().invoke(null, seatEntity);
-            if (furniture == null) {
-                return null;
-            }
-            Object bukkitEntity = this.resolveFurnitureEntityMethod(furniture.getClass()).invoke(furniture);
-            return bukkitEntity instanceof Entity entity ? entity : null;
-        } catch (ReflectiveOperationException | RuntimeException exception) {
+            BukkitFurniture furniture = CraftEngineFurniture.getLoadedFurnitureBySeat(seatEntity);
+            return furniture == null ? null : furniture.bukkitEntity();
+        } catch (RuntimeException | LinkageError exception) {
             this.context.plugin().debug().log(
                 "lifecycle",
-                "CraftEngine seat owner bridge failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
+                "CraftEngine seat owner API failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
             );
             return null;
         }
     }
 
     boolean canPlaceFurniture() {
-        if (!this.preferFurnitureHitbox || this.reflectionUnavailable) {
-            return false;
-        }
-        Plugin craftEngine = this.context.craftEnginePlugin();
-        return craftEngine != null && craftEngine.isEnabled() && this.reflection(craftEngine) != null;
+        return this.preferFurnitureHitbox && this.isCraftEngineAvailable();
     }
 
     boolean seatPlayerOnFurniture(Entity furnitureEntity, Player player) {
-        if (furnitureEntity == null || player == null || !player.isOnline() || this.reflectionUnavailable) {
-            return false;
-        }
-        Plugin craftEngine = this.context.craftEnginePlugin();
-        FurnitureReflection bridge = this.reflection(craftEngine);
-        if (bridge == null || bridge.loadedFurnitureByMetaEntityMethod() == null || bridge.playerAdaptMethod() == null || bridge.seatSpawnMethod() == null) {
+        if (furnitureEntity == null || player == null || !player.isOnline() || !this.isCraftEngineAvailable()) {
             return false;
         }
         try {
-            Object furniture = bridge.loadedFurnitureByMetaEntityMethod().invoke(null, furnitureEntity);
+            BukkitFurniture furniture = CraftEngineFurniture.getLoadedFurnitureByMetaEntity(furnitureEntity);
             if (furniture == null) {
                 return false;
             }
-            Object adaptedPlayer = bridge.playerAdaptMethod().invoke(null, player);
+            net.momirealms.craftengine.core.entity.player.Player adaptedPlayer = BukkitAdaptor.adapt(player);
             if (adaptedPlayer == null) {
                 return false;
             }
-            Object position = this.resolveFurniturePositionMethod(furniture.getClass()).invoke(furniture);
-            Object[] hitboxes = asObjectArray(this.resolveFurnitureHitboxesMethod(furniture.getClass()).invoke(furniture));
-            for (Object hitbox : hitboxes) {
-                Object[] seats = asObjectArray(this.resolveHitboxSeatsMethod(hitbox.getClass()).invoke(hitbox));
-                for (Object seat : seats) {
-                    Object occupied = this.resolveSeatOccupiedMethod(seat.getClass()).invoke(seat);
-                    if (occupied instanceof Boolean flag && flag) {
+            for (FurnitureHitBox hitbox : furniture.hitboxes()) {
+                for (Seat<?> seat : hitbox.seats()) {
+                    if (seat.isOccupied()) {
                         continue;
                     }
-                    Object spawned = bridge.seatSpawnMethod().invoke(seat, adaptedPlayer, position);
-                    if (spawned instanceof Boolean success && success) {
+                    if (seat.spawnSeat(adaptedPlayer, furniture.position())) {
                         return true;
                     }
                 }
             }
             return false;
-        } catch (ReflectiveOperationException | RuntimeException exception) {
+        } catch (RuntimeException | LinkageError exception) {
             this.context.plugin().debug().log(
                 "lifecycle",
-                "CraftEngine seat spawn bridge failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
+                "CraftEngine seat spawn API failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
             );
             return false;
         }
@@ -410,33 +341,6 @@ final class CraftEngineFurnitureBridge {
         return resolved;
     }
 
-    private NamespacedKey resolveFurnitureDataKey(Plugin craftEngine) {
-        NamespacedKey cached = this.furnitureDataKey;
-        if (cached != null) {
-            return cached;
-        }
-
-        try {
-            ClassLoader classLoader = craftEngine.getClass().getClassLoader();
-            Class<?> managerClass = Class.forName(
-                "net.momirealms.craftengine.bukkit.entity.furniture.BukkitFurnitureManager",
-                true,
-                classLoader
-            );
-            Object key = managerClass.getField("FURNITURE_KEY").get(null);
-            if (key instanceof NamespacedKey namespacedKey) {
-                this.furnitureDataKey = namespacedKey;
-                return namespacedKey;
-            }
-        } catch (ReflectiveOperationException | RuntimeException exception) {
-            this.context.plugin().debug().log(
-                "lifecycle",
-                "CraftEngine furniture key lookup failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
-            );
-        }
-        return null;
-    }
-
     private void warnUnavailableFurnitureId(String furnitureItemId) {
         if (furnitureItemId == null || furnitureItemId.isBlank()) {
             return;
@@ -454,141 +358,8 @@ final class CraftEngineFurnitureBridge {
         );
     }
 
-    private FurnitureReflection reflection(Plugin craftEngine) {
-        if (craftEngine == null || !craftEngine.isEnabled() || this.reflectionUnavailable) {
-            return null;
-        }
-        FurnitureReflection cached = this.reflection;
-        if (cached != null) {
-            return cached;
-        }
-        synchronized (this) {
-            cached = this.reflection;
-            if (cached != null) {
-                return cached;
-            }
-            if (this.reflectionUnavailable) {
-                return null;
-            }
-            try {
-                ClassLoader classLoader = craftEngine.getClass().getClassLoader();
-                Class<?> keyClass = Class.forName("net.momirealms.craftengine.core.util.Key", true, classLoader);
-                Class<?> furnitureClass = Class.forName("net.momirealms.craftengine.bukkit.api.CraftEngineFurniture", true, classLoader);
-                Class<?> adaptorClass = Class.forName("net.momirealms.craftengine.bukkit.api.BukkitAdaptor", true, classLoader);
-                Class<?> seatClass = Class.forName("net.momirealms.craftengine.core.entity.seat.Seat", true, classLoader);
-                Class<?> cePlayerClass = Class.forName("net.momirealms.craftengine.core.entity.player.Player", true, classLoader);
-                Class<?> worldPositionClass = Class.forName("net.momirealms.craftengine.core.world.WorldPosition", true, classLoader);
-                Method removeWithFlagsMethod = null;
-                Method removeMethod = null;
-                try {
-                    removeWithFlagsMethod = furnitureClass.getMethod("remove", Entity.class, boolean.class, boolean.class);
-                } catch (NoSuchMethodException ignored) {
-                    removeMethod = furnitureClass.getMethod("remove", Entity.class);
-                }
-                FurnitureReflection resolved = new FurnitureReflection(
-                    keyClass.getMethod("of", String.class),
-                    furnitureClass.getMethod("place", Location.class, keyClass),
-                    furnitureClass.getMethod("isFurniture", Entity.class),
-                    furnitureClass.getMethod("isSeat", Entity.class),
-                    furnitureClass.getMethod("getLoadedFurnitureBySeat", Entity.class),
-                    furnitureClass.getMethod("getLoadedFurnitureByMetaEntity", Entity.class),
-                    adaptorClass.getMethod("adapt", Player.class),
-                    seatClass.getMethod("spawnSeat", cePlayerClass, worldPositionClass),
-                    removeMethod,
-                    removeWithFlagsMethod
-                );
-                this.reflection = resolved;
-                return resolved;
-            } catch (ReflectiveOperationException | RuntimeException exception) {
-                this.reflectionUnavailable = true;
-                this.context.plugin().getLogger().warning(
-                    "CraftEngine was detected, but MahjongPaper could not place CraftEngine furniture. CraftEngine-based interaction may be unavailable."
-                );
-                this.context.plugin().debug().log(
-                    "lifecycle",
-                    "CraftEngine furniture bridge failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
-                );
-                return null;
-            }
-        }
-    }
-
-    private Method resolveFurnitureEntityMethod(Class<?> furnitureInstanceClass) {
-        return this.furnitureEntityMethods.computeIfAbsent(furnitureInstanceClass, CraftEngineFurnitureBridge::lookupFurnitureEntityMethod);
-    }
-
-    private Method resolveFurnitureHitboxesMethod(Class<?> furnitureInstanceClass) {
-        return this.furnitureHitboxesMethods.computeIfAbsent(furnitureInstanceClass, ignored -> lookupMethod(ignored, "hitboxes"));
-    }
-
-    private Method resolveFurniturePositionMethod(Class<?> furnitureInstanceClass) {
-        return this.furniturePositionMethods.computeIfAbsent(furnitureInstanceClass, ignored -> lookupMethod(ignored, "position"));
-    }
-
-    private Method resolveHitboxSeatsMethod(Class<?> hitboxClass) {
-        return this.hitboxSeatsMethods.computeIfAbsent(hitboxClass, ignored -> lookupMethod(ignored, "seats"));
-    }
-
-    private Method resolveSeatOccupiedMethod(Class<?> seatClass) {
-        return this.seatOccupiedMethods.computeIfAbsent(seatClass, ignored -> lookupMethod(ignored, "isOccupied"));
-    }
-
-    private static Method lookupFurnitureEntityMethod(Class<?> furnitureInstanceClass) {
-        try {
-            return furnitureInstanceClass.getMethod("bukkitEntity");
-        } catch (NoSuchMethodException exception) {
-            throw new IllegalStateException("CraftEngine furniture instance does not expose bukkitEntity(): " + furnitureInstanceClass.getName(), exception);
-        }
-    }
-
-    private static Method lookupMethod(Class<?> type, String methodName) {
-        try {
-            return type.getMethod(methodName);
-        } catch (NoSuchMethodException exception) {
-            throw new IllegalStateException("CraftEngine class does not expose " + methodName + "(): " + type.getName(), exception);
-        }
-    }
-
-    private static Object[] asObjectArray(Object value) {
-        if (value == null) {
-            return new Object[0];
-        }
-        if (value instanceof Object[] array) {
-            return array;
-        }
-        if (value instanceof Collection<?> collection) {
-            return collection.toArray();
-        }
-        if (value instanceof Iterable<?> iterable) {
-            List<Object> collected = new ArrayList<>();
-            for (Object element : iterable) {
-                collected.add(element);
-            }
-            return collected.toArray();
-        }
-        Class<?> valueClass = value.getClass();
-        if (valueClass.isArray()) {
-            int length = Array.getLength(value);
-            Object[] converted = new Object[length];
-            for (int index = 0; index < length; index++) {
-                converted[index] = Array.get(value, index);
-            }
-            return converted;
-        }
-        return new Object[0];
-    }
-
-    private record FurnitureReflection(
-        Method keyOfMethod,
-        Method placeMethod,
-        Method isFurnitureMethod,
-        Method isSeatMethod,
-        Method loadedFurnitureBySeatMethod,
-        Method loadedFurnitureByMetaEntityMethod,
-        Method playerAdaptMethod,
-        Method seatSpawnMethod,
-        Method removeMethod,
-        Method removeWithFlagsMethod
-    ) {
+    private boolean isCraftEngineAvailable() {
+        Plugin craftEngine = this.context.craftEnginePlugin();
+        return craftEngine != null && craftEngine.isEnabled();
     }
 }

@@ -86,6 +86,12 @@ final class GbBotStrategy implements BotStrategy {
         if (this.hasAction(snapshot, PlayerActionId.TSUMO) && session.gbCanWinByTsumo(playerId) && session.declareTsumo(playerId)) {
             return;
         }
+        if (this.hasFlowerAction(snapshot)) {
+            var flowerIndices = session.suggestedFlowerIndices(playerId);
+            if (!flowerIndices.isEmpty() && session.declareFlower(playerId, flowerIndices.get(0))) {
+                return;
+            }
+        }
         String kanTile = session.gbSuggestedKanTile(playerId);
         if (kanTile != null && this.hasKanAction(snapshot) && session.declareKan(playerId, kanTile)) {
             return;
@@ -114,6 +120,11 @@ final class GbBotStrategy implements BotStrategy {
         return this.hasAction(snapshot, PlayerActionId.ANKAN)
             || this.hasAction(snapshot, PlayerActionId.KAKAN)
             || this.hasAction(snapshot, PlayerActionId.MENU_TURN_KAN);
+    }
+
+    private boolean hasFlowerAction(PlayerActionSnapshot snapshot) {
+        return this.hasAction(snapshot, PlayerActionId.FLOWER)
+            || this.hasAction(snapshot, PlayerActionId.MENU_TURN_FLOWER);
     }
 
     private boolean hasAction(PlayerActionSnapshot snapshot, PlayerActionId actionId) {

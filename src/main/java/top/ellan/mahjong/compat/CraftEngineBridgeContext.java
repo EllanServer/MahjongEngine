@@ -6,10 +6,7 @@ import top.ellan.mahjong.i18n.MessageService;
 import top.ellan.mahjong.runtime.AsyncService;
 import top.ellan.mahjong.runtime.ServerScheduler;
 import java.io.InputStream;
-import java.lang.reflect.Method;
-import java.util.Map;
 import java.util.logging.Logger;
-import java.util.concurrent.ConcurrentHashMap;
 import org.bukkit.Server;
 import org.bukkit.plugin.Plugin;
 
@@ -17,7 +14,6 @@ final class CraftEngineBridgeContext {
     private static final String CRAFT_ENGINE_PLUGIN_NAME = "CraftEngine";
 
     private final Services plugin;
-    private final Map<String, Object> craftEngineKeyCache = new ConcurrentHashMap<>();
     private volatile Plugin craftEnginePlugin;
 
     CraftEngineBridgeContext(Services plugin) {
@@ -42,16 +38,6 @@ final class CraftEngineBridgeContext {
             this.craftEnginePlugin = exact;
         }
         return exact;
-    }
-
-    Object craftEngineKey(String key, Method keyOfMethod) throws ReflectiveOperationException {
-        Object cached = this.craftEngineKeyCache.get(key);
-        if (cached != null) {
-            return cached;
-        }
-        Object resolved = keyOfMethod.invoke(null, key);
-        Object previous = this.craftEngineKeyCache.putIfAbsent(key, resolved);
-        return previous == null ? resolved : previous;
     }
 
     boolean isPluginEnabled(String pluginName) {

@@ -8,6 +8,7 @@ import top.ellan.mahjong.gb.runtime.GbNativeRulesGateway;
 import top.ellan.mahjong.i18n.MessageService;
 import top.ellan.mahjong.i18n.LocalizedMessages;
 import top.ellan.mahjong.model.SeatWind;
+import top.ellan.mahjong.render.display.DisplayInteractionRayRegistry;
 import top.ellan.mahjong.render.scene.MeldView;
 import top.ellan.mahjong.render.layout.TableRenderLayout;
 import top.ellan.mahjong.render.scene.TableRenderer;
@@ -15,6 +16,7 @@ import top.ellan.mahjong.render.snapshot.TableRenderPrecomputeResult;
 import top.ellan.mahjong.render.snapshot.TableRenderSnapshot;
 import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerHudSnapshot;
+import top.ellan.mahjong.render.snapshot.TableViewerHudPresentationSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerOverlaySnapshot;
 import top.ellan.mahjong.riichi.ReactionResponse;
 import top.ellan.mahjong.riichi.ReactionResponses;
@@ -54,6 +56,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
@@ -67,7 +70,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
 public final class MahjongTableSession implements TableSessionMutator, TableMembershipPort, TableRenderStatePort, TableBotTaskPort, TableLifecyclePort {
-    private static final long PUBLIC_ACTION_DISPLAY_TICKS = 40L;
     private final TableRuntimeServices plugin;
     private final String id;
     private final Location center;
@@ -78,13 +80,22 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     private final TableRenderSnapshotFactory renderSnapshotFactory = new TableRenderSnapshotFactory();
     private final TableRegionFingerprintService regionFingerprintService = new TableRegionFingerprintService();
     private MahjongRule configuredRule;
-    private TableRoundController roundController;
-    private boolean roundStartInProgress;
+    // These three fields are written on the table's region thread (during
+    // startRound / completeRoundStartInternal / setRoundControllerInternal)
+    // but read cross-thread by: the global tick timer's bot watchdog, the
+    // async render precompute thread (via TableRegionFingerprintService),
+    // the seat watchdog global timer (TableSeatCoordinator), the GameRoom
+    // tick timer, and player entity threads (TableEventCoordinator). They
+    // MUST be volatile so the write is published before subsequent renders
+    // and the readers observe a consistent snapshot. Without volatile, the
+    // JVM is free to reorder or cache these reads, leading to "bot scheduled
+    // on a half-published roundController" and similar races that mirror the
+    // botTask race fixed in 195b5aa. See the architecture review for the
+    // full region-ownership contract.
+    private volatile TableRoundController roundController;
+    private volatile boolean roundStartInProgress;
     private top.ellan.mahjong.model.MahjongTile lastPublicDiscardTile;
     private UUID lastPublicDiscardPlayerId;
-    private PublicActionAnnouncement lastPublicActionAnnouncement;
-    private PluginTask publicActionClearTask;
-    private long publicActionAnnouncementSequence;
     private volatile PluginTask botTask;
     private final TableRenderCoordinator renderCoordinator;
     private final TableViewerPresentationCoordinator viewerPresentation;
@@ -105,8 +116,18 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     private final SessionRoundActionCoordinator roundActionCoordinator;
     private final SessionHandSelectionCoordinator handSelectionCoordinator;
     private final SessionRoundFlowCoordinator roundFlowCoordinator;
+    final SessionActionDeadlineCoordinator actionDeadlineCoordinator;
+    private final SessionPublicActionCoordinator publicActionCoordinator;
     private final SessionViewerActionMenuCoordinator viewerActionMenuCoordinator = new SessionViewerActionMenuCoordinator();
-    private RiichiRoundEngine riichiRoundEngine;
+    private final Set<UUID> unattendedPlayers = ConcurrentHashMap.newKeySet();
+    // Written on the table's region thread when roundController is set/rotated
+    // (resolveRiichiEngine + setRoundControllerInternal); read cross-thread by
+    // RiichiBotStrategy.schedule via session.riichiEngine() on the same region
+    // thread (post-195b5aa) AND by async render precompute via
+    // TableRenderSnapshotFactory when capturing engine state. Volatile so the
+    // async thread never observes a stale null pointer when the round has just
+    // started on the region thread.
+    private volatile RiichiRoundEngine riichiRoundEngine;
     private MahjongVariant configuredVariant;
     private UUID ownerId;
 
@@ -172,6 +193,8 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         this.roundActionCoordinator = new SessionRoundActionCoordinator(this.sessionMutator);
         this.handSelectionCoordinator = new SessionHandSelectionCoordinator(this.sessionMutator);
         this.roundFlowCoordinator = new SessionRoundFlowCoordinator(this.sessionMutator);
+        this.actionDeadlineCoordinator = new SessionActionDeadlineCoordinator(this);
+        this.publicActionCoordinator = new SessionPublicActionCoordinator(this);
     }
 
     public TableRuntimeServices plugin() {
@@ -242,6 +265,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     public boolean addPlayer(Player player, SeatWind wind) {
         boolean added = this.participants.addPlayer(player.getUniqueId(), wind);
         if (added) {
+            this.unattendedPlayers.remove(player.getUniqueId());
             this.assignOwnerIfAbsent(player.getUniqueId());
         }
         return added;
@@ -252,9 +276,14 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     public boolean removeSpectator(UUID playerId) {
+        this.regionDisplayCoordinator.discardViewerClientOverlay(playerId);
         this.viewerPresentation.hideHud(playerId);
         this.viewerActionMenuCoordinator.clear(playerId);
-        return this.participants.removeSpectator(playerId);
+        boolean removed = this.participants.removeSpectator(playerId);
+        if (removed) {
+            DisplayInteractionRayRegistry.clearViewer(playerId, this.id);
+        }
+        return removed;
     }
 
     public boolean addBot() {
@@ -282,6 +311,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         if (!this.participants.replaceBotWithPlayer(playerId, wind)) {
             return false;
         }
+        this.unattendedPlayers.remove(playerId);
         this.assignOwnerIfAbsent(playerId);
         this.playerFeedbackCoordinator.clearPlayerState(botId);
         this.handSelectionCoordinator.clearPlayer(botId);
@@ -311,6 +341,10 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         this.playerFeedbackCoordinator.clearPlayerState(playerId);
         this.handSelectionCoordinator.clearPlayer(playerId);
         boolean removed = this.participants.removePlayer(playerId);
+        this.unattendedPlayers.remove(playerId);
+        if (removed) {
+            DisplayInteractionRayRegistry.clearViewer(playerId, this.id);
+        }
         if (removed && Objects.equals(this.ownerId, playerId)) {
             this.reassignOwnerFromSeats();
         }
@@ -375,8 +409,34 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         if (playerId == null) {
             return null;
         }
+        // Fast path: when no round is active (or the round is finished), the
+        // participants' seatByPlayer map is the single source of truth and we
+        // can do an O(1) HashMap.get. This is the common case for lobby
+        // renders, viewer overlays, and command tab-completion.
+        //
+        // When a round IS active, the engine's seats vector is the source of
+        // truth (it is snapshotted at round start and never mutated mid-round).
+        // In production, participants.seatByPlayer is kept in sync with the
+        // engine seats at round boundaries (addPlayer → startRound → engine
+        // snapshot), so the fast path would return the same answer. We still
+        // fall through to the O(4) reverse lookup via playerAt(wind) for
+        // active rounds to preserve the exact pre-T4 semantics in any edge
+        // case where the two views diverge (e.g. a test that mocks an
+        // inconsistent engine). Performance-wise, the active-round path runs
+        // at most 4 playerAt calls and only on user interaction (not on the
+        // render hot path).
+        //
+        // Cross-thread contract: callers on the table's region thread see
+        // consistent state. Cross-thread callers (player entity thread in
+        // TableEventCoordinator) read best-effort — HashMap.get is not
+        // synchronized but does not throw, and the worst case is a stale
+        // value the caller treats as "not seated". See T1/T5 comments.
+        TableRoundController controller = this.roundController;
+        if (controller == null || !controller.started() || controller.gameFinished()) {
+            return this.participants.seatOf(playerId);
+        }
         for (SeatWind wind : SeatWind.values()) {
-            if (Objects.equals(this.playerAt(wind), playerId)) {
+            if (java.util.Objects.equals(this.playerAt(wind), playerId)) {
                 return wind;
             }
         }
@@ -393,6 +453,23 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
 
     public boolean isQueuedToLeave(UUID playerId) {
         return this.participants.isQueuedToLeave(playerId);
+    }
+
+    /** Marks a retained human seat for safe tick-driven actions while its player is absent. */
+    public void setPlayerUnattended(UUID playerId, boolean unattended) {
+        if (playerId == null || !this.contains(playerId) || this.isBot(playerId)) {
+            return;
+        }
+        boolean changed = unattended
+            ? this.unattendedPlayers.add(playerId)
+            : this.unattendedPlayers.remove(playerId);
+        if (changed) {
+            this.viewerPresentation.markDirty();
+        }
+    }
+
+    public boolean isPlayerUnattended(UUID playerId) {
+        return playerId != null && this.unattendedPlayers.contains(playerId);
     }
 
     public ReadyResult toggleReady(UUID playerId) {
@@ -423,27 +500,59 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     public boolean discard(UUID playerId, int tileIndex) {
-        return this.roundActionCoordinator.discard(playerId, tileIndex);
+        boolean result = this.roundActionCoordinator.discard(playerId, tileIndex);
+        if (result) {
+            this.actionDeadlineCoordinator.recordDiscard(playerId);
+        }
+        return result;
     }
 
     public boolean declareRiichi(UUID playerId, int tileIndex) {
-        return this.roundActionCoordinator.declareRiichi(playerId, tileIndex);
+        boolean result = this.roundActionCoordinator.declareRiichi(playerId, tileIndex);
+        if (result) {
+            this.actionDeadlineCoordinator.recordDiscard(playerId);
+        }
+        return result;
     }
 
     public boolean declareTsumo(UUID playerId) {
-        return this.roundActionCoordinator.declareTsumo(playerId);
+        boolean result = this.roundActionCoordinator.declareTsumo(playerId);
+        if (result) {
+            this.actionDeadlineCoordinator.recordAction(playerId);
+        }
+        return result;
     }
 
     public boolean declareKyuushuKyuuhai(UUID playerId) {
-        return this.roundActionCoordinator.declareKyuushuKyuuhai(playerId);
+        boolean result = this.roundActionCoordinator.declareKyuushuKyuuhai(playerId);
+        if (result) {
+            this.actionDeadlineCoordinator.recordAction(playerId);
+        }
+        return result;
     }
 
     public boolean react(UUID playerId, ReactionResponse response) {
-        return this.roundActionCoordinator.react(playerId, response);
+        boolean result = this.roundActionCoordinator.react(playerId, response);
+        if (result) {
+            this.actionDeadlineCoordinator.recordAction(playerId);
+        }
+        return result;
     }
 
     public boolean declareKan(UUID playerId, String tileName) {
-        return this.roundActionCoordinator.declareKan(playerId, tileName);
+        boolean result = this.roundActionCoordinator.declareKan(playerId, tileName);
+        if (result) {
+            this.actionDeadlineCoordinator.recordAction(playerId);
+        }
+        return result;
+    }
+
+    public boolean declareFlower(UUID playerId, int tileIndex) {
+        boolean result = this.roundActionCoordinator.declareFlower(playerId, tileIndex);
+        if (result) {
+            this.actionDeadlineCoordinator.recordAction(playerId);
+        }
+        return result;
     }
 
     public void render() {
@@ -503,6 +612,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     public void clearRoundTrackingState() {
+        this.actionDeadlineCoordinator.clear();
         this.roundStartInProgress = false;
         this.diceAnimationCoordinator.clear();
         this.clearLastPublicDiscardInternal();
@@ -533,6 +643,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     public void clearSeatAssignmentsForLifecycle() {
+        this.unattendedPlayers.clear();
         this.participants.clearSeats();
         if (this.ownerId != null && this.isBot(this.ownerId)) {
             this.ownerId = null;
@@ -622,9 +733,13 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
             return 0;
         }
         if (this.roundController != null) {
-            int roundPoints = this.roundController.points(playerId);
-            if (roundPoints > 0) {
-                return roundPoints;
+            for (SeatWind wind : SeatWind.values()) {
+                if (Objects.equals(this.roundController.playerAt(wind), playerId)) {
+                    // Zero and negative scores are legal in the Chinese
+                    // variants, so the value itself cannot be used as a
+                    // sentinel for "player not present in this controller".
+                    return this.roundController.points(playerId);
+                }
             }
         }
         return this.contains(playerId) ? this.configuredRule.getStartingPoints() : 0;
@@ -648,7 +763,10 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
 
     public SeatWind openDoorSeat() {
         return this.fromRoundController(
-            controller -> SeatWind.fromIndex(Math.floorMod(controller.dicePoints() - 1 + controller.roundIndex(), SeatWind.values().length)),
+            controller -> SeatWind.fromIndex(Math.floorMod(
+                controller.dicePoints() - 1 + controller.dealerSeat().index(),
+                SeatWind.values().length
+            )),
             SeatWind.EAST
         );
     }
@@ -782,13 +900,21 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     public List<ScoringStick> cornerSticks(SeatWind wind) {
-        List<ScoringStick> sticks = new ArrayList<>();
-        if (this.dealerSeat() == wind) {
-            for (int i = 0; i < this.honbaCount(); i++) {
-                sticks.add(ScoringStick.P100);
-            }
+        // Honba sticks live on the dealer's corner. For non-dealer seats the
+        // result is always the empty list; for the dealer it is N copies of
+        // ScoringStick.P100 where N = honbaCount. Both branches return an
+        // immutable List (List.of() / Collections.nCopies) so callers must
+        // never mutate the result. This avoids the previous per-call pattern
+        // of new ArrayList() + N add() + List.copyOf(), which ran 4x per
+        // render pass via stickLayoutCount + captureSeatSnapshot.
+        if (this.dealerSeat() != wind) {
+            return List.of();
         }
-        return List.copyOf(sticks);
+        int honba = this.honbaCount();
+        if (honba <= 0) {
+            return List.of();
+        }
+        return java.util.Collections.nCopies(honba, ScoringStick.P100);
     }
 
     public int stickLayoutCount(SeatWind wind) {
@@ -899,6 +1025,10 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         return this.roundController != null && this.roundController.hasPendingReaction();
     }
 
+    public boolean isReactionPending(UUID playerId) {
+        return playerId != null && this.roundController != null && this.roundController.isReactionPending(playerId);
+    }
+
     public String pendingReactionFingerprint() {
         return this.fromRoundController(TableRoundController::pendingReactionFingerprint, "");
     }
@@ -931,6 +1061,10 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         return this.fromRoundController(playerId, TableRoundController::canDeclareTsumo);
     }
 
+    public boolean canDeclareFlower(UUID playerId) {
+        return this.fromRoundController(playerId, TableRoundController::canDeclareFlower);
+    }
+
     public boolean canChooseSichuanMissingSuit(UUID playerId) { return this.fromGbController(playerId, GbTableRoundController::canChooseSichuanMissingSuit, false); }
 
     public boolean isSichuanExchangePhase(UUID playerId) { return this.fromGbController(playerId, GbTableRoundController::isSichuanExchangePhase, false); }
@@ -938,6 +1072,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     public boolean chooseSichuanMissingSuit(UUID playerId, String suitToken) {
         boolean result = this.fromGbController(playerId, (controller, actorId) -> controller.chooseSichuanMissingSuit(actorId, suitToken), false);
         if (!result) { return false; }
+        this.actionDeadlineCoordinator.recordAction(playerId);
         this.clearSelectedHandTilesInternal();
         this.render();
         return true;
@@ -946,6 +1081,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     public boolean submitSichuanExchangeSelection(UUID playerId, List<Integer> tileIndices) {
         boolean result = this.fromGbController(playerId, (controller, actorId) -> controller.submitSichuanExchangeSelection(actorId, tileIndices), false);
         if (!result) { return false; }
+        this.actionDeadlineCoordinator.recordAction(playerId);
         this.clearSelectedHandTilesInternal();
         this.render();
         return true;
@@ -953,6 +1089,10 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
 
     public List<Integer> suggestedRiichiIndices(UUID playerId) {
         return this.fromRoundController(playerId, TableRoundController::suggestedRiichiIndices, List.of());
+    }
+
+    public List<Integer> suggestedFlowerIndices(UUID playerId) {
+        return this.fromRoundController(playerId, TableRoundController::suggestedFlowerIndices, List.of());
     }
 
     public List<String> suggestedKanTiles(UUID playerId) {
@@ -1040,7 +1180,12 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     public void tick() {
+        this.actionDeadlineCoordinator.tick();
         this.roundFlowCoordinator.tick();
+    }
+
+    public long actionDeadlineSecondsRemaining(UUID playerId) {
+        return this.actionDeadlineCoordinator.secondsRemaining(playerId);
     }
 
     private MahjongRule currentRule() {
@@ -1107,7 +1252,12 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     public boolean clickHandTile(UUID playerId, int tileIndex, boolean cancelSelection) {
-        return this.handSelectionCoordinator.clickHandTile(playerId, tileIndex, cancelSelection);
+        boolean wasSichuanExchangePending = this.isSichuanExchangePhase(playerId);
+        boolean result = this.handSelectionCoordinator.clickHandTile(playerId, tileIndex, cancelSelection);
+        if (result && wasSichuanExchangePending && !this.isSichuanExchangePhase(playerId)) {
+            this.actionDeadlineCoordinator.recordAction(playerId);
+        }
+        return result;
     }
 
     public int selectedHandTileIndex(UUID playerId) { List<Integer> selected = this.selectedHandTileIndices(playerId); return selected.isEmpty() ? -1 : selected.get(0); }
@@ -1160,30 +1310,19 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     public void rememberPublicActionInternal(UUID playerId, String actionKey) {
-        this.rememberPublicActionInternal(playerId, actionKey, List.of());
+        this.publicActionCoordinator.remember(playerId, actionKey);
     }
 
     public void rememberPublicActionInternal(UUID playerId, String actionKey, List<top.ellan.mahjong.model.MahjongTile> tiles) {
-        if (playerId == null || actionKey == null || actionKey.isBlank()) {
-            return;
-        }
-        List<top.ellan.mahjong.model.MahjongTile> safeTiles = tiles == null ? List.of() : List.copyOf(tiles);
-        this.lastPublicActionAnnouncement = new PublicActionAnnouncement(playerId, actionKey, safeTiles);
-        long sequence = ++this.publicActionAnnouncementSequence;
-        this.cancelPublicActionClearTask();
-        this.publicActionClearTask = this.plugin.scheduler().runRegionDelayed(this.center(), () -> {
-            this.publicActionClearTask = null;
-            if (this.publicActionAnnouncementSequence != sequence) {
-                return;
-            }
-            this.lastPublicActionAnnouncement = null;
-            this.render();
-        }, PUBLIC_ACTION_DISPLAY_TICKS);
+        this.publicActionCoordinator.remember(playerId, actionKey, tiles);
+    }
+
+    public void rememberPublicActionsInternal(List<UUID> playerIds, String actionKey) {
+        this.publicActionCoordinator.remember(playerIds, actionKey);
     }
 
     public void clearLastPublicActionInternal() {
-        this.lastPublicActionAnnouncement = null;
-        this.cancelPublicActionClearTask();
+        this.publicActionCoordinator.clear();
     }
 
     public void clearSelectedHandTilesInternal() {
@@ -1218,6 +1357,14 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
 
     public void playReactionSoundInternal(ReactionResponse response) {
         this.stateSoundCoordinator.playReactionSound(response);
+    }
+
+    public void playDiscardSoundInternal() {
+        this.stateSoundCoordinator.playDiscardSound();
+    }
+
+    public void playRiichiSoundInternal() {
+        this.stateSoundCoordinator.playRiichiSound();
     }
 
     public void persistRoomMetadataIfNeededInternal() {
@@ -1255,6 +1402,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     public void setRoundControllerInternal(TableRoundController roundController) {
+        this.actionDeadlineCoordinator.clear();
         this.roundController = roundController;
         this.riichiRoundEngine = resolveRiichiEngine(roundController);
     }
@@ -1286,7 +1434,9 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
             return;
         }
         this.roundController.startRound();
+        this.playerFeedbackCoordinator.onRoundStarted();
         this.roundStartInProgress = false;
+        this.actionDeadlineCoordinator.beginRound();
         this.render();
         if (this.plugin.tableManager() != null && !this.plugin.settings().tableFreeMoveDuringRound()) {
             this.plugin.tableManager().startSeatWatchdog(this, 60L);
@@ -1302,7 +1452,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     public void flushViewerPresentationIfNeededInternal() {
-        this.viewerPresentation.flushNow();
+        this.viewerPresentation.flushIfNeeded();
     }
 
     public void flushViewerActionsNow(UUID viewerId) {
@@ -1341,7 +1491,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
             rule.getSpectate(),
             rule.getRedFive(),
             rule.getOpenTanyao(),
-            rule.getLocalYaku(),
+            false,
             rule.getRonMode(),
             rule.getRiichiProfile()
         );
@@ -1377,7 +1527,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
                     this.displayName(playerId),
                     0,
                     this.points(playerId),
-                    (this.points(playerId) - this.currentRule().getStartingPoints()) / 1000.0D,
+                    0.0D,
                     this.isBot(playerId)
                 ));
             }
@@ -1411,6 +1561,10 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         return this.viewerSnapshotFactory.captureViewerOverlaySnapshot(viewer);
     }
 
+    public TableViewerHudPresentationSnapshot captureViewerHudPresentationSnapshot(Locale locale, UUID viewerId) {
+        return this.viewerSnapshotFactory.captureViewerHudPresentationSnapshot(locale, viewerId);
+    }
+
     public TableViewerHudSnapshot captureViewerHudSnapshot(Locale locale, UUID viewerId) {
         return this.viewerSnapshotFactory.captureViewerHudSnapshot(locale, viewerId);
     }
@@ -1431,23 +1585,16 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         this.regionDisplayCoordinator.removeManagedRegionDisplays(regionKey);
     }
 
+    TableRegionDisplayCoordinator regionDisplaysInternal() {
+        return this.regionDisplayCoordinator;
+    }
+
     public List<UUID> seatIds() {
         return this.participants.seatIds();
     }
 
     public String viewerMembershipSignatureFor(UUID excludedPlayerId) {
         return this.viewerIndex.viewerMembershipSignatureFor(excludedPlayerId);
-    }
-
-    public String riichiFingerprintValue() {
-        DelimitedFingerprintBuilder builder = fingerprintBuilder(64);
-        for (UUID playerId : this.participants.seatIds()) {
-            if (playerId == null) {
-                continue;
-            }
-            builder.field(playerId).field(this.isRiichi(playerId)).entrySeparator();
-        }
-        return builder.toString();
     }
 
     public void scheduleNextRoundCountdownInternal() {
@@ -1549,24 +1696,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     public String publicLastActionSummary(Locale locale) {
-        PublicActionAnnouncement announcement = this.lastPublicActionAnnouncement;
-        if (announcement == null) {
-            return "";
-        }
-        String actor = this.displayName(announcement.playerId(), locale);
-        if (actor == null || actor.isBlank()) {
-            actor = this.plugin.messages().plain(locale, "common.unknown");
-        }
-        String action = this.actionLabelWithTiles(locale, announcement);
-        if (action.isBlank()) {
-            return "";
-        }
-        return this.plugin.messages().plain(
-            locale,
-            "table.last_action",
-            this.plugin.messages().tag("player", actor),
-            this.plugin.messages().tag("action", action)
-        );
+        return this.publicActionCoordinator.summary(locale);
     }
 
     public top.ellan.mahjong.model.MahjongTile lastPublicDiscardTile() {
@@ -1595,28 +1725,6 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         return this.plugin.messages().contains(locale, key) ? this.plugin.messages().plain(locale, key) : tileName.toLowerCase(Locale.ROOT);
     }
 
-    private String actionLabelWithTiles(Locale locale, PublicActionAnnouncement announcement) {
-        String action = this.plugin.messages().plain(locale, announcement.actionKey());
-        if (announcement.tiles().isEmpty()) {
-            return action;
-        }
-        String tileLabels = announcement.tiles().stream()
-            .map(tile -> this.tileLabelForDisplay(locale, tile.name()))
-            .collect(java.util.stream.Collectors.joining(" "));
-        if (tileLabels.isBlank()) {
-            return action;
-        }
-        return action + " " + tileLabels;
-    }
-
-    private void cancelPublicActionClearTask() {
-        if (this.publicActionClearTask == null) {
-            return;
-        }
-        this.publicActionClearTask.cancel();
-        this.publicActionClearTask = null;
-    }
-
     private static Location normalizedTableCenter(Location source) {
         Location normalized = source.clone();
         normalized.setYaw(0.0F);
@@ -1635,10 +1743,4 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         BLOCKED
     }
 
-    private record PublicActionAnnouncement(
-        UUID playerId,
-        String actionKey,
-        List<top.ellan.mahjong.model.MahjongTile> tiles
-    ) {
-    }
 }

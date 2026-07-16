@@ -3,9 +3,11 @@ name: Build
 on:
   push:
     branches:
-      - main
       - dev
   pull_request:
+    branches:
+      - main
+      - dev
   workflow_dispatch:
 
 jobs:
@@ -13,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v6
 
@@ -22,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up JDK 25
         uses: actions/setup-java@v5
@@ -46,7 +48,7 @@ jobs:
         # Gate the build on tests so a native-platform build never ships a jar
         # with broken Java/Kotlin. Native tasks are skipped here; they are
         # exercised in the build-platform matrix below.
-        run: ./gradlew test "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=17" -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
+        run: ./gradlew test "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=21" -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
 
   build-platform:
     needs: test-gate
@@ -74,10 +76,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Cache native build (CMake)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             build/native/gbmahjong
@@ -126,7 +128,7 @@ jobs:
         # Pin to the lowest supported Paper baseline so the released jar stays runtime-compatible
         # with Paper/Folia 1.20.1 -> 26.2. PaperCompatibility handles newer APIs at runtime.
         # Quote each -P argument because PowerShell on Windows runners mis-parses `1.20.1-R0.1-SNAPSHOT`.
-        run: ${{ matrix.gradle }} build -x test "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaTarget=17" "-PmahjongJavaToolchain=25"
+        run: ${{ matrix.gradle }} build "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaTarget=21" "-PmahjongJavaToolchain=25" "-PmahjongRequireNative=true"
 
       - name: Verify artifact compatibility (Linux only)
         if: runner.os == 'Linux'
@@ -147,7 +149,7 @@ jobs:
           python3 - "$JAR" <<'PY'
           import sys, zipfile, struct
           jar = sys.argv[1]
-          allowed_max = 61  # Java 17
+          allowed_max = 65  # Java 21
           bad = []
           with zipfile.ZipFile(jar) as z:
               for n in z.namelist():
@@ -161,11 +163,11 @@ jobs:
                   if major > allowed_max:
                       bad.append((n, major))
           if bad:
-              print(f'::error::Found {len(bad)} class files compiled above Java 17:')
+              print(f'::error::Found {len(bad)} class files compiled above Java 21:')
               for n, m in bad[:20]:
                   print(f'  {n}: major={m} (Java {m-44})')
               sys.exit(1)
-          print('All classes compiled to Java 17 or lower.')
+          print('All classes compiled to Java 21 or lower.')
           PY
 
       - name: Upload platform jar
@@ -231,6 +233,18 @@ jobs:
           (cd extract/windows && jar xf "$GITHUB_WORKSPACE/$WINDOWS_JAR" native)
           (cd extract/macos && jar xf "$GITHUB_WORKSPACE/$MACOS_JAR" native)
           jar uf "$UNIVERSAL_JAR" -C extract/windows native -C extract/macos native
+
+          jar tf "$UNIVERSAL_JAR" > universal-entries.txt
+          for required in \
+            native/linux-x86_64/mahjongpaper_gb.so \
+            native/windows-x86_64/mahjongpaper_gb.dll \
+            native/windows-x86_64/libwinpthread-1.dll \
+            native/macos-x86_64/mahjongpaper_gb.dylib; do
+            if ! grep -Fxq "$required" universal-entries.txt; then
+              echo "::error::Universal jar is missing $required"
+              exit 1
+            fi
+          done
 
       - name: Upload universal jar
         uses: actions/upload-artifact@v7

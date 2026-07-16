@@ -1,7 +1,9 @@
 package top.ellan.mahjong.table.presentation;
 
 import top.ellan.mahjong.table.core.TableSessionMutator;
+import top.ellan.mahjong.render.snapshot.TableViewerActionBarSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerHudSnapshot;
+import top.ellan.mahjong.render.snapshot.TableViewerHudPresentationSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerOverlaySnapshot;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -16,15 +18,18 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 public final class TableViewerPresentationCoordinator {
-    private static final long OVERLAY_REFRESH_INTERVAL_TICKS = 20L;
+    private static final long OVERLAY_REFRESH_INTERVAL_TICKS = 100L;
     private static final long HUD_REFRESH_INTERVAL_TICKS = 20L;
 
     private final TableSessionMutator session;
     private final Map<UUID, BossBar> viewerHudBars = new HashMap<>();
     private final Map<UUID, String> viewerHudState = new HashMap<>();
+    private final Map<UUID, Component> viewerActionBarMessages = new HashMap<>();
+    private final Set<UUID> viewerActionBarIds = new LinkedHashSet<>();
     private final Set<UUID> viewerActionDirtyIds = new LinkedHashSet<>();
     private boolean viewerOverlayDirty = true;
     private boolean viewerHudDirty = true;
+    private boolean viewerOverlayRegionsPresent;
     private long nextOverlayRefreshTick;
     private long nextHudRefreshTick;
 
@@ -74,7 +79,9 @@ public final class TableViewerPresentationCoordinator {
     }
 
     public boolean hasPresentationState() {
-        return !this.session.viewers().isEmpty() || this.hasViewerOverlayRegions() || !this.viewerHudBars.isEmpty();
+        return !this.session.viewers().isEmpty()
+            || this.viewerOverlayRegionsPresent
+            || !this.viewerHudBars.isEmpty();
     }
 
     public void resetForLifecycleChange() {
@@ -85,15 +92,24 @@ public final class TableViewerPresentationCoordinator {
         this.markDirty();
         this.nextOverlayRefreshTick = 0L;
         this.nextHudRefreshTick = 0L;
-        this.clearHud();
+        this.clearHudImmediately();
     }
 
     public void hideHud(UUID viewerId) {
         BossBar bar = this.viewerHudBars.remove(viewerId);
         this.viewerHudState.remove(viewerId);
+        this.viewerActionBarMessages.remove(viewerId);
+        boolean clearActionBar = this.viewerActionBarIds.remove(viewerId);
         Player player = this.session.onlinePlayer(viewerId);
-        if (bar != null && player != null) {
-            this.session.plugin().scheduler().runEntity(player, () -> player.hideBossBar(bar));
+        if ((bar != null || clearActionBar) && player != null) {
+            this.session.plugin().scheduler().runEntity(player, () -> {
+                if (bar != null) {
+                    player.hideBossBar(bar);
+                }
+                if (clearActionBar) {
+                    player.sendActionBar(Component.empty());
+                }
+            });
         }
     }
 
@@ -101,6 +117,24 @@ public final class TableViewerPresentationCoordinator {
         for (UUID viewerId : List.copyOf(this.viewerHudBars.keySet())) {
             this.hideHud(viewerId);
         }
+    }
+
+    private void clearHudImmediately() {
+        for (UUID viewerId : List.copyOf(this.viewerHudBars.keySet())) {
+            BossBar bar = this.viewerHudBars.remove(viewerId);
+            this.viewerHudState.remove(viewerId);
+            this.viewerActionBarMessages.remove(viewerId);
+            boolean clearActionBar = this.viewerActionBarIds.remove(viewerId);
+            Player player = this.session.onlinePlayer(viewerId);
+            if (bar != null && player != null) {
+                player.hideBossBar(bar);
+            }
+            if (clearActionBar && player != null) {
+                player.sendActionBar(Component.empty());
+            }
+        }
+        this.viewerActionBarMessages.clear();
+        this.viewerActionBarIds.clear();
     }
 
     private void flushOverlay(long nowTick) {
@@ -136,6 +170,7 @@ public final class TableViewerPresentationCoordinator {
                 this.session.removeManagedRegionDisplays(regionKey);
             }
         }
+        this.viewerOverlayRegionsPresent = !activeKeys.isEmpty();
     }
 
     private void flushDirtyViewerActions() {
@@ -161,7 +196,9 @@ public final class TableViewerPresentationCoordinator {
         UUID viewerId = viewer.getUniqueId();
         onlineViewerIds.add(viewerId);
         Locale locale = this.session.plugin().messages().resolveLocale(viewer);
-        TableViewerHudSnapshot snapshot = this.session.captureViewerHudSnapshot(locale, viewerId);
+        TableViewerHudPresentationSnapshot presentation = this.session.captureViewerHudPresentationSnapshot(locale, viewerId);
+        this.syncViewerActionBar(viewer, presentation.actionBar());
+        TableViewerHudSnapshot snapshot = presentation.hud();
         BossBar bar = this.viewerHudBars.get(viewerId);
         if (bar == null) {
             bar = this.createHudBar(viewerId, viewer);
@@ -173,6 +210,23 @@ public final class TableViewerPresentationCoordinator {
         bar.progress(snapshot.progress());
         bar.color(snapshot.color());
         this.viewerHudState.put(viewerId, snapshot.stateSignature());
+    }
+
+    private void syncViewerActionBar(Player viewer, TableViewerActionBarSnapshot snapshot) {
+        UUID viewerId = viewer.getUniqueId();
+        if (!snapshot.visible()) {
+            this.viewerActionBarMessages.remove(viewerId);
+            if (this.viewerActionBarIds.remove(viewerId)) {
+                this.session.plugin().scheduler().runEntity(viewer, () -> viewer.sendActionBar(Component.empty()));
+            }
+            return;
+        }
+        Component previousMessage = this.viewerActionBarMessages.put(viewerId, snapshot.message());
+        boolean alreadyVisible = !this.viewerActionBarIds.add(viewerId);
+        if (alreadyVisible && snapshot.message().equals(previousMessage)) {
+            return;
+        }
+        this.session.plugin().scheduler().runEntity(viewer, () -> viewer.sendActionBar(snapshot.message()));
     }
 
     private BossBar createHudBar(UUID viewerId, Player viewer) {
@@ -191,20 +245,12 @@ public final class TableViewerPresentationCoordinator {
     }
 
     private boolean shouldRefreshOverlay(long nowTick) {
-        return this.viewerOverlayDirty || (this.hasViewerOverlayRegions() && nowTick >= this.nextOverlayRefreshTick);
+        return this.viewerOverlayDirty
+            || (this.viewerOverlayRegionsPresent && nowTick >= this.nextOverlayRefreshTick);
     }
 
     private boolean shouldRefreshHud(long nowTick) {
         return this.viewerHudDirty || (!this.viewerHudBars.isEmpty() && nowTick >= this.nextHudRefreshTick);
-    }
-
-    private boolean hasViewerOverlayRegions() {
-        for (String regionKey : this.session.viewerOverlayRegionKeys()) {
-            if (this.isViewerPresentationRegion(regionKey)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private void clearViewerOverlayRegions() {
@@ -213,6 +259,7 @@ public final class TableViewerPresentationCoordinator {
                 this.session.removeManagedRegionDisplays(regionKey);
             }
         }
+        this.viewerOverlayRegionsPresent = false;
     }
 
     private boolean isViewerPresentationRegion(String regionKey) {

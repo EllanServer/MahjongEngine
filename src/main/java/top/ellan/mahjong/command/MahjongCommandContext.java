@@ -11,12 +11,19 @@ import java.util.Set;
 import java.util.function.Supplier;
 import kotlin.Pair;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextComponent;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import top.ellan.mahjong.debug.DebugService;
 import top.ellan.mahjong.db.DatabaseService;
 import top.ellan.mahjong.db.MahjongSoulRankProfile;
 import top.ellan.mahjong.db.MahjongSoulRankRules;
+import top.ellan.mahjong.rank.DatabasePlayerRankStorage;
+import top.ellan.mahjong.rank.PlayerRankStorage;
+import top.ellan.mahjong.rank.PlayerRankStorageException;
 import top.ellan.mahjong.gameroom.GameRoomManager;
 import top.ellan.mahjong.gameroom.GameRoomSelectionService;
 import top.ellan.mahjong.i18n.MessageService;
@@ -37,7 +44,9 @@ import top.ellan.mahjong.runtime.ServerScheduler;
 
 public final class MahjongCommandContext {
     public static final String ADMIN_PERMISSION = "mahjongpaper.admin";
+    private static final int HELP_PAGE_SIZE = 10;
     static final java.util.List<String> HELP_KEY_ORDER = java.util.List.of(
+        "command.help.help",
         "command.help.create",
         "command.help.botmatch",
         "command.help.mode",
@@ -92,6 +101,7 @@ public final class MahjongCommandContext {
     private final AsyncService async;
     private final ServerScheduler scheduler;
     private final Supplier<DatabaseService> database;
+    private final Supplier<PlayerRankStorage> playerRankStorage;
     private final Supplier<String> reloadConfiguration;
     private final Supplier<GameRoomManager> gameRoomManager;
     private final GameRoomSelectionService selectionService;
@@ -107,15 +117,47 @@ public final class MahjongCommandContext {
         Supplier<GameRoomManager> gameRoomManager,
         GameRoomSelectionService selectionService
     ) {
+        this(
+            messages,
+            tableManager,
+            debug,
+            async,
+            scheduler,
+            database,
+            fallbackRankStorage(database),
+            reloadConfiguration,
+            gameRoomManager,
+            selectionService
+        );
+    }
+
+    public MahjongCommandContext(
+        MessageService messages,
+        MahjongTableManager tableManager,
+        DebugService debug,
+        AsyncService async,
+        ServerScheduler scheduler,
+        Supplier<DatabaseService> database,
+        Supplier<PlayerRankStorage> playerRankStorage,
+        Supplier<String> reloadConfiguration,
+        Supplier<GameRoomManager> gameRoomManager,
+        GameRoomSelectionService selectionService
+    ) {
         this.messages = Objects.requireNonNull(messages, "messages");
         this.tableManager = Objects.requireNonNull(tableManager, "tableManager");
         this.debug = Objects.requireNonNull(debug, "debug");
         this.async = Objects.requireNonNull(async, "async");
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
         this.database = Objects.requireNonNull(database, "database");
+        this.playerRankStorage = Objects.requireNonNull(playerRankStorage, "playerRankStorage");
         this.reloadConfiguration = Objects.requireNonNull(reloadConfiguration, "reloadConfiguration");
         this.gameRoomManager = gameRoomManager;
         this.selectionService = selectionService;
+    }
+
+    private static Supplier<PlayerRankStorage> fallbackRankStorage(Supplier<DatabaseService> database) {
+        PlayerRankStorage storage = new DatabasePlayerRankStorage(database);
+        return () -> storage;
     }
 
     public MessageService messages() {
@@ -147,14 +189,40 @@ public final class MahjongCommandContext {
     }
 
     public void sendHelp(Player player) {
+        this.sendHelp(player, 1);
+    }
+
+    public void sendHelp(Player player, int requestedPage) {
         Locale locale = this.messages.resolveLocale(player);
-        this.messages.send(player, "command.usage");
-        for (String key : HELP_KEYS) {
-            if (ADMIN_HELP_KEYS.contains(key) && !player.hasPermission(ADMIN_PERMISSION)) {
-                continue;
-            }
-            player.sendMessage(this.messages.render(locale, key));
+        List<String> visibleKeys = this.visibleHelpKeys(player);
+        int pageCount = Math.max(1, (int) Math.ceil((double) visibleKeys.size() / HELP_PAGE_SIZE));
+        int page = Math.max(1, Math.min(requestedPage, pageCount));
+        int start = (page - 1) * HELP_PAGE_SIZE;
+        int end = Math.min(start + HELP_PAGE_SIZE, visibleKeys.size());
+
+        player.sendMessage(this.messages.render(locale, "command.help.header"));
+        player.sendMessage(this.messages.render(locale, "command.help.subtitle"));
+        player.sendMessage(this.messages.render(
+            locale,
+            "command.help.page_status",
+            this.messages.number(locale, "page", page),
+            this.messages.number(locale, "pages", pageCount),
+            this.messages.number(locale, "count", visibleKeys.size())
+        ));
+        for (int index = start; index < end; index++) {
+            player.sendMessage(Component.text("  - ", NamedTextColor.DARK_AQUA).append(this.messages.render(locale, visibleKeys.get(index))));
         }
+        player.sendMessage(this.helpNavigation(locale, page, pageCount));
+        player.sendMessage(this.messages.render(locale, "command.help.footer"));
+    }
+
+    public List<String> suggestedHelpPages(Player player, String rawPrefix) {
+        int pageCount = this.helpPageCount(player);
+        List<String> pages = new ArrayList<>(pageCount);
+        for (int page = 1; page <= pageCount; page++) {
+            pages.add(String.valueOf(page));
+        }
+        return this.matchPrefix(rawPrefix, pages);
     }
 
     public void sendReaction(Player player, ReactionType type, Pair<MahjongTile, MahjongTile> pair, String actionKey) {
@@ -336,15 +404,15 @@ public final class MahjongCommandContext {
     }
 
     public void showRank(Player player) {
-        DatabaseService database = this.database();
-        if (database == null || !database.rankingEnabled()) {
+        PlayerRankStorage storage = this.playerRankStorage();
+        if (storage == null || !storage.rankingEnabled()) {
             this.messages.send(player, "command.rank_unavailable");
             return;
         }
         this.messages.send(player, "command.rank_loading");
         this.async.execute("load-rank-" + player.getUniqueId(), () -> {
             try {
-                Map<MahjongVariant, MahjongSoulRankProfile> profiles = database.loadRankProfiles(player.getUniqueId(), player.getName());
+                Map<MahjongVariant, MahjongSoulRankProfile> profiles = storage.loadProfiles(player.getUniqueId(), player.getName());
                 this.scheduler.runEntity(player, () -> {
                     if (!player.isOnline()) {
                         return;
@@ -371,10 +439,15 @@ public final class MahjongCommandContext {
                         );
                     }
                 });
-            } catch (java.sql.SQLException ex) {
+            } catch (PlayerRankStorageException ex) {
                 this.scheduler.runEntity(player, () -> {
                     if (player.isOnline()) {
-                        this.messages.send(player, "command.rank_failed");
+                        String key = switch (ex.reason()) {
+                            case SYNC_PENDING -> "command.rank_sync_pending";
+                            case CORRUPT_REMOTE_DATA -> "command.rank_sync_corrupt";
+                            default -> "command.rank_failed";
+                        };
+                        this.messages.send(player, key);
                     }
                 });
             }
@@ -437,6 +510,51 @@ public final class MahjongCommandContext {
             case CELESTIAL -> "rank.tier.celestial";
         };
         return this.messages.plain(locale, tierKey) + " " + profile.level();
+    }
+
+    private List<String> visibleHelpKeys(Player player) {
+        List<String> keys = new ArrayList<>();
+        for (String key : HELP_KEYS) {
+            if (ADMIN_HELP_KEYS.contains(key) && !player.hasPermission(ADMIN_PERMISSION)) {
+                continue;
+            }
+            keys.add(key);
+        }
+        return List.copyOf(keys);
+    }
+
+    private int helpPageCount(Player player) {
+        return Math.max(1, (int) Math.ceil((double) this.visibleHelpKeys(player).size() / HELP_PAGE_SIZE));
+    }
+
+    private Component helpNavigation(Locale locale, int page, int pageCount) {
+        TextComponent.Builder builder = Component.text();
+        builder.append(Component.text("  "));
+        builder.append(this.helpPageButton(locale, "command.help.previous", page - 1, page > 1));
+        builder.append(Component.text(" "));
+        builder.append(this.messages.render(
+            locale,
+            "command.help.page_compact",
+            this.messages.number(locale, "page", page),
+            this.messages.number(locale, "pages", pageCount)
+        ));
+        builder.append(Component.text(" "));
+        builder.append(this.helpPageButton(locale, "command.help.next", page + 1, page < pageCount));
+        return builder.build();
+    }
+
+    private Component helpPageButton(Locale locale, String labelKey, int targetPage, boolean enabled) {
+        String label = this.messages.plain(locale, labelKey);
+        Component button = Component.text("[", NamedTextColor.DARK_GRAY)
+            .append(Component.text(label, enabled ? NamedTextColor.YELLOW : NamedTextColor.DARK_GRAY))
+            .append(Component.text("]", NamedTextColor.DARK_GRAY));
+        if (!enabled) {
+            return button;
+        }
+        String command = "/mahjong help " + targetPage;
+        return button
+            .clickEvent(ClickEvent.runCommand(command))
+            .hoverEvent(HoverEvent.showText(Component.text(command, NamedTextColor.GRAY)));
     }
 
     public void showLeaderboard(Player player, MahjongVariant requestedMode) {
@@ -591,6 +709,10 @@ public final class MahjongCommandContext {
 
     private DatabaseService database() {
         return this.database.get();
+    }
+
+    private PlayerRankStorage playerRankStorage() {
+        return this.playerRankStorage.get();
     }
 
     public GameRoomManager gameRoomManager() {

@@ -4,17 +4,23 @@ import top.ellan.mahjong.model.MahjongTile;
 import top.ellan.mahjong.model.MahjongVariant;
 import top.ellan.mahjong.model.SeatWind;
 import top.ellan.mahjong.render.snapshot.TableRenderPrecomputeResult;
+import top.ellan.mahjong.render.snapshot.TableViewerHudPresentationSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerOverlaySnapshot;
 import top.ellan.mahjong.riichi.ReactionResponse;
 import top.ellan.mahjong.riichi.model.MahjongRule;
 import top.ellan.mahjong.riichi.model.OpeningDiceRoll;
 import top.ellan.mahjong.table.core.round.TableRoundController;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.bukkit.entity.Player;
 
 public interface TableSessionMutator extends TableSessionContext {
+    long actionDeadlineSecondsRemaining(UUID playerId);
+
+    TableViewerHudPresentationSnapshot captureViewerHudPresentationSnapshot(Locale locale, UUID viewerId);
+
     void render();
 
     boolean discard(UUID playerId, int tileIndex);
@@ -87,7 +93,13 @@ public interface TableSessionMutator extends TableSessionContext {
 
     void rememberPublicActionInternal(UUID playerId, String actionKey);
 
+    void rememberPublicActionsInternal(List<UUID> playerIds, String actionKey);
+
     void playReactionSoundInternal(ReactionResponse response);
+
+    void playDiscardSoundInternal();
+
+    void playRiichiSoundInternal();
 
     void persistRoomMetadataIfNeededInternal();
 

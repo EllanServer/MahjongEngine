@@ -51,7 +51,16 @@ tables:
   persistence:
     # {{tables.persistence}}
     enabled: true
-    file: tables.yml
+
+  overheadView:
+    # {{tables.overhead_enabled}}
+    enabled: true
+
+    # {{tables.overhead_height}}
+    height: 4.5
+
+    # {{tables.overhead_transition}}
+    transitionTicks: 16
 
 # {{gameroom.summary}}
 gameRooms:
@@ -83,6 +92,14 @@ ranking:
   # {{ranking.rooms}}
   eastRoom: SILVER
   southRoom: GOLD
+
+  playerStorage:
+    invSync:
+      # {{ranking.invsync}}
+      enabled: true
+
+      # {{ranking.invsync_fallback}}
+      fallbackToDatabase: true
 
 integrations:
   craftengine:

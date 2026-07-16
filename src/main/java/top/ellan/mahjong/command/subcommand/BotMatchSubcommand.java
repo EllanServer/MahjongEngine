@@ -19,9 +19,16 @@ public final class BotMatchSubcommand extends AbstractMahjongSubcommand {
     public BotMatchSubcommand(MahjongCommandContext context) { super(context); }
     public MahjongSubcommand create() { return this.subcommand("botmatch", true); }
     @Override protected void execute(CommandSender sender, Player player, String[] args) {
+        if (this.context.tableManager().sessionForViewer(player.getUniqueId()) != null) {
+            this.context.messages().send(player, "command.botmatch_failed_in_table");
+            return;
+        }
         String preset = args.length >= 2 ? args[1] : "MAJSOUL_HANCHAN";
         MahjongTableSession table = this.context.tableManager().createBotMatch(player, preset);
         if (table == null) {
+            // Placement validation may already have supplied a more specific reason.
+            // Keep the command-level rejection as the terminal fallback for callers
+            // that reject without reporting one.
             this.context.messages().send(player, "command.botmatch_failed_in_table");
             return;
         }

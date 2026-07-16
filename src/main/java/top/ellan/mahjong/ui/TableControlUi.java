@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.UUID;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -149,6 +150,10 @@ public final class TableControlUi {
                     messages.send(player, session.isStarted() ? "command.table_delete_locked" : "command.table_owner_required");
                     yield true;
                 }
+                if (!manager.canBreakTable(player, session)) {
+                    messages.send(player, "command.deletetable_protected");
+                    yield true;
+                }
                 if (!confirmed) {
                     messages.send(player, "command.table_confirm_danger");
                     yield true;
@@ -225,9 +230,11 @@ public final class TableControlUi {
     private static ItemStack namedItem(Material material, Component name, List<Component> loreLines) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
-        meta.displayName(name.colorIfAbsent(NamedTextColor.YELLOW));
+        meta.displayName(name.colorIfAbsent(NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
         if (!loreLines.isEmpty()) {
-            meta.lore(loreLines);
+            meta.lore(loreLines.stream()
+                .map(line -> line.colorIfAbsent(NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false))
+                .toList());
         }
         item.setItemMeta(meta);
         return item;

@@ -68,6 +68,10 @@ public interface TableRoundController {
         return false;
     }
 
+    default boolean declareFlower(UUID playerId, int tileIndex) {
+        return false;
+    }
+
     UUID playerAt(SeatWind wind);
 
     int points(UUID playerId);
@@ -122,6 +126,11 @@ public interface TableRoundController {
         return false;
     }
 
+    /** Returns whether this player still owes a response in the current reaction window. */
+    default boolean isReactionPending(UUID playerId) {
+        return this.hasPendingReaction() && this.availableReactions(playerId) != null;
+    }
+
     default String pendingReactionFingerprint() {
         return "";
     }
@@ -170,7 +179,15 @@ public interface TableRoundController {
         return false;
     }
 
+    default boolean canDeclareFlower(UUID playerId) {
+        return false;
+    }
+
     default List<Integer> suggestedRiichiIndices(UUID playerId) {
+        return List.of();
+    }
+
+    default List<Integer> suggestedFlowerIndices(UUID playerId) {
         return List.of();
     }
 

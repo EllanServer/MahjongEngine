@@ -1,20 +1,104 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
   workflow_dispatch:
     inputs:
       tag:
         description: "Existing tag to publish a release for (e.g. v0.9.1-beta.1)"
         required: true
+        type: string
+
+concurrency:
+  group: release-main
+  queue: max
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  prepare-release:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'dev' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    outputs:
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+      source_sha: ${{ steps.metadata.outputs.source_sha }}
+      tag: ${{ steps.metadata.outputs.tag }}
+      version: ${{ steps.metadata.outputs.version }}
+
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Resolve and validate release metadata
+        id: metadata
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          BUILD_VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' build.gradle.kts | head -n 1)"
+          if [[ ! "$BUILD_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::build.gradle.kts has an invalid release version: $BUILD_VERSION"
+            exit 1
+          fi
+          if [[ "$BUILD_VERSION" == *SNAPSHOT* ]]; then
+            echo "::error::Snapshot versions cannot be released: $BUILD_VERSION"
+            exit 1
+          fi
+
+          TAG="v$BUILD_VERSION"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ ! "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Invalid release tag: $REQUESTED_TAG"
+              exit 1
+            fi
+            if [[ "$REQUESTED_TAG" != "$TAG" ]]; then
+              echo "::error::Requested tag $REQUESTED_TAG does not match build.gradle.kts version $BUILD_VERSION"
+              exit 1
+            fi
+          fi
+
+          if [[ ! -f CHANGELOG.md ]] || ! grep -Eq "^## ${BUILD_VERSION//./\\.}([[:space:]]|$)" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no section for $BUILD_VERSION"
+            exit 1
+          fi
+
+          REMOTE_TAG_SHA="$(git ls-remote --tags origin "refs/tags/$TAG^{}" | awk 'NR == 1 { print $1 }')"
+          if [[ -z "$REMOTE_TAG_SHA" ]]; then
+            REMOTE_TAG_SHA="$(git ls-remote --tags origin "refs/tags/$TAG" | awk 'NR == 1 { print $1 }')"
+          fi
+
+          if [[ -n "$REMOTE_TAG_SHA" && "$REMOTE_TAG_SHA" != "$SOURCE_SHA" ]]; then
+            echo "::error::$TAG already points to $REMOTE_TAG_SHA instead of release source $SOURCE_SHA"
+            exit 1
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -z "$REMOTE_TAG_SHA" ]]; then
+            echo "::error::Manual recovery requires an existing tag: $TAG"
+            exit 1
+          fi
+
+          if [[ "$BUILD_VERSION" == *-* ]]; then
+            PRERELEASE=true
+          else
+            PRERELEASE=false
+          fi
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$BUILD_VERSION" >> "$GITHUB_OUTPUT"
+
   build-platform:
+    needs: prepare-release
     strategy:
       fail-fast: false
       matrix:
@@ -39,9 +123,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ needs.prepare-release.outputs.source_sha }}
 
       - name: Set up Windows native toolchain
         if: runner.os == 'Windows'
@@ -77,7 +161,7 @@ jobs:
         # Pin to the lowest supported Paper baseline so the released jar stays runtime-compatible
         # with Paper/Folia 1.20.1 -> 26.2. PaperCompatibility handles newer APIs at runtime.
         # Quote each -P argument because PowerShell on Windows runners mis-parses `1.20.1-R0.1-SNAPSHOT`.
-        run: ${{ matrix.gradle }} build -x test "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaTarget=17" "-PmahjongJavaToolchain=25"
+        run: ${{ matrix.gradle }} build "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaTarget=21" "-PmahjongJavaToolchain=25" "-PmahjongRequireNative=true"
 
       - name: Verify artifact compatibility (Linux only)
         if: runner.os == 'Linux'
@@ -98,7 +182,7 @@ jobs:
           python3 - "$JAR" <<'PY'
           import sys, zipfile, struct
           jar = sys.argv[1]
-          allowed_max = 61  # Java 17
+          allowed_max = 65  # Java 21
           bad = []
           with zipfile.ZipFile(jar) as z:
               for n in z.namelist():
@@ -112,11 +196,11 @@ jobs:
                   if major > allowed_max:
                       bad.append((n, major))
           if bad:
-              print(f'::error::Found {len(bad)} class files compiled above Java 17:')
+              print(f'::error::Found {len(bad)} class files compiled above Java 21:')
               for n, m in bad[:20]:
                   print(f'  {n}: major={m} (Java {m-44})')
               sys.exit(1)
-          print('All classes compiled to Java 17 or lower.')
+          print('All classes compiled to Java 21 or lower.')
           PY
 
       - name: Upload platform jar
@@ -124,6 +208,7 @@ jobs:
         with:
           name: mahjong-paper-jar-${{ matrix.artifact }}
           path: build/libs/*.jar
+          if-no-files-found: error
 
   package-universal:
     needs: build-platform
@@ -183,60 +268,83 @@ jobs:
           (cd extract/macos && jar xf "$GITHUB_WORKSPACE/$MACOS_JAR" native)
           jar uf "$UNIVERSAL_JAR" -C extract/windows native -C extract/macos native
 
+          jar tf "$UNIVERSAL_JAR" > universal-entries.txt
+          for required in \
+            native/linux-x86_64/mahjongpaper_gb.so \
+            native/windows-x86_64/mahjongpaper_gb.dll \
+            native/windows-x86_64/libwinpthread-1.dll \
+            native/macos-x86_64/mahjongpaper_gb.dylib; do
+            if ! grep -Fxq "$required" universal-entries.txt; then
+              echo "::error::Universal jar is missing $required"
+              exit 1
+            fi
+          done
+
       - name: Upload universal jar
         uses: actions/upload-artifact@v7
         with:
           name: mahjong-paper-jars
           path: build/universal/*.jar
+          if-no-files-found: error
 
   release:
-    needs: package-universal
+    needs:
+      - prepare-release
+      - package-universal
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
-          # Need the full history so the fast-forward step can verify ancestry between main and the tag commit.
+          ref: ${{ needs.prepare-release.outputs.source_sha }}
           fetch-depth: 0
-
-      - name: Resolve release tag
-        id: tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -n "${{ github.event.inputs.tag }}" ]]; then
-            TAG="${{ github.event.inputs.tag }}"
-          else
-            TAG="${GITHUB_REF#refs/tags/}"
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          if [[ "$TAG" == *-beta* || "$TAG" == *-alpha* || "$TAG" == *-rc* ]]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Extract changelog notes
         id: notes
         shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
         run: |
           set -euo pipefail
-          VERSION="${{ steps.tag.outputs.tag }}"
+          VERSION="$RELEASE_TAG"
           VERSION="${VERSION#v}"
           NOTES_FILE="release-notes.md"
           if [[ -f CHANGELOG.md ]]; then
             awk -v ver="$VERSION" '
-              $0 ~ "^## " ver " " { capture=1; next }
+              $1 == "##" && $2 == ver { capture=1; next }
               capture && /^## / { exit }
               capture { print }
             ' CHANGELOG.md > "$NOTES_FILE"
           fi
           if [[ ! -s "$NOTES_FILE" ]]; then
-            echo "Release ${{ steps.tag.outputs.tag }}" > "$NOTES_FILE"
+            echo "Release $RELEASE_TAG" > "$NOTES_FILE"
           fi
           echo "file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Revalidate release source metadata
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
+          SOURCE_SHA: ${{ needs.prepare-release.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]]; then
+            echo "::error::Checked out source does not match prepared release commit $SOURCE_SHA"
+            exit 1
+          fi
+          BUILD_VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' build.gradle.kts | head -n 1)"
+          if [[ -z "$BUILD_VERSION" || "$BUILD_VERSION" != "$RELEASE_VERSION" || "$RELEASE_TAG" != "v$BUILD_VERSION" ]]; then
+            echo "::error::Release metadata changed after preparation"
+            exit 1
+          fi
+          if [[ ! -f CHANGELOG.md ]] || ! grep -Eq "^## ${BUILD_VERSION//./\\.}([[:space:]]|$)" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no section for $BUILD_VERSION"
+            exit 1
+          fi
 
       - name: Download universal jar
         uses: actions/download-artifact@v8
@@ -244,34 +352,33 @@ jobs:
           name: mahjong-paper-jars
           path: release-artifacts
 
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: ${{ steps.tag.outputs.tag }}
-          body_path: ${{ steps.notes.outputs.file }}
-          prerelease: ${{ steps.tag.outputs.prerelease }}
-          files: release-artifacts/*.jar
-
-      - name: Fast-forward main to released tag
-        if: steps.tag.outputs.prerelease == 'false'
+      - name: Create release tag
         shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+          SOURCE_SHA: ${{ needs.prepare-release.outputs.source_sha }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.tag.outputs.tag }}"
-          TAG_SHA="$(git rev-parse "$TAG"^{commit})"
-          echo "Tag $TAG resolves to commit $TAG_SHA"
-          git fetch origin main:refs/remotes/origin/main
-          MAIN_SHA="$(git rev-parse origin/main)"
-          if [[ "$MAIN_SHA" == "$TAG_SHA" ]]; then
-            echo "main is already at $TAG_SHA, nothing to do."
-            exit 0
+          git fetch origin --tags --force
+          if git rev-parse --verify --quiet "refs/tags/$RELEASE_TAG" >/dev/null; then
+            EXISTING_SHA="$(git rev-list -n 1 "$RELEASE_TAG")"
+            if [[ "$EXISTING_SHA" != "$SOURCE_SHA" ]]; then
+              echo "::error::$RELEASE_TAG moved to $EXISTING_SHA after preparation; expected $SOURCE_SHA"
+              exit 1
+            fi
+            echo "$RELEASE_TAG already points to $SOURCE_SHA; reusing it."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$RELEASE_TAG" "$SOURCE_SHA" -m "Release $RELEASE_TAG"
+            git push origin "refs/tags/$RELEASE_TAG"
           fi
-          if ! git merge-base --is-ancestor "$MAIN_SHA" "$TAG_SHA"; then
-            echo "::warning::main ($MAIN_SHA) is not an ancestor of $TAG ($TAG_SHA); skipping fast-forward."
-            exit 0
-          fi
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$TAG_SHA:refs/heads/main"
-          echo "Fast-forwarded main to $TAG_SHA"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag }}
+          name: ${{ needs.prepare-release.outputs.tag }}
+          body_path: ${{ steps.notes.outputs.file }}
+          prerelease: ${{ needs.prepare-release.outputs.prerelease }}
+          files: release-artifacts/*.jar

@@ -31,7 +31,7 @@ public final class TableRenderConstants {
     public static final double TABLE_BORDER_OUTWARD_OFFSET = 0.0D;
     public static final double TABLE_BORDER_HEIGHT = 3.0D * ONE_SIXTEENTH;
     public static final double DISPLAY_CENTER_Y_OFFSET = 0.52D;
-    public static final double TABLE_VISUAL_Y_OFFSET = 0.5D;
+    public static final double TABLE_VISUAL_Y_OFFSET = 0.375D;
     public static final double FLOATING_TEXT_Y_OFFSET = 1.0D;
     public static final double SEAT_DISTANCE_FROM_HAND_BASE = 0.9D;
     public static final double SEAT_BASE_Y_OFFSET = -0.62D;
@@ -47,13 +47,15 @@ public final class TableRenderConstants {
     public static final double SEAT_CARPET_THICKNESS = 0.04D;
     public static final double SEAT_LABEL_DEPTH_OFFSET = 0.03D;
     public static final double SEAT_ACTION_LABEL_Y_OFFSET = -0.64D + FLOATING_TEXT_Y_OFFSET;
-    public static final double SEAT_SIDE_ACTION_HORIZONTAL_OFFSET = 0.44D;
+    /** Clear horizontal gap between paired ready/unready and leave controls. */
+    public static final double SEAT_SIDE_ACTION_GAP = 0.28D;
     public static final float SEAT_ACTION_INTERACTION_HEIGHT = 0.4F;
     public static final float SEAT_ACTION_INTERACTION_MIN_WIDTH = 0.72F;
     public static final float SEAT_ACTION_INTERACTION_MAX_WIDTH = 1.4F;
     public static final double CENTER_LABEL_Y_OFFSET = 0.55D + FLOATING_TEXT_Y_OFFSET - 0.5D;
-    public static final double CENTER_LAST_DISCARD_TILE_Y_OFFSET = CENTER_LABEL_Y_OFFSET - 0.18D;
     public static final float CENTER_LAST_DISCARD_TILE_SCALE = 2.0F;
+    /** Keeps the upright last-discard preview visibly suspended above the river. */
+    public static final double CENTER_LAST_DISCARD_TILE_Y_OFFSET = 0.68D;
     public static final Color CENTER_LAST_DISCARD_TILE_GLOW = Color.fromRGB(255, 220, 96);
     public static final Color CENTER_LABEL_BACKGROUND = Color.fromARGB(112, 20, 80, 20);
     public static final Color SEAT_ACTION_DEFAULT_BACKGROUND = Color.fromARGB(92, 16, 18, 20);
@@ -80,11 +82,14 @@ public final class TableRenderConstants {
     public static final float HAND_INTERACTION_HEIGHT = (float) TILE_HEIGHT;
     public static final float SEAT_LABEL_INTERACTION_WIDTH = 1.2F;
     public static final float SEAT_LABEL_INTERACTION_HEIGHT = 0.85F;
-    public static final float OVERLAY_ACTION_BUTTON_HEIGHT = 0.4F;
+    /** Visual-height hit plane for one text row; kept below the 0.24-block row step. */
+    public static final float OVERLAY_ACTION_BUTTON_HEIGHT = 0.22F;
     public static final float OVERLAY_ACTION_BUTTON_SPACING = 0.55F;
     public static final float OVERLAY_ACTION_BUTTON_GAP = 0.16F;
     public static final int OVERLAY_ACTION_BUTTONS_PER_ROW = 4;
     public static final double OVERLAY_ACTION_Y_OFFSET = SEAT_ACTION_LABEL_Y_OFFSET;
+    /** Decision prompt height above the local action row. */
+    public static final double VIEWER_PROMPT_Y_OFFSET = OVERLAY_ACTION_Y_OFFSET + 0.48D;
     public static final int WALL_TILES_PER_SIDE = 34;
     public static final int TOTAL_WALL_TILES = 136;
     public static final int DEAD_WALL_SIZE = 14;
@@ -107,20 +112,38 @@ public final class TableRenderConstants {
     public static final double SEAT_STATUS_LABEL_Y_OFFSET = 0.45D;
     /** Per-row vertical step for viewer action buttons. */
     public static final double VIEWER_ACTION_BUTTON_ROW_STEP = 0.24D;
+    /** Right edge used by a pinned viewer action when the normal action row is empty. */
+    public static final double VIEWER_PINNED_ACTION_EMPTY_RIGHT_EDGE = -0.85D;
+    /** Minimum height of the return control above the raw table center. */
+    public static final double OVERHEAD_RETURN_BUTTON_MIN_Y_OFFSET = 1.5D;
+    /** Minimum width of the centered return control. */
+    public static final float OVERHEAD_RETURN_BUTTON_MIN_WIDTH = 1.2F;
+    /** Interaction height of the centered return control. */
+    public static final float OVERHEAD_RETURN_BUTTON_HEIGHT = 0.65F;
+    /** Maximum decision controls in one overhead-view row. */
+    public static final int OVERHEAD_ACTION_BUTTONS_PER_ROW = 4;
+    /** Clear screen-plane gap between overhead decision rows. */
+    public static final double OVERHEAD_ACTION_ROW_GAP = 0.24D;
+    /** Extra screen-plane gap before the separate return-to-seat row. */
+    public static final double OVERHEAD_RETURN_GROUP_GAP = 0.45D;
     /** Hitbox Y subtract applied to label interactions. */
     public static final double LABEL_INTERACTION_Y_OFFSET = 0.1D;
     /** Per-visual-unit width estimate for action labels. */
     public static final float ACTION_LABEL_WIDTH_PER_UNIT = 0.085F;
     /** Base width used when estimating action label widths. */
     public static final float ACTION_LABEL_BASE_WIDTH = 0.24F;
+    /** Extra width occupied by the rendered square brackets around every action label. */
+    public static final float ACTION_LABEL_DECORATION_WIDTH = 0.18F;
     /** Minimum estimated action label width. */
     public static final float ACTION_LABEL_MIN_WIDTH = 0.7F;
     /** Maximum estimated action label width. */
     public static final float ACTION_LABEL_MAX_WIDTH = 2.2F;
+    /** Safety gap between the pinned river-view hitbox and the nearest decision hitbox. */
+    public static final double VIEWER_PINNED_ACTION_GAP = 0.34D;
     /** Base width used when computing seat action interaction widths. */
     public static final float SEAT_ACTION_INTERACTION_BASE_WIDTH = 0.3F;
-    /** Per-character width used when computing seat action interaction widths. */
-    public static final float SEAT_ACTION_INTERACTION_PER_CHAR_WIDTH = 0.07F;
+    /** Per visual unit used when computing seat action interaction widths. */
+    public static final float SEAT_ACTION_INTERACTION_PER_VISUAL_UNIT_WIDTH = 0.085F;
     /** Multiplier applied to {@link #TILE_WIDTH} when computing the wall starting position. */
     public static final double WALL_START_POSITION_MULTIPLIER = 17.0D;
 }

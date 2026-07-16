@@ -59,7 +59,11 @@ public interface DisplayEntityRuntime {
     }
 
     default boolean requiresVisibilityResync() {
-        return this.craftEngine() != null;
+        // CraftEngine's culling callbacks consult DisplayVisibilityRegistry before
+        // every show/hide transition, so merely having the compatibility service
+        // installed does not invalidate an unchanged viewer set. Implementations
+        // may still override this for an explicit lifecycle resync.
+        return false;
     }
 
     default ItemStack resolveTileItem(MahjongVariant variant, MahjongTile tile, boolean faceDown) {

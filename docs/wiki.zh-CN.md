@@ -6,9 +6,11 @@
 
 | 项目 | 当前行为 |
 | --- | --- |
-| 服务端 | Paper/Folia，当前构建面向 Paper API `1.21.11` |
+| 服务端 | Paper/Folia，当前构建使用 Paper `1.20.1` 开发基线与 `api-version: 1.20` |
 | Java | Java 21 |
 | 必需依赖 | `CraftEngine` |
+| 可选依赖 | `InvSync 2.x`（保存玩家段位 profile；当前自动更新仅限四真人立直对局） |
+| 默认存储 | 已启用的本地 H2；全局牌桌、对局/排名历史和排行榜投影由 SQL 管理 |
 | 主命令 | `/mahjong` |
 | 普通权限 | `mahjongpaper.command`，默认所有玩家可用 |
 | 管理权限 | `mahjongpaper.admin`，默认 OP 可用 |
@@ -17,20 +19,31 @@
 | 配置文件 | `plugins/MahjongPaper/config.yml` |
 | CraftEngine 导出目录 | `plugins/CraftEngine/resources/mahjongpaper` |
 
+## 开服推荐路径：先建棋牌室
+
+正式服建议把“创建棋牌室”作为开桌前的第一步。棋牌室是牌桌的空间容器，用来规定牌桌能放在哪里，并提供进出提醒和对局中离开倒计时。默认配置下，`gameRooms.enabled: true` 且 `gameRooms.restrictNewTables: true`，因此管理员需要站在棋牌室内才能创建新牌桌。
+
+推荐流程：
+
+1. 确认管理员拥有 `mahjongpaper.admin`。
+2. 使用 `/mahjong room wand` 获取选区魔棒。
+3. 左键点击房间一个角，右键点击对角。
+4. 观察青色粒子边框，确认棋牌室范围覆盖整个游玩区域。
+5. 使用 `/mahjong room create main-hall 主厅` 保存棋牌室。
+6. 站在棋牌室内执行 `/mahjong create` 创建牌桌。
+7. 用 `/mahjong room info main-hall` 检查世界、坐标和大小。
+
+这个流程适合大厅、包间、活动区等固定场地。临时测试时，可以不使用魔棒，直接站在中心点执行 `/mahjong room create test-room`，插件会按 `gameRooms.defaultRadius` 和 `gameRooms.defaultHeight` 自动生成一个区域。
+
 ## 安装与首次启动
 
-1. 准备 Paper 或 Folia 服务端，并确保运行环境是 Java 21。
-2. 安装 `CraftEngine`。MahjongPaper 在插件描述中把 CraftEngine 声明为必需依赖，因此服务端运行时必须存在。
-3. 把 MahjongPaper 的 jar 放入服务器 `plugins` 目录。
-4. 启动服务器。插件会生成 `plugins/MahjongPaper/config.yml`，并在检测到 CraftEngine 后导出资源 bundle。
-5. 确认 `plugins/CraftEngine/resources/mahjongpaper` 中出现导出的资源。该目录通常包含 `pack.yml`、`configuration/items/mahjong_tiles.yml` 和 `resourcepack/assets/mahjongcraft/...`。
-6. 修改配置后可使用 `/mahjong reload` 重载配置并重渲染活动牌桌；安装依赖、替换 jar 或调整服务端级资源时，仍建议完整重启服务器。
+完整步骤、升级边界、InvSync 回退和排障见[安装、升级与首次开服](./installation.zh-CN.md)。最低要求是 Java 21、Paper/Folia 与 CraftEngine 26.7+；Java 17 不受支持。InvSync 2.x 可选；缺失或不可用时，只有 SQL 已启用且健康才会按默认策略接管段位 profile，否则段位 backend 不可用。
 
 ## 牌桌生命周期
 
 一张牌桌从创建到结束大致是这个流程：
 
-1. 管理员使用 `/mahjong create` 在当前位置创建空牌桌。
+1. 管理员先创建棋牌室；如果启用了创建限制，则站在棋牌室内使用 `/mahjong create` 创建空牌桌。
 2. 玩家点击东、南、西、北四个座位悬浮标签入座，也可以使用 `/mahjong join <table_id>` 加入。
 3. 开局前可使用 `/mahjong mode <mode>` 切换玩法，或用 `/mahjong rule <key> <value>` 调整部分规则。
 4. 缺人时可用 `/mahjong addbot` 补 Bot。Bot 默认视为已准备。
@@ -43,100 +56,15 @@
 
 ## 三种玩法模式
 
-### 模式一：雀魂风格立直麻将
-
-使用方式：
-
-- `/mahjong mode MAJSOUL_HANCHAN`：默认半庄，东 1 到南 4。
-- `/mahjong mode MAJSOUL_TONPUU`：东风战，东 1 到东 4。
-
-核心规则：
-
-- 使用万、筒、索、字牌和三枚赤宝牌。
-- 默认起点 `25000`，返还目标 `30000`。
-- 至少 1 番起胡，并且必须有役。
-- 默认开启食断、多家荣和、雀魂风格杠宝牌揭示时机。
-- 门清听牌且满足条件时可立直，立直后只能打刚摸到的牌。
-- 支持自摸、荣和、吃、碰、明杠、暗杠、加杠、九种九牌。
-
-常用命令：
-
-| 操作 | 命令 |
-| --- | --- |
-| 立直并打出指定手牌序号 | `/mahjong riichi <hand_index>` |
-| 自摸 | `/mahjong tsumo` |
-| 荣和 | `/mahjong ron` |
-| 吃 | `/mahjong chii <tile_a> <tile_b>` |
-| 碰 | `/mahjong pon` |
-| 明杠 | `/mahjong minkan` |
-| 暗杠或加杠 | `/mahjong kan <tile>` |
-| 九种九牌流局 | `/mahjong kyuushu` |
-| 放弃反应 | `/mahjong skip` |
-
-例子：你门清听牌，使用 `/mahjong riichi 13` 宣告立直并打出第 13 号手牌。之后若自摸，可以用 `/mahjong tsumo` 结算；如果别人打出你的和牌，可以在反应窗口用 `/mahjong ron`。
-
-### 模式二：国标麻将
-
-使用方式：
-
-- `/mahjong mode GB`
-
-核心规则：
-
-- 使用万、筒、索、风牌、三元牌和花牌。
-- 花牌会公开补花，并从牌墙后方补牌。
-- 8 番起胡，番数不足 8 番不能和牌。
-- 支持吃、碰、明杠、暗杠、加杠、抢杠、荣和、自摸。
-- 番种、听牌和合法和牌判断由内置 JNI bridge 调用 vendored `GB-Mahjong` 规则库完成。
-- MahjongPaper 负责牌桌流程、反应窗口、结算 UI、玩家提示和持久化。
-
-玩法重点：
-
-- 国标不是泛泛的“中国麻将”模式，而是尽量对齐 `GB-Mahjong` 对国标规则的解释。
-- 低番手牌不能胡，需要围绕 8 番门槛规划手牌。
-- 结算界面会显示总番数、番种明细和点数变化。
-
-例子：`混一色` 6 番加 `碰碰和` 6 番，总计 12 番，满足 8 番门槛，可以胡。只有 `碰碰和` 6 番时，番数不足，不能胡。
-
-### 模式三：四川麻将
-
-使用方式：
-
-- `/mahjong mode SICHUAN`
-
-当前实现采用血战到底方向：
-
-- 只使用万、筒、索三门序数牌，共 108 张。
-- 不使用字牌、花牌、赤宝牌。
-- 胡牌必须缺一门，也就是手牌和副露中最多只保留两门花色。
-- 四川模式不允许吃牌，主要操作是碰、杠、荣和、自摸。
-- 玩家胡牌后退出本局继续结算，剩余玩家继续打，直到只剩一名未胡玩家或牌墙耗尽。
-- 一局最多产生 3 名和牌者。
-- 番数上限为 5 番，计分单位按 `2^番数` 计算。
-
-当前支持的主要番种：
-
-| 番种 | 番数 | 说明 |
+| 模式 | 快速识别 | 规则文档 |
 | --- | --- | --- |
-| 平胡 | 1 | 基础和牌牌型 |
-| 对对胡 | 1 | 全刻子或杠子 |
-| 清一色 | 2 | 全部牌只来自一门花色 |
-| 七对 | 2 | 七个对子 |
-| 龙七对 | 3 | 七对中有 1 个四张相同的“根” |
-| 双龙七对 | 4 | 七对中有 2 个根 |
-| 豪华龙七对 | 5 | 七对中有 3 个根，达到封顶 |
-| 将对 | 叠加或折算 | 全部牌为 2、5、8，按当前牌型由引擎合并计算 |
-| 根 | 额外加番 | 普通牌型中每个四张相同计 1 根 |
-| 金钩钓 | 额外加番 | 对对胡单钓将 |
-| 海底、杠上花、杠上炮、抢杠胡 | 额外加番 | 按对应和牌方式结算 |
+| 雀魂风格立直 | 136 张、三赤、王牌、必须有役；基础东风 4 手/半庄 8 手，但连庄和终局延长会增加手数 | [立直麻将完整规则](./riichi-rules.zh-CN.md) |
+| 国标 `GB` | 144 张、8 花、补花可选、两次各掷两骰、8 个非花牌 fan 起胡；严格预设净分 0、固定 16 手且不连庄 | [国标麻将完整规则](./gb-mahjong-rules.zh-CN.md) |
+| 四川 `SICHUAN` | 108 张、直接定缺、不能吃、血战到底；T/TFMJ 默认 8 副、净分 0 | [四川麻将完整规则](./sichuan-rules.zh-CN.md) |
 
-额外结算：
+三份规则文档都包含现实书面来源、视频学习路径和 Bilibili 备用教程。外部视频只用于理解现实牌桌，可能采用不同房规；插件内最终以 MahjongPaper profile 为准。
 
-- 暗杠、明杠、加杠会产生杠分。
-- 荒牌时会处理花猪和查叫相关点数。
-- 末段牌墙存在可胡情况时，插件会限制跳过可胡机会。
-
-例子：你缺索，做成清一色七对，其中一组牌是四张相同的筒子。它会按 `清一色` 加 `龙七对` 组合计到 5 番封顶，按 32 倍单位结算。
+新配置使用 `EARLY_KAN_DORA` 表示只改变立直杠宝牌揭示时机；旧 `TOURNAMENT` 仅为存档兼容，不是完整 WRC。国标的通用起始分、目标分或赛长覆盖只用于旧桌/房规兼容，修改后不再是严格 MCR。四川以 T/TFMJ 01—2024 为基线，3 番/8 单位封顶、无默认换三张或末四强制胡；不提供模糊的 `SICHUAN_TOURNAMENT`。
 
 ## 玩家操作指南
 
@@ -193,7 +121,7 @@
 | 查看雀魂风格段位 | `/mahjong rank` |
 | 查看模式排行榜 | `/mahjong leaderboard [RIICHI|GB|SICHUAN]` |
 
-段位系统依赖数据库和 `ranking.enabled: true`。如果数据库未启用，`/mahjong rank` 会提示不可用。
+段位系统要求 `ranking.enabled: true`，并需要一个可用的段位 backend。InvSync 2.x 已启用且兼容时由 InvSync 管理；否则只有回退已开启且 SQL 健康时才由数据库接管。两者都不可用时，`/mahjong rank` 会提示不可用。
 
 ## 服主管理指南
 
@@ -208,7 +136,7 @@
 
 | 命令 | 用途 |
 | --- | --- |
-| `/mahjong create` | 在当前位置创建牌桌 |
+| `/mahjong create` | 在当前位置创建牌桌；开启棋牌室限制时必须站在棋牌室内 |
 | `/mahjong botmatch [hanchan|tonpuu]` | 创建 4 Bot 立直测试桌并进入观战 |
 | `/mahjong render` | 重新渲染当前牌桌 |
 | `/mahjong inspect` | 显示渲染锚点和方向诊断 |
@@ -233,6 +161,8 @@
 
 普通玩家也可以打开面板查看状态、准备、离桌、查看规则或结算，但不能修改规则、Bot 或删除牌桌。若桌主离开座位，桌主会转交给下一位真人玩家；重启后旧桌若没有记录桌主，第一位真人入座会成为桌主。
 
+牌桌持久化恢复的是牌桌位置、桌主、玩法和规则配置。当前不会恢复服务器关闭瞬间的中途手牌、牌墙、分数或反应窗口；重启后的玩家需要重新准备开局。
+
 ### 配置重点
 
 配置文件位于 `plugins/MahjongPaper/config.yml`。当前主要配置块如下：
@@ -246,9 +176,9 @@
 | `database.pool` | 数据库连接池大小和超时 |
 | `tables.startupRebuildBatchSize` | 启动时分批恢复牌桌展示的批量大小 |
 | `tables.allowFreeMoveDuringRound` | 是否允许牌局中自由移动 |
-| `tables.persistence` | 牌桌持久化文件开关和文件名 |
+| `tables.persistence` | SQL 持久牌桌恢复开关；旧 `file` 字段仅保留配置兼容 |
 | `gameRooms` | 棋牌室系统——牌桌的空间容器，创建限制、进出提醒、离开倒计时 |
-| `ranking` | 雀魂风格段位系统开关和房间档位 |
+| `ranking` | 雀魂风格段位、房间档位，以及 InvSync 探测/数据库回退策略 |
 | `integrations.craftengine` | CraftEngine bundle 导出、物品、家具和兼容性设置 |
 | `debug` | 调试日志分类 |
 
@@ -256,9 +186,11 @@
 
 ### 数据库与段位
 
-默认配置使用 H2 本地数据库，适合小服或测试。需要跨服、长期统计或外部备份时，可以把 `database.connection.type` 调整为 MariaDB/MySQL，并填写连接信息。
+默认配置已启用 H2 本地数据库，适合小服或测试。全局持久牌桌、`round_history`、`rank_history` 和排行榜投影始终由 MahjongPaper 的 SQL 管理；需要共享、长期统计或外部备份时，可以把 `database.connection.type` 调整为 MariaDB/MySQL，并填写连接信息。
 
-`ranking.enabled: true` 时，插件会保存雀魂风格段位数据。玩家可用 `/mahjong rank` 查看自己的段位、点数和名次统计。
+`ranking.enabled: true` 时，插件会保存雀魂风格段位 profile。InvSync 2.x 已启用且兼容时由它保存；InvSync 缺失、禁用、不兼容或回调运行失败时，只有 `fallbackToDatabase: true` 且 SQL 已启用、健康才会回退数据库，否则 backend 为 `UNAVAILABLE`。当前仅四名真人完成的立直对局自动更新段位与个人统计；`GB`、`SICHUAN` 选择器只读取已有或迁移数据。项目不声明未经提供的 InvSync Maven 坐标，也不打包其 API。
+
+InvSync 公开 addon API 只能在 `onSave` 回调中写入。段位更新后到下一次 InvSync 保存前若服务器进程异常崩溃，本次更新可能尚未落盘，因此生产环境必须开启 InvSync auto-save 与 world-save。由于仓库没有链接其付费离线 API jar，InvSync 模式下 `/mahjong rank` 只读取已经同步进本地缓存的在线玩家。完整部署与迁移说明见 [InvSync 玩家段位接入](./invsync-player-rank.zh-CN.md)。
 
 ### CraftEngine 与资源
 
@@ -314,7 +246,7 @@ MahjongPaper 使用 CraftEngine 处理以下内容：
 | `/mahjong leaderboard [mode]` | 玩家 | 查看分模式排行榜 |
 | `/mahjong addbot` | 桌主/管理员 | 开局前添加 Bot |
 | `/mahjong removebot` | 桌主/管理员 | 开局前移除 Bot |
-| `/mahjong create` | 管理员 | 创建牌桌 |
+| `/mahjong create` | 管理员 | 创建牌桌；开启棋牌室限制时必须站在棋牌室内 |
 | `/mahjong botmatch [MAJSOUL_HANCHAN|MAJSOUL_TONPUU|GB|SICHUAN]` | 管理员 | 创建 4 Bot 测试桌 |
 | `/mahjong list` | 管理员 | 列出活动牌桌 |
 | `/mahjong render` | 管理员 | 强制刷新牌桌展示 |
@@ -362,7 +294,7 @@ MahjongPaper 使用 CraftEngine 处理以下内容：
 
 ### 创建棋牌室
 
-有两种方式创建棋牌室：使用游戏内魔棒工具（推荐）或手动编辑配置文件。
+有两种方式创建棋牌室：使用游戏内魔棒工具（推荐）或手动编辑配置文件。推荐优先使用魔棒，因为它能即时显示粒子边框，方便确认区域是否覆盖完整。
 
 #### 方式一：魔棒工具（推荐）
 
@@ -383,7 +315,14 @@ MahjongPaper 使用 CraftEngine 处理以下内容：
 | 左键点击方块 | 设置选区第一点（最小角） |
 | 右键点击方块 | 设置选区第二点（最大角） |
 
-两点确定一个长方体（AABB）区域。设置成功后会收到提示消息，显示当前选区坐标。
+两点确定一个长方体（AABB）区域。设置成功后会收到提示消息，显示当前选区坐标；同时会出现青色粒子边框，用来确认棋牌室的实际范围。粒子边框只会显示给当前管理员，不会影响其他玩家。
+
+选区建议：
+
+- 第一、第二点可以任意先后点击，插件会自动计算最小/最大坐标。
+- 选区高度要覆盖玩家活动高度和牌桌展示高度，不要只框地面一层。
+- 如果棋牌室是大厅，建议比墙体内侧略大一圈，避免牌桌中心点贴边时被判定在区域外。
+- 如果右键后发现粒子边框不对，重新左键/右键选择即可，旧预览会被刷新。
 
 **创建棋牌室**：
 
@@ -398,13 +337,23 @@ MahjongPaper 使用 CraftEngine 处理以下内容：
 
 如果已有选区，会使用选区坐标创建；如果没有选区，则以玩家当前位置为中心，按配置中的 `defaultRadius` 和 `defaultHeight` 创建。
 
-**示例**：
+**完整示例：创建一个主厅棋牌室**：
 
 ```
 /mahjong room wand                          # 获取魔棒
-# 左键点击房间一个角，右键点击对角
+# 左键点击主厅地面一角
+# 右键点击主厅对角的上方或地面方块
+# 确认青色粒子边框覆盖整个主厅
 /mahjong room create main-hall 主厅          # 用选区创建棋牌室
+/mahjong room info main-hall                # 检查保存后的范围
+/mahjong create                             # 站在主厅内创建牌桌
+```
+
+**快速测试示例**：
+
+```
 /mahjong room create quick-room             # 无选区时以玩家位置为中心创建
+/mahjong create                             # 在 quick-room 内创建牌桌
 ```
 
 **其他棋牌室命令**：
@@ -477,7 +426,7 @@ rooms:
 
 ### 为什么 `/mahjong rank` 不可用？
 
-段位系统需要数据库服务可用，并且 `ranking.enabled` 为 `true`。
+先确认 `ranking.enabled: true`。使用数据库后端时，数据库必须可用；使用 InvSync 后端时，玩家必须在线且已完成同步。InvSync 不可用但同时关闭了 `fallbackToDatabase` 时，段位后端会进入 `UNAVAILABLE`。
 
 ### 为什么座位或牌桌点不动？
 

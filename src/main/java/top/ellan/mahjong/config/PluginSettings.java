@@ -1,10 +1,20 @@
 package top.ellan.mahjong.config;
 
+import net.momirealms.sparrow.yaml.SparrowYaml;
+import net.momirealms.sparrow.yaml.YamlDocument;
+import net.momirealms.sparrow.yaml.serializer.NodeSerializer;
+import net.momirealms.sparrow.yaml.serializer.NodeSerializers;
 import top.ellan.mahjong.model.MahjongVariant;
-import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.file.FileConfiguration;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 
 public final class PluginSettings {
+    private static final SparrowYaml YAML = SparrowYaml.builder().build();
+    private static final NodeSerializer<List<String>> STRING_LIST = NodeSerializers.STRING.listOf();
+
     private final DebugSettings debug;
     private final DatabaseSettings database;
     private final TablesSettings tables;
@@ -28,102 +38,295 @@ public final class PluginSettings {
         this.craftEngine = craftEngine;
     }
 
-    public static PluginSettings from(FileConfiguration config) {
-        ConfigurationSection debugSection = ConfigAccess.firstSection(config, "debug");
-        ConfigurationSection databaseSection = ConfigAccess.firstSection(config, "database");
-        ConfigurationSection connectionSection = ConfigAccess.firstSection(config, "database.connection", "database");
-        ConfigurationSection credentialsSection = ConfigAccess.firstSection(config, "database.credentials", "database");
-        ConfigurationSection h2Section = ConfigAccess.firstSection(config, "database.h2");
-        ConfigurationSection poolSection = ConfigAccess.firstSection(config, "database.pool");
-        ConfigurationSection tablesSection = ConfigAccess.firstSection(config, "tables");
-        ConfigurationSection tablePersistenceSection = ConfigAccess.firstSection(config, "tables.persistence", "tablePersistence");
-        ConfigurationSection gameRoomsSection = ConfigAccess.firstSection(config, "gameRooms", "game-rooms", "gamerooms");
-        ConfigurationSection rankingSection = ConfigAccess.firstSection(config, "ranking");
-        ConfigurationSection craftEngineSection = ConfigAccess.firstSection(config, "integrations.craftengine", "craftengine");
-        ConfigurationSection craftEngineItemsSection = ConfigAccess.firstSection(config, "integrations.craftengine.items", "craftengine.items");
-        ConfigurationSection craftEngineFurnitureSection = ConfigAccess.firstSection(config, "integrations.craftengine.furniture", "craftengine.furniture");
-        ConfigurationSection craftEngineCompatibilitySection = ConfigAccess.firstSection(
-            config,
-            "integrations.craftengine.compatibility",
-            "craftengine.compatibility"
-        );
-        ConfigurationSection craftEngineBundleSection = ConfigAccess.firstSection(config, "integrations.craftengine.bundle", "craftengine.bundle");
+    public static PluginSettings load(Path path) throws IOException {
+        return from(YAML.load(Objects.requireNonNull(path, "path")));
+    }
 
-        String sharedTileItemIdPrefix = ConfigAccess.string(craftEngineItemsSection, "mahjongpaper:", "tileItemIdPrefix", "tile-item-id-prefix");
+    public static PluginSettings parse(String yaml) {
+        try {
+            return from(YAML.load(Objects.requireNonNull(yaml, "yaml")));
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("Failed to parse YAML configuration", exception);
+        }
+    }
+
+    public static PluginSettings defaults() {
+        return parse("");
+    }
+
+    public static PluginSettings from(YamlDocument config) {
+        Objects.requireNonNull(config, "config");
+
+        String sharedTileItemIdPrefix = string(
+            config,
+            "mahjongpaper:",
+            "integrations.craftengine.items.tileItemIdPrefix",
+            "integrations.craftengine.items.tile-item-id-prefix",
+            "craftengine.items.tileItemIdPrefix",
+            "craftengine.items.tile-item-id-prefix"
+        );
         DebugSettings debug = new DebugSettings(
-            ConfigAccess.bool(debugSection, false, "enabled"),
-            ConfigAccess.stringList(debugSection, "categories")
+            bool(config, false, "debug.enabled"),
+            stringList(config, "debug.categories")
         );
         DatabaseSettings database = new DatabaseSettings(
-            ConfigAccess.bool(databaseSection, true, "enabled"),
-            ConfigAccess.bool(databaseSection, false, "failOnError"),
-            ConfigAccess.string(connectionSection, "h2", "type", "connection.type").trim().toLowerCase(java.util.Locale.ROOT),
+            bool(config, true, "database.enabled"),
+            bool(config, false, "database.failOnError"),
+            string(config, "h2", "database.connection.type", "database.type").trim().toLowerCase(Locale.ROOT),
             new DatabaseConnectionSettings(
-                ConfigAccess.string(connectionSection, "127.0.0.1", "host", "connection.host"),
-                ConfigAccess.integer(connectionSection, 3306, "port", "connection.port"),
-                ConfigAccess.string(connectionSection, "mahjongpaper", "name", "connection.name"),
-                ConfigAccess.string(connectionSection, "useUnicode=true&characterEncoding=utf8&useSsl=false", "parameters", "connection.parameters")
+                string(config, "127.0.0.1", "database.connection.host", "database.host"),
+                integer(config, 3306, "database.connection.port", "database.port"),
+                string(config, "mahjongpaper", "database.connection.name", "database.name"),
+                string(
+                    config,
+                    "useUnicode=true&characterEncoding=utf8&useSsl=false",
+                    "database.connection.parameters",
+                    "database.parameters"
+                )
             ),
             new DatabaseCredentialsSettings(
-                ConfigAccess.string(credentialsSection, "root", "username"),
-                ConfigAccess.string(credentialsSection, "change_me", "password")
+                string(config, "root", "database.credentials.username", "database.username"),
+                string(config, "change_me", "database.credentials.password", "database.password")
             ),
             new DatabaseH2Settings(
-                ConfigAccess.string(h2Section, "data/mahjongpaper", "path"),
-                ConfigAccess.string(h2Section, "sa", "username"),
-                ConfigAccess.string(h2Section, "", "password"),
-                ConfigAccess.string(h2Section, "MODE=MariaDB;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH", "parameters")
+                string(config, "data/mahjongpaper", "database.h2.path"),
+                string(config, "sa", "database.h2.username"),
+                string(config, "", "database.h2.password"),
+                string(
+                    config,
+                    "MODE=MariaDB;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH",
+                    "database.h2.parameters"
+                )
             ),
             new DatabasePoolSettings(
-                ConfigAccess.integer(poolSection, 10, "maxSize", "maximumPoolSize"),
-                ConfigAccess.integer(poolSection, 2, "minIdle", "minimumIdle"),
-                ConfigAccess.longValue(poolSection, 10000L, "connectionTimeoutMillis")
+                integer(config, 10, "database.pool.maxSize", "database.pool.maximumPoolSize"),
+                integer(config, 2, "database.pool.minIdle", "database.pool.minimumIdle"),
+                longValue(config, 10000L, "database.pool.connectionTimeoutMillis")
             )
         );
         TablesSettings tables = new TablesSettings(
-            Math.max(1, ConfigAccess.integer(tablesSection, 3, "startupRebuildBatchSize", "startup-rebuild-batch-size")),
-            ConfigAccess.bool(tablesSection, false, "allowFreeMoveDuringRound", "allow-free-move-during-round"),
+            Math.max(1, integer(config, 3, "tables.startupRebuildBatchSize", "tables.startup-rebuild-batch-size")),
+            bool(config, false, "tables.allowFreeMoveDuringRound", "tables.allow-free-move-during-round"),
             new TablePersistenceSettings(
-                ConfigAccess.bool(tablePersistenceSection, true, "enabled"),
-                ConfigAccess.string(tablePersistenceSection, "tables.yml", "file")
+                bool(config, true, "tables.persistence.enabled", "tablePersistence.enabled"),
+                string(config, "tables.yml", "tables.persistence.file", "tablePersistence.file")
+            ),
+            new OverheadViewSettings(
+                bool(config, true, "tables.overheadView.enabled", "tables.overhead-view.enabled"),
+                Math.max(
+                    3.0D,
+                    Math.min(6.0D, decimal(config, 4.5D, "tables.overheadView.height", "tables.overhead-view.height"))
+                ),
+                Math.max(
+                    1,
+                    Math.min(
+                        40,
+                        integer(
+                            config,
+                            16,
+                            "tables.overheadView.transitionTicks",
+                            "tables.overheadView.transition-ticks",
+                            "tables.overhead-view.transitionTicks",
+                            "tables.overhead-view.transition-ticks"
+                        )
+                    )
+                )
             )
         );
         GameRoomsSettings gameRooms = new GameRoomsSettings(
-            ConfigAccess.bool(gameRoomsSection, true, "enabled"),
-            ConfigAccess.bool(gameRoomsSection, true, "restrictNewTables", "restrict-new-tables"),
-            ConfigAccess.bool(gameRoomsSection, true, "enterExitMessages", "enter-exit-messages"),
-            Math.max(5, ConfigAccess.integer(gameRoomsSection, 60, "leaveCountdownSeconds", "leave-countdown-seconds")),
-            Math.max(2, ConfigAccess.integer(gameRoomsSection, 10, "defaultRadius", "default-radius")),
-            Math.max(3, ConfigAccess.integer(gameRoomsSection, 8, "defaultHeight", "default-height")),
-            ConfigAccess.string(gameRoomsSection, "game-rooms.yml", "file")
+            bool(config, true, "gameRooms.enabled", "game-rooms.enabled", "gamerooms.enabled"),
+            bool(
+                config,
+                true,
+                "gameRooms.restrictNewTables",
+                "gameRooms.restrict-new-tables",
+                "game-rooms.restrictNewTables",
+                "game-rooms.restrict-new-tables",
+                "gamerooms.restrictNewTables",
+                "gamerooms.restrict-new-tables"
+            ),
+            bool(
+                config,
+                true,
+                "gameRooms.enterExitMessages",
+                "gameRooms.enter-exit-messages",
+                "game-rooms.enterExitMessages",
+                "game-rooms.enter-exit-messages",
+                "gamerooms.enterExitMessages",
+                "gamerooms.enter-exit-messages"
+            ),
+            Math.max(
+                5,
+                integer(
+                    config,
+                    60,
+                    "gameRooms.leaveCountdownSeconds",
+                    "gameRooms.leave-countdown-seconds",
+                    "game-rooms.leaveCountdownSeconds",
+                    "game-rooms.leave-countdown-seconds",
+                    "gamerooms.leaveCountdownSeconds",
+                    "gamerooms.leave-countdown-seconds"
+                )
+            ),
+            Math.max(
+                2,
+                integer(
+                    config,
+                    10,
+                    "gameRooms.defaultRadius",
+                    "gameRooms.default-radius",
+                    "game-rooms.defaultRadius",
+                    "game-rooms.default-radius",
+                    "gamerooms.defaultRadius",
+                    "gamerooms.default-radius"
+                )
+            ),
+            Math.max(
+                3,
+                integer(
+                    config,
+                    8,
+                    "gameRooms.defaultHeight",
+                    "gameRooms.default-height",
+                    "game-rooms.defaultHeight",
+                    "game-rooms.default-height",
+                    "gamerooms.defaultHeight",
+                    "gamerooms.default-height"
+                )
+            ),
+            string(config, "game-rooms.yml", "gameRooms.file", "game-rooms.file", "gamerooms.file")
         );
         RankingSettings ranking = new RankingSettings(
-            ConfigAccess.bool(rankingSection, true, "enabled"),
-            ConfigAccess.string(rankingSection, "SILVER", "eastRoom"),
-            ConfigAccess.string(rankingSection, "GOLD", "southRoom")
+            bool(config, true, "ranking.enabled"),
+            string(config, "SILVER", "ranking.eastRoom"),
+            string(config, "GOLD", "ranking.southRoom"),
+            new InvSyncRankSettings(
+                bool(config, true, "ranking.playerStorage.invSync.enabled", "ranking.player-storage.invsync.enabled"),
+                bool(
+                    config,
+                    true,
+                    "ranking.playerStorage.invSync.fallbackToDatabase",
+                    "ranking.player-storage.invsync.fallback-to-database"
+                )
+            )
         );
         CraftEngineSettings craftEngine = new CraftEngineSettings(
-            ConfigAccess.bool(craftEngineSection, true, "exportBundleOnEnable", "bundle.exportOnEnable"),
-            ConfigAccess.string(craftEngineBundleSection, "mahjongpaper", "folder", "bundleFolder"),
-            ConfigAccess.bool(
-                craftEngineCompatibilitySection,
+            bool(
+                config,
                 true,
-                "injectAntiCheatPacketEventsMappings",
-                "compatibility.injectAntiCheatPacketEventsMappings"
+                "integrations.craftengine.exportBundleOnEnable",
+                "integrations.craftengine.bundle.exportOnEnable",
+                "craftengine.exportBundleOnEnable",
+                "craftengine.bundle.exportOnEnable"
+            ),
+            string(
+                config,
+                "mahjongpaper",
+                "integrations.craftengine.bundle.folder",
+                "integrations.craftengine.bundle.bundleFolder",
+                "craftengine.bundle.folder",
+                "craftengine.bundle.bundleFolder"
+            ),
+            bool(
+                config,
+                true,
+                "integrations.craftengine.compatibility.injectAntiCheatPacketEventsMappings",
+                "integrations.craftengine.compatibility.compatibility.injectAntiCheatPacketEventsMappings",
+                "craftengine.compatibility.injectAntiCheatPacketEventsMappings",
+                "craftengine.compatibility.compatibility.injectAntiCheatPacketEventsMappings"
             ),
             new CraftEngineItemsSettings(
-                ConfigAccess.bool(craftEngineItemsSection, true, "preferCustomItems", "items.preferCustomItems"),
+                bool(
+                    config,
+                    true,
+                    "integrations.craftengine.items.preferCustomItems",
+                    "integrations.craftengine.items.items.preferCustomItems",
+                    "craftengine.items.preferCustomItems",
+                    "craftengine.items.items.preferCustomItems"
+                ),
                 sharedTileItemIdPrefix,
-                ConfigAccess.string(craftEngineItemsSection, sharedTileItemIdPrefix, "riichiTileItemIdPrefix", "riichi-tile-item-id-prefix"),
-                ConfigAccess.string(craftEngineItemsSection, sharedTileItemIdPrefix, "gbTileItemIdPrefix", "gb-tile-item-id-prefix")
+                string(
+                    config,
+                    sharedTileItemIdPrefix,
+                    "integrations.craftengine.items.riichiTileItemIdPrefix",
+                    "integrations.craftengine.items.riichi-tile-item-id-prefix",
+                    "craftengine.items.riichiTileItemIdPrefix",
+                    "craftengine.items.riichi-tile-item-id-prefix"
+                ),
+                string(
+                    config,
+                    sharedTileItemIdPrefix,
+                    "integrations.craftengine.items.gbTileItemIdPrefix",
+                    "integrations.craftengine.items.gb-tile-item-id-prefix",
+                    "craftengine.items.gbTileItemIdPrefix",
+                    "craftengine.items.gb-tile-item-id-prefix"
+                )
             ),
             new CraftEngineFurnitureSettings(
-                ConfigAccess.bool(craftEngineFurnitureSection, true, "preferHitboxInteraction", "furniture.preferHitboxInteraction"),
-                ConfigAccess.string(craftEngineFurnitureSection, "mahjongpaper:table_visual", "tableFurnitureId", "table-furniture-id"),
-                ConfigAccess.string(craftEngineFurnitureSection, "mahjongpaper:seat_chair", "seatFurnitureId", "seat-furniture-id")
+                bool(
+                    config,
+                    true,
+                    "integrations.craftengine.furniture.preferHitboxInteraction",
+                    "integrations.craftengine.furniture.furniture.preferHitboxInteraction",
+                    "craftengine.furniture.preferHitboxInteraction",
+                    "craftengine.furniture.furniture.preferHitboxInteraction"
+                ),
+                string(
+                    config,
+                    "mahjongpaper:table_visual",
+                    "integrations.craftengine.furniture.tableFurnitureId",
+                    "integrations.craftengine.furniture.table-furniture-id",
+                    "craftengine.furniture.tableFurnitureId",
+                    "craftengine.furniture.table-furniture-id"
+                ),
+                string(
+                    config,
+                    "mahjongpaper:seat_chair",
+                    "integrations.craftengine.furniture.seatFurnitureId",
+                    "integrations.craftengine.furniture.seat-furniture-id",
+                    "craftengine.furniture.seatFurnitureId",
+                    "craftengine.furniture.seat-furniture-id"
+                )
             )
         );
         return new PluginSettings(debug, database, tables, gameRooms, ranking, craftEngine);
+    }
+
+    private static boolean bool(YamlDocument config, boolean defaultValue, String... paths) {
+        return value(config, NodeSerializers.BOOLEAN, defaultValue, paths);
+    }
+
+    private static int integer(YamlDocument config, int defaultValue, String... paths) {
+        return value(config, NodeSerializers.INT, defaultValue, paths);
+    }
+
+    private static long longValue(YamlDocument config, long defaultValue, String... paths) {
+        return value(config, NodeSerializers.LONG, defaultValue, paths);
+    }
+
+    private static double decimal(YamlDocument config, double defaultValue, String... paths) {
+        return value(config, NodeSerializers.DOUBLE, defaultValue, paths);
+    }
+
+    private static String string(YamlDocument config, String defaultValue, String... paths) {
+        return value(config, NodeSerializers.STRING, defaultValue, paths);
+    }
+
+    private static List<String> stringList(YamlDocument config, String... paths) {
+        return value(config, STRING_LIST, List.of(), paths);
+    }
+
+    private static <T> T value(YamlDocument config, NodeSerializer<T> serializer, T defaultValue, String... paths) {
+        for (String path : paths) {
+            if (path == null || path.isBlank()) {
+                continue;
+            }
+            Object[] route = path.split("\\.");
+            if (config.getNodeOrNull(route) != null) {
+                return config.get(serializer, route);
+            }
+        }
+        return defaultValue;
     }
 
     public DebugSettings debug() {
@@ -209,6 +412,14 @@ public final class PluginSettings {
         return this.ranking.southRoom();
     }
 
+    public boolean rankingInvSyncEnabled() {
+        return this.ranking.playerStorage().enabled();
+    }
+
+    public boolean rankingInvSyncFallbackToDatabase() {
+        return this.ranking.playerStorage().fallbackToDatabase();
+    }
+
     public record DebugSettings(boolean enabled, java.util.List<String> categories) {
         public DebugSettings {
             categories = categories == null ? java.util.List.of() : java.util.List.copyOf(categories);
@@ -241,11 +452,15 @@ public final class PluginSettings {
     public record TablesSettings(
         int startupRebuildBatchSize,
         boolean allowFreeMoveDuringRound,
-        TablePersistenceSettings persistence
+        TablePersistenceSettings persistence,
+        OverheadViewSettings overheadView
     ) {
     }
 
     public record TablePersistenceSettings(boolean enabled, String file) {
+    }
+
+    public record OverheadViewSettings(boolean enabled, double height, int transitionTicks) {
     }
 
     public record GameRoomsSettings(
@@ -259,7 +474,10 @@ public final class PluginSettings {
     ) {
     }
 
-    public record RankingSettings(boolean enabled, String eastRoom, String southRoom) {
+    public record RankingSettings(boolean enabled, String eastRoom, String southRoom, InvSyncRankSettings playerStorage) {
+    }
+
+    public record InvSyncRankSettings(boolean enabled, boolean fallbackToDatabase) {
     }
 
     public record CraftEngineSettings(
