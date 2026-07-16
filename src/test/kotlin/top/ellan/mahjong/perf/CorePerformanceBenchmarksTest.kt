@@ -329,7 +329,9 @@ class CorePerformanceBenchmarksTest {
                             top.ellan.mahjong.gb.jni.GbTingCandidate(
                                 "M1",
                                 fan,
-                                listOf(top.ellan.mahjong.gb.jni.GbFanEntry("TEST", fan))
+                                listOf(
+                                    top.ellan.mahjong.gb.jni.GbFanEntry("TEST", fan),
+                                ),
                             )
                         ),
                         null

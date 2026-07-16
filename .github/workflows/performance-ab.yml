@@ -67,6 +67,7 @@ jobs:
     env:
       BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base_sha }}
       CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+      PERF_RESULTS_ROOT: /tmp/mahjong-performance-ab-${{ github.run_id }}-${{ github.run_attempt }}
       CI_FORKS: ${{ inputs.forks }}
       CI_WARMUPS: ${{ inputs.warmup_iterations }}
       CI_MEASUREMENTS: ${{ inputs.measurement_iterations }}
@@ -123,6 +124,12 @@ jobs:
             --shell /usr/sbin/nologin \
             mahjong-benchmark
           getent passwd mahjong-benchmark
+          sudo install -d --owner root --group root --mode 0711 "$PERF_RESULTS_ROOT"
+          sudo install -d \
+            --owner "$(id -u)" \
+            --group "$(id -g)" \
+            --mode 0711 \
+            "$PERF_RESULTS_ROOT/evidence"
 
       - name: Make wrappers executable
         shell: bash
@@ -160,12 +167,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p perf-results
           python3 base/perf/ab/verify_protected.py \
             --base-dir base \
             --candidate-dir candidate \
             --config base/perf/ab/gate-config.json \
-            --report perf-results/protected-paths.json
+            --report "$PERF_RESULTS_ROOT/evidence/protected-paths.json"
 
       - name: Test base-owned statistics
         shell: bash
@@ -209,18 +215,20 @@ jobs:
           CANDIDATE_JAR="$(find candidate/build/libs -maxdepth 1 -name '*-jmh.jar' -print -quit)"
           test -n "$BASE_JAR"
           test -n "$CANDIDATE_JAR"
-          echo "base=$BASE_JAR" >> "$GITHUB_OUTPUT"
-          echo "candidate=$CANDIDATE_JAR" >> "$GITHUB_OUTPUT"
-          cp base/perf/ab/gate-config.json perf-results/gate-config.json
-          mkdir -p perf-results/jars
-          cp "$BASE_JAR" perf-results/jars/base-jmh.jar
-          cp "$CANDIDATE_JAR" perf-results/jars/candidate-jmh.jar
-          chmod 0444 perf-results/jars/base-jmh.jar perf-results/jars/candidate-jmh.jar
-          sudo -H -u mahjong-benchmark -- test -r "$BASE_JAR"
-          sudo -H -u mahjong-benchmark -- test -r "$CANDIDATE_JAR"
-          sudo -H -u mahjong-benchmark -- test ! -w "$BASE_JAR"
-          sudo -H -u mahjong-benchmark -- test ! -w "$CANDIDATE_JAR"
-          sudo -H -u mahjong-benchmark -- test ! -w perf-results
+          cp base/perf/ab/gate-config.json "$PERF_RESULTS_ROOT/evidence/gate-config.json"
+          mkdir -p "$PERF_RESULTS_ROOT/evidence/jars"
+          cp "$BASE_JAR" "$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar"
+          cp "$CANDIDATE_JAR" "$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar"
+          chmod 0444 \
+            "$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar" \
+            "$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar"
+          echo "base=$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar" >> "$GITHUB_OUTPUT"
+          echo "candidate=$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar" >> "$GITHUB_OUTPUT"
+          sudo -H -u mahjong-benchmark -- test -r "$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar"
+          sudo -H -u mahjong-benchmark -- test -r "$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar"
+          sudo -H -u mahjong-benchmark -- test ! -w "$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar"
+          sudo -H -u mahjong-benchmark -- test ! -w "$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar"
+          sudo -H -u mahjong-benchmark -- test ! -w "$PERF_RESULTS_ROOT/evidence"
 
       - name: Run A/A drift control
         shell: bash
@@ -247,7 +255,7 @@ jobs:
             --base-sha "$BASE_SHA" \
             --candidate-sha "$CANDIDATE_SHA" \
             --config base/perf/ab/gate-config.json \
-            --output-dir perf-results/aa \
+            --output-dir "$PERF_RESULTS_ROOT/evidence/aa" \
             --java "$JAVA_HOME/bin/java" \
             --candidate-command-prefix-json '["sudo","-H","-u","mahjong-benchmark","--"]' \
             --candidate-file-user mahjong-benchmark \
@@ -279,7 +287,7 @@ jobs:
             --base-sha "$BASE_SHA" \
             --candidate-sha "$CANDIDATE_SHA" \
             --config base/perf/ab/gate-config.json \
-            --output-dir perf-results/ab \
+            --output-dir "$PERF_RESULTS_ROOT/evidence/ab" \
             --java "$JAVA_HOME/bin/java" \
             --candidate-command-prefix-json '["sudo","-H","-u","mahjong-benchmark","--"]' \
             --candidate-file-user mahjong-benchmark \
@@ -290,7 +298,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: performance-ab-raw-${{ github.run_id }}-${{ github.run_attempt }}
-          path: perf-results/**
+          path: ${{ env.PERF_RESULTS_ROOT }}/evidence/**
           if-no-files-found: error
           retention-days: 1
 

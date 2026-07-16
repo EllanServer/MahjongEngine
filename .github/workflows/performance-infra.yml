@@ -71,9 +71,19 @@ jobs:
             --no-create-home \
             --shell /usr/sbin/nologin \
             mahjong-probe
+
+          PROBE_ROOT="/tmp/mahjong-performance-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          sudo install -d --owner root --group root --mode 0711 "$PROBE_ROOT"
+          sudo install -d \
+            --owner "$(id -u)" \
+            --group "$(id -g)" \
+            --mode 0711 \
+            "$PROBE_ROOT/evidence"
           python3 perf/ab/tests/isolation_probe.py \
             --user mahjong-probe \
-            --output-dir build/reports/jmh/isolation-probe
+            --output-dir "$PROBE_ROOT/evidence"
+          mkdir -p build/reports/jmh/isolation-probe
+          cp -a "$PROBE_ROOT/evidence/." build/reports/jmh/isolation-probe/
 
       - name: Build isolated JMH harness
         run: >-
