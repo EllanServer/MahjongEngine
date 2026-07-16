@@ -2,10 +2,17 @@
 
 MahjongPaper ships a real JNI bridge for the GB Mahjong ruleset. The Java side keeps the plugin's table/session model, while the native side delegates legality, fan counting, ting analysis, and win evaluation to a vendored copy of the upstream `GB-Mahjong` project.
 
-Rule target:
+Normative rule target:
 
-- <https://github.com/zheng-fan/GB-Mahjong>
-- See also: [gb-mahjong-rules.md](./gb-mahjong-rules.md)
+- [EMA/WMO Mahjong Competition Rules (Green Book)](https://mahjong-europe.org/portal/images/docs/mcr_EN.pdf)
+- [EMA MCR Regulations](https://mahjong-europe.org/portal/images/docs/mcr_regulations.pdf)
+- See also: [gb-mahjong-rules.md](./gb-mahjong-rules.md) and [rule-verification-matrix.zh-CN.md](./rule-verification-matrix.zh-CN.md)
+
+Implementation source:
+
+- [zheng-fan/GB-Mahjong](https://github.com/zheng-fan/GB-Mahjong)
+
+The vendored source is an implementation dependency, not the rule authority. Covered disagreements are fixed in the vendored copy or bridge and locked down with tests against the Green Book behavior.
 
 ## Architecture
 
@@ -103,14 +110,16 @@ Current mapping includes:
 
 This design keeps the rest of the plugin readable and testable without forcing gameplay code to manipulate raw upstream hand strings directly.
 
-## What The Native Backend Owns
+## Native Runtime Responsibility And Rule Authority
 
-The JNI/native layer is the source of truth for:
+The JNI/native layer produces the runtime result for:
 
 - fan counting
 - ting wait discovery
 - win legality
 - per-fan breakdown returned to the plugin
+
+Those results remain governed by the Green Book. In particular, the repository regression contract includes the six-point combination of one melded kong plus one concealed kong and formal wait classification even when an alternative wait tile is already exhausted. An unmodified upstream result is not preserved merely for parity when it conflicts with the normative source.
 
 The plugin still owns:
 
