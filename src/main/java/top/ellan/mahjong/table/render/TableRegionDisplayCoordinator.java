@@ -39,6 +39,13 @@ public final class TableRegionDisplayCoordinator {
     private static final int PRIORITY_TURN_STATE = 240;
     private static final int PRIORITY_BOARD = 160;
     private static final int PRIORITY_BACKGROUND = 80;
+    private static final int[] APPLY_PRIORITY_ORDER = {
+        PRIORITY_REACTION_PROMPT,
+        PRIORITY_HAND,
+        PRIORITY_TURN_STATE,
+        PRIORITY_BOARD,
+        PRIORITY_BACKGROUND
+    };
 
     private final TableSessionContext session;
     private final TableRegionFingerprintService fingerprintService;
@@ -275,6 +282,43 @@ public final class TableRegionDisplayCoordinator {
     }
 
     private QueueExecution applyQueue(List<QueuedRegionUpdate> updates) {
+        if (!this.hasProductionQueueOrder(updates)) {
+            return this.applySortedQueue(updates);
+        }
+        int processed = 0;
+        for (int priority : APPLY_PRIORITY_ORDER) {
+            for (QueuedRegionUpdate update : updates) {
+                if (update.priority() != priority) {
+                    continue;
+                }
+                if (!update.action().apply()) {
+                    return new QueueExecution(true, processed);
+                }
+                processed++;
+            }
+        }
+        return new QueueExecution(false, processed);
+    }
+
+    private boolean hasProductionQueueOrder(List<QueuedRegionUpdate> updates) {
+        long previousSequence = Long.MIN_VALUE;
+        for (QueuedRegionUpdate update : updates) {
+            if (update.sequence() < previousSequence || !this.isProductionPriority(update.priority())) {
+                return false;
+            }
+            previousSequence = update.sequence();
+        }
+        return true;
+    }
+
+    private boolean isProductionPriority(int priority) {
+        return switch (priority) {
+            case PRIORITY_REACTION_PROMPT, PRIORITY_HAND, PRIORITY_TURN_STATE, PRIORITY_BOARD, PRIORITY_BACKGROUND -> true;
+            default -> false;
+        };
+    }
+
+    private QueueExecution applySortedQueue(List<QueuedRegionUpdate> updates) {
         updates.sort(
             Comparator.comparingInt(QueuedRegionUpdate::priority).reversed()
                 .thenComparingLong(QueuedRegionUpdate::sequence)
