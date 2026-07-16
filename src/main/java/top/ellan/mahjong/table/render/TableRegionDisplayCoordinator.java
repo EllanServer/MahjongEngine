@@ -39,6 +39,30 @@ public final class TableRegionDisplayCoordinator {
     private static final int PRIORITY_TURN_STATE = 240;
     private static final int PRIORITY_BOARD = 160;
     private static final int PRIORITY_BACKGROUND = 80;
+    private static final String[] VISUAL_REGION_KEYS = createSeatRegionKeys("visual");
+    private static final String[] LABEL_REGION_KEYS = createSeatRegionKeys("labels");
+    private static final String[] STICK_REGION_KEYS = createSeatRegionKeys("sticks");
+    private static final String[] HAND_PUBLIC_REGION_KEYS = createSeatRegionKeys("hand-public");
+    private static final String[] HAND_PRIVATE_REGION_KEYS = createSeatRegionKeys("hand-private");
+    private static final String[] DISCARD_REGION_KEYS = createSeatRegionKeys("discards");
+    private static final String[] MELD_REGION_KEYS = createSeatRegionKeys("melds");
+    private static final String[][] HAND_PUBLIC_TILE_REGION_KEYS = createIndexedSeatRegionKeys(
+        "hand-public",
+        MAX_HAND_TILE_REGIONS
+    );
+    private static final String[][] HAND_PRIVATE_TILE_REGION_KEYS = createIndexedSeatRegionKeys(
+        "hand-private",
+        MAX_HAND_TILE_REGIONS
+    );
+    private static final String[][] DISCARD_TILE_REGION_KEYS = createIndexedSeatRegionKeys(
+        "discards",
+        MAX_DISCARD_TILE_REGIONS
+    );
+    private static final String[][] MELD_TILE_REGION_KEYS = createIndexedSeatRegionKeys(
+        "melds",
+        MAX_MELD_TILE_REGIONS
+    );
+    private static final String[] WALL_TILE_REGION_KEYS = createIndexedRegionKeys(REGION_WALL, MAX_WALL_TILE_REGIONS);
     private static final int[] APPLY_PRIORITY_ORDER = {
         PRIORITY_REACTION_PROMPT,
         PRIORITY_HAND,
@@ -645,27 +669,91 @@ public final class TableRegionDisplayCoordinator {
     }
 
     private String seatRegionKey(String region, SeatWind wind) {
+        if ("visual".equals(region)) {
+            return VISUAL_REGION_KEYS[wind.index()];
+        }
+        if ("labels".equals(region)) {
+            return LABEL_REGION_KEYS[wind.index()];
+        }
+        if ("sticks".equals(region)) {
+            return STICK_REGION_KEYS[wind.index()];
+        }
+        if ("hand-public".equals(region)) {
+            return HAND_PUBLIC_REGION_KEYS[wind.index()];
+        }
+        if ("hand-private".equals(region)) {
+            return HAND_PRIVATE_REGION_KEYS[wind.index()];
+        }
+        if ("discards".equals(region)) {
+            return DISCARD_REGION_KEYS[wind.index()];
+        }
+        if ("melds".equals(region)) {
+            return MELD_REGION_KEYS[wind.index()];
+        }
         return region + ":" + wind.name();
     }
 
     private String handPrivateRegionKey(SeatWind wind, int tileIndex) {
+        if (tileIndex >= 0 && tileIndex < MAX_HAND_TILE_REGIONS) {
+            return HAND_PRIVATE_TILE_REGION_KEYS[wind.index()][tileIndex];
+        }
         return this.seatRegionKey("hand-private-" + tileIndex, wind);
     }
 
     private String handPublicRegionKey(SeatWind wind, int tileIndex) {
+        if (tileIndex >= 0 && tileIndex < MAX_HAND_TILE_REGIONS) {
+            return HAND_PUBLIC_TILE_REGION_KEYS[wind.index()][tileIndex];
+        }
         return this.seatRegionKey("hand-public-" + tileIndex, wind);
     }
 
     private String discardRegionKey(SeatWind wind, int discardIndex) {
+        if (discardIndex >= 0 && discardIndex < MAX_DISCARD_TILE_REGIONS) {
+            return DISCARD_TILE_REGION_KEYS[wind.index()][discardIndex];
+        }
         return this.seatRegionKey("discards-" + discardIndex, wind);
     }
 
     private String meldRegionKey(SeatWind wind, int meldIndex) {
+        if (meldIndex >= 0 && meldIndex < MAX_MELD_TILE_REGIONS) {
+            return MELD_TILE_REGION_KEYS[wind.index()][meldIndex];
+        }
         return this.seatRegionKey("melds-" + meldIndex, wind);
     }
 
     private String wallRegionKey(int wallIndex) {
+        if (wallIndex >= 0 && wallIndex < MAX_WALL_TILE_REGIONS) {
+            return WALL_TILE_REGION_KEYS[wallIndex];
+        }
         return REGION_WALL + "-" + wallIndex;
+    }
+
+    private static String[] createSeatRegionKeys(String region) {
+        SeatWind[] winds = SeatWind.values();
+        String[] keys = new String[winds.length];
+        for (SeatWind wind : winds) {
+            keys[wind.index()] = region + ":" + wind.name();
+        }
+        return keys;
+    }
+
+    private static String[][] createIndexedSeatRegionKeys(String region, int count) {
+        SeatWind[] winds = SeatWind.values();
+        String[][] keys = new String[winds.length][count];
+        for (SeatWind wind : winds) {
+            for (int index = 0; index < count; index++) {
+                keys[wind.index()][index] = region + "-" + index + ":" + wind.name();
+            }
+        }
+        return keys;
+    }
+
+    private static String[] createIndexedRegionKeys(String region, int count) {
+        String[] keys = new String[count];
+        for (int index = 0; index < count; index++) {
+            keys[index] = region + "-" + index;
+        }
+        return keys;
     }
 
     private static long fingerprintOf(Map<String, Long> fingerprints, String regionKey) {
