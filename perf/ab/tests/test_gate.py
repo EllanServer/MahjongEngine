@@ -88,6 +88,8 @@ class GateTest(unittest.TestCase):
             executions = []
             schedule = run_matrix.build_schedule("ab", 4)
             for index, scheduled in enumerate(schedule):
+                runtime_temp_dir = f"/tmp/jmh-runtime-{index}"
+                runtime_temp_arg = f"-Djava.io.tmpdir={runtime_temp_dir}"
                 result = root / f"result-{index}.json"
                 result.write_text(
                     json.dumps(
@@ -101,7 +103,10 @@ class GateTest(unittest.TestCase):
                     encoding="utf-8",
                 )
                 log = root / f"result-{index}.log"
-                log.write_text("# VM options: -Xms1g -Xmx1g\n", encoding="utf-8")
+                log.write_text(
+                    f"# VM options: -Xms1g -Xmx1g {runtime_temp_arg}\n",
+                    encoding="utf-8",
+                )
                 executions.append(
                     {
                         **scheduled,
@@ -117,36 +122,33 @@ class GateTest(unittest.TestCase):
                         "isolated_candidate": scheduled["role"] == "candidate",
                         "result_mode_after_lock": 0o444,
                         "log_mode_after_lock": 0o444,
+                        "runtime_temp_dir": runtime_temp_dir,
                         "command": (
-                            ["sudo", "-u", "candidate", "--", "java"]
+                            ["sudo", "-u", "candidate", "--", "java", runtime_temp_arg]
                             if scheduled["role"] == "candidate"
-                            else ["java"]
+                            else ["java", runtime_temp_arg]
                         ),
                     }
                 )
             manifest = root / "run-manifest.json"
-            manifest.write_text(
-                json.dumps(
-                    {
-                        "schema_version": 1,
-                        "phase": "ab",
-                        "profile": self.profile,
-                        "completed_at": "2026-01-01T00:00:00Z",
-                        "config_sha256": "base-config",
-                        "base_sha": "base",
-                        "candidate_sha": "candidate",
-                        "base_jar_sha256": "base-jar",
-                        "candidate_jar_sha256": "candidate-jar",
-                        "candidate_isolation": {
-                            "enabled": True,
-                            "command_prefix": ["sudo", "-u", "candidate", "--"],
-                            "file_user": "candidate",
-                        },
-                        "executions": executions,
-                    }
-                ),
-                encoding="utf-8",
-            )
+            manifest_value = {
+                "schema_version": 1,
+                "phase": "ab",
+                "profile": self.profile,
+                "completed_at": "2026-01-01T00:00:00Z",
+                "config_sha256": "base-config",
+                "base_sha": "base",
+                "candidate_sha": "candidate",
+                "base_jar_sha256": "base-jar",
+                "candidate_jar_sha256": "candidate-jar",
+                "candidate_isolation": {
+                    "enabled": True,
+                    "command_prefix": ["sudo", "-u", "candidate", "--"],
+                    "file_user": "candidate",
+                },
+                "executions": executions,
+            }
+            manifest.write_text(json.dumps(manifest_value), encoding="utf-8")
             pairs, units, _ = gate.load_pairs(
                 manifest,
                 "ab",
@@ -159,29 +161,23 @@ class GateTest(unittest.TestCase):
             self.assertEqual(8, len(pairs[self.benchmark_id]))
             self.assertEqual("ns/op", units[self.benchmark_id])
 
+            original_runtime_temp = executions[1]["runtime_temp_dir"]
+            executions[1]["runtime_temp_dir"] = executions[0]["runtime_temp_dir"]
+            manifest.write_text(json.dumps(manifest_value), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "reused JMH runtime temp directory"):
+                gate.load_pairs(
+                    manifest,
+                    "ab",
+                    self.specs,
+                    "base-config",
+                    4,
+                    self.profile,
+                    ["-Xms1g", "-Xmx1g"],
+                )
+            executions[1]["runtime_temp_dir"] = original_runtime_temp
+
             executions[0]["position"] = 1
-            manifest.write_text(
-                json.dumps(
-                    {
-                        "schema_version": 1,
-                        "phase": "ab",
-                        "profile": self.profile,
-                        "completed_at": "2026-01-01T00:00:00Z",
-                        "config_sha256": "base-config",
-                        "base_sha": "base",
-                        "candidate_sha": "candidate",
-                        "base_jar_sha256": "base-jar",
-                        "candidate_jar_sha256": "candidate-jar",
-                        "candidate_isolation": {
-                            "enabled": True,
-                            "command_prefix": ["sudo", "-u", "candidate", "--"],
-                            "file_user": "candidate",
-                        },
-                        "executions": executions,
-                    }
-                ),
-                encoding="utf-8",
-            )
+            manifest.write_text(json.dumps(manifest_value), encoding="utf-8")
             with self.assertRaises(ValueError):
                 gate.load_pairs(
                     manifest,
@@ -316,10 +312,28 @@ class MatrixScheduleTest(unittest.TestCase):
                 "jvm_args": ["-Xms1g", "-Xmx1g", "-XX:+AlwaysPreTouch"],
             }
         }
-        command = run_matrix.command_for("java", pathlib.Path("bench.jar"), pathlib.Path("result.json"), config)
-        self.assertEqual(["java", "-jar", "bench.jar", "Benchmark"], command[:4])
+        command = run_matrix.command_for(
+            "java",
+            pathlib.Path("bench.jar"),
+            pathlib.Path("result.json"),
+            config,
+            pathlib.Path("/isolated/jmh-run"),
+        )
+        self.assertEqual(
+            [
+                "java",
+                "-Djava.io.tmpdir=/isolated/jmh-run",
+                "-jar",
+                "bench.jar",
+                "Benchmark",
+            ],
+            command[:5],
+        )
         append_index = command.index("-jvmArgsAppend")
-        self.assertEqual("-Xms1g -Xmx1g -XX:+AlwaysPreTouch", command[append_index + 1])
+        self.assertEqual(
+            "-Xms1g -Xmx1g -XX:+AlwaysPreTouch -Djava.io.tmpdir=/isolated/jmh-run",
+            command[append_index + 1],
+        )
 
     def test_candidate_command_prefix_wraps_only_the_requested_command(self) -> None:
         config = {
@@ -342,12 +356,30 @@ class MatrixScheduleTest(unittest.TestCase):
             pathlib.Path("bench.jar"),
             pathlib.Path("result.json"),
             config,
+            pathlib.Path("/isolated/candidate-run"),
             ["sudo", "-H", "-u", "mahjong-benchmark", "--"],
         )
         self.assertEqual(
-            ["sudo", "-H", "-u", "mahjong-benchmark", "--", "/jdk/bin/java", "-jar"],
-            command[:7],
+            [
+                "sudo",
+                "-H",
+                "-u",
+                "mahjong-benchmark",
+                "--",
+                "/jdk/bin/java",
+                "-Djava.io.tmpdir=/isolated/candidate-run",
+                "-jar",
+            ],
+            command[:8],
         )
+
+    def test_trusted_runtime_temp_must_be_new_and_private(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            runtime_temp = pathlib.Path(temporary) / "execution"
+            run_matrix.prepare_runtime_temp(runtime_temp, None)
+            self.assertEqual(0o700, runtime_temp.stat().st_mode & 0o777)
+            with self.assertRaises(FileExistsError):
+                run_matrix.prepare_runtime_temp(runtime_temp, None)
 
     def test_fork_log_must_confirm_every_fixed_jvm_option(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

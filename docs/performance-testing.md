@@ -62,8 +62,11 @@ dedicated no-login UID: only the current candidate JSON path receives candidate 
 while stdout is confined to the current runner-opened log and the jars, parent directories,
 previous results and manifests remain runner-owned. After each run, residual processes under
 that UID are killed and audited, ownership is reclaimed, and the result/log are locked
-read-only before hashing. The final statistics are evaluated on a fresh runner from a fresh
-base checkout; candidate code cannot rewrite base/AA evidence or the decision gate.
+read-only before hashing. Every A/A and A/B execution also receives a distinct `java.io.tmpdir`
+under a runner-owned parent. The JMH launcher retains its lock without sharing `/tmp/jmh.lock`
+across the runner and isolated UIDs, and the same directory is passed to its measurement fork.
+The final statistics are evaluated on a fresh runner from a fresh base checkout; candidate code
+cannot rewrite base/AA evidence or the decision gate.
 The infrastructure workflow exercises this boundary on Linux with a probe that attempts to
 rewrite runner-owned evidence and leaves a delayed background writer; both must be contained.
 

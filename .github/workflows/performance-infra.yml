@@ -79,6 +79,11 @@ jobs:
             --group "$(id -g)" \
             --mode 0711 \
             "$PROBE_ROOT/evidence"
+          sudo install -d \
+            --owner "$(id -u)" \
+            --group "$(id -g)" \
+            --mode 0711 \
+            "$PROBE_ROOT/runtime-tmp"
           python3 perf/ab/tests/isolation_probe.py \
             --user mahjong-probe \
             --output-dir "$PROBE_ROOT/evidence"
@@ -91,6 +96,32 @@ jobs:
           -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
           "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT"
           "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=17"
+
+      - name: Regress isolated JMH lock ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROBE_ROOT="/tmp/mahjong-performance-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          JAR="$(find build/libs -maxdepth 1 -name '*-jmh.jar' -print -quit)"
+          test -n "$JAR"
+          python3 perf/ab/run_matrix.py \
+            --phase ab \
+            --profile infra \
+            --base-jar "$JAR" \
+            --candidate-jar "$JAR" \
+            --base-sha "$GITHUB_SHA" \
+            --candidate-sha "$GITHUB_SHA" \
+            --config perf/ab/gate-config.json \
+            --output-dir build/reports/jmh/lock-regression \
+            --runtime-temp-root "$PROBE_ROOT/runtime-tmp" \
+            --java "$JAVA_HOME/bin/java" \
+            --candidate-command-prefix-json '["sudo","-H","-u","mahjong-probe","--"]' \
+            --candidate-file-user mahjong-probe \
+            --forks 1 \
+            --warmup-iterations 1 \
+            --measurement-iterations 1 \
+            --warmup-time 10ms \
+            --measurement-time 10ms
 
       - name: Run one smoke iteration for every protected benchmark
         shell: bash

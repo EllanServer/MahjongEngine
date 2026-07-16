@@ -100,11 +100,20 @@ def command_for(
     jar: pathlib.Path,
     result_file: pathlib.Path,
     config: dict[str, Any],
+    runtime_temp_dir: pathlib.Path,
     command_prefix: list[str] | None = None,
 ) -> list[str]:
     jmh = config["jmh"]
-    fork_jvm_args = jmh.get("jvm_args", [])
-    command = [*(command_prefix or []), java, "-jar", str(jar), jmh["include"]]
+    runtime_temp_arg = f"-Djava.io.tmpdir={runtime_temp_dir}"
+    fork_jvm_args = [*jmh.get("jvm_args", []), runtime_temp_arg]
+    command = [
+        *(command_prefix or []),
+        java,
+        runtime_temp_arg,
+        "-jar",
+        str(jar),
+        jmh["include"],
+    ]
     command.extend(
         [
             "-bm",
@@ -192,6 +201,36 @@ def prepare_untrusted_result(path: pathlib.Path, file_user: str) -> None:
         raise RuntimeError(
             f"candidate user {file_user} cannot write its isolated result\n{diagnostic.stdout}{diagnostic.stderr}"
         )
+
+
+def prepare_runtime_temp(path: pathlib.Path, file_user: str | None) -> None:
+    if path.exists():
+        raise FileExistsError(f"JMH runtime temp directory already exists: {path}")
+    if file_user is None:
+        path.mkdir(mode=0o700)
+        return
+    subprocess.run(
+        [
+            "sudo",
+            "install",
+            "-d",
+            "--owner",
+            file_user,
+            "--group",
+            file_user,
+            "--mode",
+            "0700",
+            "--",
+            str(path),
+        ],
+        check=True,
+    )
+    writable = subprocess.run(
+        ["sudo", "-H", "-u", file_user, "--", "test", "-w", str(path)],
+        check=False,
+    )
+    if writable.returncode != 0:
+        raise RuntimeError(f"candidate user {file_user} cannot write JMH runtime temp {path}")
 
 
 def reclaim_untrusted_result(path: pathlib.Path, file_user: str) -> None:
@@ -298,6 +337,9 @@ def run(args: argparse.Namespace) -> int:
     }
 
     output_dir = args.output_dir.resolve()
+    runtime_temp_root = args.runtime_temp_root.resolve(strict=True)
+    if not runtime_temp_root.is_dir():
+        raise NotADirectoryError(runtime_temp_root)
     raw_dir = output_dir / "raw"
     log_dir = output_dir / "logs"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -340,6 +382,7 @@ def run(args: argparse.Namespace) -> int:
             "github_runner_name": os.environ.get("RUNNER_NAME"),
             "github_run_id": os.environ.get("GITHUB_RUN_ID"),
             "github_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+            "runtime_temp_root": str(runtime_temp_root),
         },
         "jmh": effective_config["jmh"],
         "ci_overrides": {key: value for key, value in overrides.items() if value is not None},
@@ -371,11 +414,17 @@ def run(args: argparse.Namespace) -> int:
             log_file.chmod(0o600)
         if isolated_candidate:
             prepare_untrusted_result(result_file, candidate_file_user)
+        runtime_temp_dir = runtime_temp_root / stem
+        prepare_runtime_temp(
+            runtime_temp_dir,
+            candidate_file_user if isolated_candidate else None,
+        )
         command = command_for(
             args.java,
             jar,
             result_file,
             effective_config,
+            runtime_temp_dir,
             candidate_prefix if isolated_candidate else None,
         )
         started_at = utc_now()
@@ -402,7 +451,13 @@ def run(args: argparse.Namespace) -> int:
         validation_error = None
         try:
             if run_succeeded:
-                verify_fork_jvm_args(log_file, effective_config["jmh"].get("jvm_args", []))
+                verify_fork_jvm_args(
+                    log_file,
+                    [
+                        *effective_config["jmh"].get("jvm_args", []),
+                        f"-Djava.io.tmpdir={runtime_temp_dir}",
+                    ],
+                )
                 fork_jvm_args_verified = True
             verify_jars_unchanged(expected_jar_hashes)
         except ValueError as error:
@@ -427,6 +482,7 @@ def run(args: argparse.Namespace) -> int:
             "result_sha256": sha256_file(result_file) if result_file.is_file() else None,
             "log_file": log_file.relative_to(output_dir).as_posix(),
             "log_sha256": sha256_file(log_file),
+            "runtime_temp_dir": str(runtime_temp_dir),
             "command": command,
         }
         manifest["executions"].append(record)
@@ -451,6 +507,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--candidate-sha", required=True)
     parser.add_argument("--config", type=pathlib.Path, required=True)
     parser.add_argument("--output-dir", type=pathlib.Path, required=True)
+    parser.add_argument("--runtime-temp-root", type=pathlib.Path, required=True)
     parser.add_argument("--java", default="java")
     parser.add_argument("--forks", type=int)
     parser.add_argument("--warmup-iterations", type=int)
