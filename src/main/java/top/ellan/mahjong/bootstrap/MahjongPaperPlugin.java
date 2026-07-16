@@ -27,12 +27,19 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandException;
+import org.bukkit.command.CommandMap;
+import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.command.PluginIdentifiableCommand;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class MahjongPaperPlugin extends JavaPlugin {
@@ -50,6 +57,7 @@ public final class MahjongPaperPlugin extends JavaPlugin {
     private GameRoomSelectionService gameRoomSelectionService;
     private GameRoomSelectionPreviewService gameRoomSelectionPreviewService;
     private PluginTask gameRoomTickTask;
+    private Command commandMapFallback;
 
     @Override
     public void onEnable() {
@@ -133,6 +141,7 @@ public final class MahjongPaperPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        this.unregisterCommandMapFallback();
         if (this.craftEngine != null) {
             this.craftEngine.disableFurnitureInteractionBridge();
             this.craftEngine.clearTrackedCullables();
@@ -200,13 +209,37 @@ public final class MahjongPaperPlugin extends JavaPlugin {
 
         PluginCommand command = this.getCommand("mahjong");
         if (command == null) {
-            this.getLogger().severe("MahjongPaper command is missing from plugin.yml; disabling plugin.");
-            this.getServer().getPluginManager().disablePlugin(this);
-            return false;
+            return this.registerCommandMapFallback(mahjongCommand);
         }
         command.setExecutor(mahjongCommand);
         command.setTabCompleter(mahjongCommand);
         return true;
+    }
+
+    private boolean registerCommandMapFallback(MahjongCommand mahjongCommand) {
+        CommandMap commandMap = this.getServer().getCommandMap();
+        Command fallback = new CommandMapMahjongCommand(this, mahjongCommand);
+        this.commandMapFallback = fallback;
+        commandMap.register("mahjongpaper", fallback);
+        if (commandMap.getCommand("mahjong") == fallback || commandMap.getCommand("mahjongpaper:mahjong") == fallback) {
+            return true;
+        }
+
+        this.unregisterCommandMapFallback();
+        this.getLogger().severe("MahjongPaper command could not be registered through the server command map; disabling plugin.");
+        this.getServer().getPluginManager().disablePlugin(this);
+        return false;
+    }
+
+    private void unregisterCommandMapFallback() {
+        Command fallback = this.commandMapFallback;
+        if (fallback == null) {
+            return;
+        }
+        CommandMap commandMap = this.getServer().getCommandMap();
+        commandMap.getKnownCommands().entrySet().removeIf(entry -> entry.getValue() == fallback);
+        fallback.unregister(commandMap);
+        this.commandMapFallback = null;
     }
 
     private PaperCommandRegistrationResult registerPaperCommand(MahjongCommand mahjongCommand) {
@@ -235,9 +268,9 @@ public final class MahjongPaperPlugin extends JavaPlugin {
             );
             registerEventHandler.invoke(lifecycleManager, commandsEventType, handler);
             return PaperCommandRegistrationResult.REGISTERED;
-        } catch (ClassNotFoundException | NoSuchMethodException ex) {
+        } catch (ClassNotFoundException | NoSuchMethodException | NoSuchFieldException ex) {
             return PaperCommandRegistrationResult.UNAVAILABLE;
-        } catch (IllegalAccessException | InvocationTargetException | NoSuchFieldException ex) {
+        } catch (IllegalAccessException | InvocationTargetException ex) {
             this.getLogger().log(Level.SEVERE, "Failed to register MahjongPaper command through Paper lifecycle events.", ex);
             return PaperCommandRegistrationResult.FAILED;
         }
@@ -293,6 +326,52 @@ public final class MahjongPaperPlugin extends JavaPlugin {
         REGISTERED,
         UNAVAILABLE,
         FAILED
+    }
+
+    private static final class CommandMapMahjongCommand extends Command implements PluginIdentifiableCommand {
+        private final MahjongPaperPlugin plugin;
+        private final MahjongCommand delegate;
+
+        private CommandMapMahjongCommand(MahjongPaperPlugin plugin, MahjongCommand delegate) {
+            super(
+                "mahjong",
+                "Manage MahjongPaper tables and rounds. Use /mahjong help for command explanations.",
+                "/mahjong <help|create|botmatch|mode|join|leave|list|spectate|unspectate|table|addbot|removebot|rule|start|state|riichi|tsumo|ron|pon|minkan|chii|kan|skip|kyuushu|settlement|rank|leaderboard|render|inspect|clear|forceend|deletetable|reload>",
+                List.of()
+            );
+            this.plugin = plugin;
+            this.delegate = delegate;
+            this.setPermission(delegate.permission());
+        }
+
+        @Override
+        public boolean execute(CommandSender sender, String commandLabel, String[] args) {
+            if (!this.plugin.isEnabled()) {
+                throw new CommandException("Cannot execute /" + commandLabel + " because MahjongPaper is disabled.");
+            }
+            if (!this.testPermission(sender)) {
+                return true;
+            }
+            try {
+                return this.delegate.onCommand(sender, this, commandLabel, args);
+            } catch (Throwable throwable) {
+                throw new CommandException("Unhandled exception while executing /" + commandLabel + ".", throwable);
+            }
+        }
+
+        @Override
+        public List<String> tabComplete(CommandSender sender, String alias, String[] args) {
+            try {
+                return Objects.requireNonNullElse(this.delegate.onTabComplete(sender, this, alias, args), List.of());
+            } catch (Throwable throwable) {
+                throw new CommandException("Unhandled exception while tab-completing /" + alias + ".", throwable);
+            }
+        }
+
+        @Override
+        public Plugin getPlugin() {
+            return this.plugin;
+        }
     }
 
     public String reloadMahjongConfiguration() {
