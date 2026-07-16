@@ -28,6 +28,7 @@ jobs:
               { name: "performance-region-fingerprint", color: "bfdadc", description: "Use the table region fingerprint performance profile" },
               { name: "performance-display-spawn", color: "bfdadc", description: "Use the display entity spawn performance profile" },
               { name: "performance-region-queue", color: "bfdadc", description: "Use the region update queue performance profile" },
+              { name: "performance-scheduler-reflection", color: "bfdadc", description: "Use the scheduler reflection performance profile" },
               { name: "performance-ray-proxy", color: "bfdadc", description: "Use the client ray-proxy performance profile" }
             ];
 

@@ -138,6 +138,23 @@
         "top/ellan/mahjong/table/render/TableRegionDisplayCoordinator.class"
       ]
     },
+    "scheduler-reflection": {
+      "include": "^top\\.ellan\\.mahjong\\.perf\\.ServerSchedulerReflectionBenchmark\\.schedule(?:Folia|Paper)Burst$",
+      "benchmark_ids": [
+        "scheduler.folia.time",
+        "scheduler.folia.alloc",
+        "scheduler.paper.time",
+        "scheduler.paper.alloc"
+      ],
+      "minimum_passes": 2,
+      "must_pass": [
+        "scheduler.folia.time",
+        "scheduler.paper.time"
+      ],
+      "required_classes": [
+        "top/ellan/mahjong/runtime/ServerScheduler.class"
+      ]
+    },
     "ray-proxy": {
       "include": "^top\\.ellan\\.mahjong\\.perf\\.RayProxyCoordinatorBenchmark\\.proxyPlan(?:1Viewer|4Viewers|32Viewers)$",
       "benchmark_ids": [
@@ -288,6 +305,30 @@
     {
       "id": "region.queue.alloc",
       "benchmark": "top.ellan.mahjong.perf.RegionUpdateQueueBenchmark.orderRepresentativeTableRegions",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "scheduler.folia.time",
+      "benchmark": "top.ellan.mahjong.perf.ServerSchedulerReflectionBenchmark.scheduleFoliaBurst",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "scheduler.folia.alloc",
+      "benchmark": "top.ellan.mahjong.perf.ServerSchedulerReflectionBenchmark.scheduleFoliaBurst",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "scheduler.paper.time",
+      "benchmark": "top.ellan.mahjong.perf.ServerSchedulerReflectionBenchmark.schedulePaperBurst",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "scheduler.paper.alloc",
+      "benchmark": "top.ellan.mahjong.perf.ServerSchedulerReflectionBenchmark.schedulePaperBurst",
       "metric": "gc.alloc.rate.norm",
       "direction": "lower"
     },

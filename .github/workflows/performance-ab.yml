@@ -36,6 +36,7 @@ on:
           - region-fingerprint
           - display-spawn
           - region-queue
+          - scheduler-reflection
           - ray-proxy
           - infra
       forks:
@@ -163,6 +164,7 @@ jobs:
               "performance-region-fingerprint": "region-fingerprint",
               "performance-display-spawn": "display-spawn",
               "performance-region-queue": "region-queue",
+              "performance-scheduler-reflection": "scheduler-reflection",
               "performance-ray-proxy": "ray-proxy",
           }
           selected = [profile for label, profile in choices.items() if label in labels]
