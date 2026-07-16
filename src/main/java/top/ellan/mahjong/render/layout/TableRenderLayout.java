@@ -180,6 +180,9 @@ public final class TableRenderLayout {
         if (!snapshot.started()) {
             return List.of();
         }
+        if (!snapshot.usesDeadWall()) {
+            return precomputeLiveWallWithoutDeadWall(displayCenter, snapshot);
+        }
         int liveWallCount = snapshot.remainingWallCount();
         int kanCount = snapshot.kanCount();
         int frontDrawCount = Math.max(0, LIVE_WALL_SIZE - liveWallCount - kanCount);
@@ -193,6 +196,7 @@ public final class TableRenderLayout {
 
         List<DeadWallPlacement> deadWallPlacements = deadWallPlacements(displayCenter, snapshot);
         List<TilePlacement> placements = new ArrayList<>(TOTAL_WALL_TILES);
+        boolean[] occupiedSlots = new boolean[TOTAL_WALL_TILES];
         for (int i = 0; i < TOTAL_WALL_TILES; i++) {
             placements.add(null);
         }
@@ -201,24 +205,70 @@ public final class TableRenderLayout {
             int wallSlot = Math.floorMod(breakTileIndex + frontDrawCount + i, TOTAL_WALL_TILES);
             SeatWind wind = WallLayout.wallSeat(wallSlot);
             Point point = wallSlotPoint(displayCenter, wallSlot);
-            if (kanCount % 2 == 1 && i == liveWallCount - 1) {
-                point = point.add(0.0D, -TILE_DEPTH, 0.0D);
-            }
+            occupiedSlots[wallSlot] = true;
             placements.set(wallSlot, new TilePlacement(point, seatYaw(wind), MahjongTile.UNKNOWN, DisplayEntities.TileRenderPose.FLAT_FACE_DOWN));
         }
 
         for (int i = 0; i < DEAD_WALL_SIZE; i++) {
+            DeadWallPlacement placement = deadWallPlacements.get(i);
+            // A revealed dora is rendered in the separate dora region but still physically supports
+            // the tile above it, so every dead-wall slot participates in the gravity calculation.
+            occupiedSlots[placement.wallSlot()] = true;
             if (doraSlots[i]) {
                 continue;
             }
-            DeadWallPlacement placement = deadWallPlacements.get(i);
             placements.set(placement.wallSlot(), new TilePlacement(placement.point(), placement.yaw(), MahjongTile.UNKNOWN, DisplayEntities.TileRenderPose.FLAT_FACE_DOWN));
         }
+        settleUnsupportedUpperWallTiles(placements, occupiedSlots, WALL_TILES_PER_SIDE);
         return Collections.unmodifiableList(new ArrayList<>(placements));
     }
 
+    private static List<TilePlacement> precomputeLiveWallWithoutDeadWall(Point displayCenter, TableRenderSnapshot snapshot) {
+        int wallCapacity = snapshot.wallCapacity();
+        int tilesPerSide = snapshot.wallTilesPerSide();
+        int remainingWallCount = Math.max(0, Math.min(snapshot.remainingWallCount(), wallCapacity));
+        int supplementDrawCount = Math.min(
+            wallCapacity - remainingWallCount,
+            snapshot.kanCount() + exposedFlowerCount(snapshot)
+        );
+        int frontDrawCount = wallCapacity - remainingWallCount - supplementDrawCount;
+        int breakTileIndex = wallBreakTileIndex(snapshot);
+        List<TilePlacement> placements = new ArrayList<>(wallCapacity);
+        boolean[] occupiedSlots = new boolean[wallCapacity];
+        for (int i = 0; i < wallCapacity; i++) {
+            placements.add(null);
+        }
+        for (int i = 0; i < remainingWallCount; i++) {
+            int wallSlot = Math.floorMod(breakTileIndex + frontDrawCount + i, wallCapacity);
+            SeatWind wind = WallLayout.wallSeat(wallSlot, tilesPerSide);
+            Point point = wallSlotPoint(displayCenter, wallSlot, tilesPerSide);
+            occupiedSlots[wallSlot] = true;
+            placements.set(wallSlot, new TilePlacement(point, seatYaw(wind), MahjongTile.UNKNOWN, DisplayEntities.TileRenderPose.FLAT_FACE_DOWN));
+        }
+        settleUnsupportedUpperWallTiles(placements, occupiedSlots, tilesPerSide);
+        return Collections.unmodifiableList(new ArrayList<>(placements));
+    }
+
+    private static int exposedFlowerCount(TableRenderSnapshot snapshot) {
+        int count = 0;
+        for (SeatWind wind : SeatWind.values()) {
+            TableSeatRenderSnapshot seat = snapshot.seat(wind);
+            if (seat == null) {
+                continue;
+            }
+            for (MeldView meld : seat.melds()) {
+                for (MahjongTile tile : meld.tiles()) {
+                    if (tile != null && tile.isFlower()) {
+                        count++;
+                    }
+                }
+            }
+        }
+        return count;
+    }
+
     private static List<TilePlacement> precomputeDora(Point displayCenter, TableRenderSnapshot snapshot) {
-        if (!snapshot.started()) {
+        if (!snapshot.started() || !snapshot.usesDeadWall()) {
             return List.of();
         }
         List<DeadWallPlacement> deadWallPlacements = deadWallPlacements(displayCenter, snapshot);
@@ -412,8 +462,12 @@ public final class TableRenderLayout {
         int seatCount = SeatWind.values().length;
         int dicePoints = snapshot.dicePoints();
         int breakDice = snapshot.breakDicePoints();
-        int directionIndex = 4 - (((dicePoints % seatCount) - 1 + snapshot.roundIndex()) % seatCount);
-        return Math.floorMod(directionIndex * WALL_TILES_PER_SIDE + breakDice * 2, TOTAL_WALL_TILES);
+        int openDoorIndex = Math.floorMod(snapshot.dealerSeat().index() + dicePoints - 1, seatCount);
+        int openingStackCount = snapshot.usesDeadWall() ? breakDice : dicePoints + breakDice;
+        return Math.floorMod(
+            openDoorIndex * snapshot.wallTilesPerSide() + openingStackCount * 2,
+            snapshot.wallCapacity()
+        );
     }
 
     private static int doraIndicatorDeadWallIndex(int kanCount, int indicatorIndex) {
@@ -445,11 +499,16 @@ public final class TableRenderLayout {
     }
 
     private static Point wallSlotPoint(Point center, int wallSlot) {
-        SeatWind wind = WallLayout.wallSeat(wallSlot);
-        int stackIndex = WallLayout.wallColumn(wallSlot);
+        return wallSlotPoint(center, wallSlot, WALL_TILES_PER_SIDE);
+    }
+
+    private static Point wallSlotPoint(Point center, int wallSlot, int tilesPerSide) {
+        SeatWind wind = WallLayout.wallSeat(wallSlot, tilesPerSide);
+        int stackIndex = WallLayout.wallColumn(wallSlot, tilesPerSide);
         double stackWidth = stackIndex * WALL_TILE_STEP;
-        double startingPos = (17.0D * TILE_WIDTH) / 2.0D - TILE_HEIGHT;
-        double yOffset = FLAT_TILE_Y + wallLayerYOffset(WallLayout.wallLayer(wallSlot));
+        int stackCount = (tilesPerSide + 1) / 2;
+        double startingPos = (stackCount * TILE_WIDTH) / 2.0D - TILE_HEIGHT;
+        double yOffset = FLAT_TILE_Y + wallLayerYOffset(WallLayout.wallLayer(wallSlot, tilesPerSide));
         return switch (displayDirection(wind)) {
             case EAST -> center.add(WALL_DIRECTION_OFFSET, yOffset, -startingPos + stackWidth);
             case SOUTH -> center.add(startingPos - stackWidth, yOffset, WALL_DIRECTION_OFFSET);
@@ -460,6 +519,30 @@ public final class TableRenderLayout {
 
     private static double wallLayerYOffset(int layer) {
         return layer * TILE_DEPTH + (layer == 1 ? TILE_PADDING : 0.0D);
+    }
+
+    private static void settleUnsupportedUpperWallTiles(
+        List<TilePlacement> placements,
+        boolean[] occupiedSlots,
+        int tilesPerSide
+    ) {
+        double upperLayerOffset = wallLayerYOffset(1);
+        for (int wallSlot = 0; wallSlot < placements.size(); wallSlot++) {
+            TilePlacement placement = placements.get(wallSlot);
+            if (placement == null || WallLayout.wallLayer(wallSlot, tilesPerSide) != 1) {
+                continue;
+            }
+            int supportingSlot = WallLayout.supportingLowerSlot(wallSlot, tilesPerSide);
+            if (supportingSlot >= 0 && occupiedSlots[supportingSlot]) {
+                continue;
+            }
+            placements.set(wallSlot, new TilePlacement(
+                placement.point().add(0.0D, -upperLayerOffset, 0.0D),
+                placement.yaw(),
+                placement.tile(),
+                placement.pose()
+            ));
+        }
     }
 
     private static List<DeadWallPlacement> deadWallPlacements(Point center, TableRenderSnapshot snapshot) {

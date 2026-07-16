@@ -46,7 +46,12 @@ final class SessionRuleCoordinator {
                 case "spectate" -> this.session.configuredRuleInternal().setSpectate(Boolean.parseBoolean(rawValue));
                 case "redfive" -> this.session.configuredRuleInternal().setRedFive(MahjongRule.RedFive.valueOf(rawValue.toUpperCase(Locale.ROOT)));
                 case "opentanyao" -> this.session.configuredRuleInternal().setOpenTanyao(Boolean.parseBoolean(rawValue));
-                case "localyaku" -> this.session.configuredRuleInternal().setLocalYaku(Boolean.parseBoolean(rawValue));
+                case "localyaku" -> {
+                    if (Boolean.parseBoolean(rawValue)) {
+                        return false;
+                    }
+                    this.session.configuredRuleInternal().setLocalYaku(false);
+                }
                 case "ronmode", "ron" -> this.session.configuredRuleInternal().setRonMode(parseRonMode(rawValue));
                 case "riichiprofile", "profile" -> this.session.configuredRuleInternal().setRiichiProfile(parseRiichiProfile(rawValue));
                 case "startingpoints", "startpoints" -> this.session.configuredRuleInternal().setStartingPoints(Integer.parseInt(rawValue));
@@ -64,22 +69,23 @@ final class SessionRuleCoordinator {
     }
 
     List<String> ruleKeys() {
-        return List.of("preset", "mode", "variant", "ruleset", "length", "thinkingTime", "minimumHan", "spectate", "redFive", "openTanyao", "localYaku", "ronMode", "riichiProfile", "startingPoints", "minPointsToWin");
+        return List.of("preset", "mode", "variant", "ruleset", "length", "thinkingTime", "minimumHan", "spectate", "redFive", "openTanyao", "ronMode", "riichiProfile", "startingPoints", "minPointsToWin");
     }
 
     List<String> ruleValues(String key) {
         return switch (key.toLowerCase(Locale.ROOT)) {
             case "preset", "mode" -> List.of("MAJSOUL_TONPUU", "MAJSOUL_HANCHAN", "GB", "SICHUAN");
             case "variant", "ruleset" -> List.of("RIICHI", "GB", "SICHUAN");
-            case "length" -> List.of("ONE_GAME", "EAST", "SOUTH", "TWO_WIND");
+            case "length" -> List.of("ONE_GAME", "EAST", "SOUTH", "TWO_WIND", "FOUR_WIND");
             case "thinkingtime", "thinking" -> List.of("VERY_SHORT", "SHORT", "NORMAL", "LONG", "VERY_LONG");
             case "minimumhan", "minhan" -> List.of("ONE", "TWO", "FOUR", "YAKUMAN");
             case "redfive" -> List.of("NONE", "THREE", "FOUR");
             case "ronmode", "ron" -> List.of("HEAD_BUMP", "MULTI_RON");
-            case "riichiprofile", "profile" -> List.of("MAJSOUL", "TOURNAMENT");
-            case "spectate", "opentanyao", "localyaku" -> List.of("true", "false");
-            case "startingpoints", "startpoints" -> List.of("25000", "30000", "35000");
-            case "minpointstowin", "goal" -> List.of("30000", "35000", "40000");
+            case "riichiprofile", "profile" -> List.of("MAJSOUL", "EARLY_KAN_DORA");
+            case "spectate", "opentanyao" -> List.of("true", "false");
+            case "localyaku" -> List.of("false");
+            case "startingpoints", "startpoints" -> List.of("500", "25000", "30000", "35000");
+            case "minpointstowin", "goal" -> List.of("500", "30000", "35000", "40000");
             default -> List.of();
         };
     }
@@ -94,7 +100,7 @@ final class SessionRuleCoordinator {
             rule.getSpectate(),
             rule.getRedFive(),
             rule.getOpenTanyao(),
-            rule.getLocalYaku(),
+            false,
             rule.getRonMode(),
             rule.getRiichiProfile()
         );
@@ -119,9 +125,8 @@ final class SessionRuleCoordinator {
         String normalized = rawValue.toUpperCase(Locale.ROOT);
         return switch (normalized) {
             case "MJS", "MAHJONGSOUL" -> MahjongRule.RiichiProfile.MAJSOUL;
-            case "COMPETITIVE", "JPML", "TOURNAMENT" -> MahjongRule.RiichiProfile.TOURNAMENT;
+            case "EARLY_KAN_DORA", "TOURNAMENT" -> MahjongRule.RiichiProfile.EARLY_KAN_DORA;
             default -> MahjongRule.RiichiProfile.valueOf(normalized);
         };
     }
 }
-

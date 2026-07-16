@@ -21,6 +21,9 @@ import top.ellan.mahjong.debug.DebugService;
 import top.ellan.mahjong.db.DatabaseService;
 import top.ellan.mahjong.db.MahjongSoulRankProfile;
 import top.ellan.mahjong.db.MahjongSoulRankRules;
+import top.ellan.mahjong.rank.DatabasePlayerRankStorage;
+import top.ellan.mahjong.rank.PlayerRankStorage;
+import top.ellan.mahjong.rank.PlayerRankStorageException;
 import top.ellan.mahjong.gameroom.GameRoomManager;
 import top.ellan.mahjong.gameroom.GameRoomSelectionService;
 import top.ellan.mahjong.i18n.MessageService;
@@ -98,6 +101,7 @@ public final class MahjongCommandContext {
     private final AsyncService async;
     private final ServerScheduler scheduler;
     private final Supplier<DatabaseService> database;
+    private final Supplier<PlayerRankStorage> playerRankStorage;
     private final Supplier<String> reloadConfiguration;
     private final Supplier<GameRoomManager> gameRoomManager;
     private final GameRoomSelectionService selectionService;
@@ -113,15 +117,47 @@ public final class MahjongCommandContext {
         Supplier<GameRoomManager> gameRoomManager,
         GameRoomSelectionService selectionService
     ) {
+        this(
+            messages,
+            tableManager,
+            debug,
+            async,
+            scheduler,
+            database,
+            fallbackRankStorage(database),
+            reloadConfiguration,
+            gameRoomManager,
+            selectionService
+        );
+    }
+
+    public MahjongCommandContext(
+        MessageService messages,
+        MahjongTableManager tableManager,
+        DebugService debug,
+        AsyncService async,
+        ServerScheduler scheduler,
+        Supplier<DatabaseService> database,
+        Supplier<PlayerRankStorage> playerRankStorage,
+        Supplier<String> reloadConfiguration,
+        Supplier<GameRoomManager> gameRoomManager,
+        GameRoomSelectionService selectionService
+    ) {
         this.messages = Objects.requireNonNull(messages, "messages");
         this.tableManager = Objects.requireNonNull(tableManager, "tableManager");
         this.debug = Objects.requireNonNull(debug, "debug");
         this.async = Objects.requireNonNull(async, "async");
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
         this.database = Objects.requireNonNull(database, "database");
+        this.playerRankStorage = Objects.requireNonNull(playerRankStorage, "playerRankStorage");
         this.reloadConfiguration = Objects.requireNonNull(reloadConfiguration, "reloadConfiguration");
         this.gameRoomManager = gameRoomManager;
         this.selectionService = selectionService;
+    }
+
+    private static Supplier<PlayerRankStorage> fallbackRankStorage(Supplier<DatabaseService> database) {
+        PlayerRankStorage storage = new DatabasePlayerRankStorage(database);
+        return () -> storage;
     }
 
     public MessageService messages() {
@@ -368,15 +404,15 @@ public final class MahjongCommandContext {
     }
 
     public void showRank(Player player) {
-        DatabaseService database = this.database();
-        if (database == null || !database.rankingEnabled()) {
+        PlayerRankStorage storage = this.playerRankStorage();
+        if (storage == null || !storage.rankingEnabled()) {
             this.messages.send(player, "command.rank_unavailable");
             return;
         }
         this.messages.send(player, "command.rank_loading");
         this.async.execute("load-rank-" + player.getUniqueId(), () -> {
             try {
-                Map<MahjongVariant, MahjongSoulRankProfile> profiles = database.loadRankProfiles(player.getUniqueId(), player.getName());
+                Map<MahjongVariant, MahjongSoulRankProfile> profiles = storage.loadProfiles(player.getUniqueId(), player.getName());
                 this.scheduler.runEntity(player, () -> {
                     if (!player.isOnline()) {
                         return;
@@ -403,10 +439,15 @@ public final class MahjongCommandContext {
                         );
                     }
                 });
-            } catch (java.sql.SQLException ex) {
+            } catch (PlayerRankStorageException ex) {
                 this.scheduler.runEntity(player, () -> {
                     if (player.isOnline()) {
-                        this.messages.send(player, "command.rank_failed");
+                        String key = switch (ex.reason()) {
+                            case SYNC_PENDING -> "command.rank_sync_pending";
+                            case CORRUPT_REMOTE_DATA -> "command.rank_sync_corrupt";
+                            default -> "command.rank_failed";
+                        };
+                        this.messages.send(player, key);
                     }
                 });
             }
@@ -668,6 +709,10 @@ public final class MahjongCommandContext {
 
     private DatabaseService database() {
         return this.database.get();
+    }
+
+    private PlayerRankStorage playerRankStorage() {
+        return this.playerRankStorage.get();
     }
 
     public GameRoomManager gameRoomManager() {

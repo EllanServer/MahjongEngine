@@ -1,6 +1,5 @@
 package top.ellan.mahjong.compat;
 
-import top.ellan.mahjong.config.ConfigAccess;
 import top.ellan.mahjong.config.PluginSettings;
 import top.ellan.mahjong.debug.DebugService;
 import top.ellan.mahjong.i18n.MessageService;
@@ -11,13 +10,11 @@ import top.ellan.mahjong.runtime.ServerScheduler;
 import top.ellan.mahjong.table.core.MahjongTableManager;
 import top.ellan.mahjong.model.MahjongVariant;
 import java.io.InputStream;
-import java.lang.reflect.Method;
 import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 import org.bukkit.Server;
 import org.bukkit.Location;
-import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -31,25 +28,6 @@ public final class CraftEngineService {
     private final CraftEngineInteractionBridge interactionBridge;
     private final CraftEngineCullingBridge cullingBridge;
     private final CraftEngineBundleExporter bundleExporter;
-
-    public CraftEngineService(
-        Plugin ownerPlugin,
-        ServerScheduler scheduler,
-        AsyncService async,
-        DebugService debug,
-        MessageService messages,
-        Supplier<PluginSettings> settings,
-        ConfigurationSection section
-    ) {
-        this(
-            runtimeServices(ownerPlugin, scheduler, async, debug, messages, settings),
-            ConfigAccess.bool(section, true, "exportBundleOnEnable", "bundle.exportOnEnable"),
-            ConfigAccess.bool(section, true, "preferCustomItems", "items.preferCustomItems"),
-            ConfigAccess.bool(section, true, "preferFurnitureHitbox", "furniture.preferHitboxInteraction"),
-            ConfigAccess.bool(section, true, "injectAntiCheatPacketEventsMappings", "compatibility.injectAntiCheatPacketEventsMappings"),
-            ConfigAccess.string(section, "mahjongpaper", "bundleFolder", "bundle.folder")
-        );
-    }
 
     public CraftEngineService(
         Plugin ownerPlugin,
@@ -206,14 +184,6 @@ public final class CraftEngineService {
 
     public boolean seatPlayerOnFurniture(Entity furnitureEntity, Player player) {
         return this.furnitureBridge.seatPlayerOnFurniture(furnitureEntity, player);
-    }
-
-    private Method lookupBuildItemStackMethod(Class<?> customItemClass) {
-        return CraftEngineItemBridge.lookupBuildItemStackMethod(customItemClass);
-    }
-
-    private Object invokeCustomItemBuildMethod(Object customItem, Method buildMethod) throws ReflectiveOperationException {
-        return CraftEngineItemBridge.invokeCustomItemBuildMethod(customItem, buildMethod);
     }
 
     private static boolean exportBundleOnEnable(PluginSettings.CraftEngineSettings settings) {

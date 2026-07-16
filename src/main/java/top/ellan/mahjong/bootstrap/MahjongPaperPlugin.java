@@ -1,7 +1,9 @@
 package top.ellan.mahjong.bootstrap;
 
 import top.ellan.mahjong.command.MahjongCommand;
+import top.ellan.mahjong.compat.CraftEngineCompatibility;
 import top.ellan.mahjong.compat.CraftEngineService;
+import top.ellan.mahjong.compat.protection.ProtectionService;
 import top.ellan.mahjong.config.LocalizedConfigResource;
 import top.ellan.mahjong.config.PluginSettings;
 import top.ellan.mahjong.config.PluginSettingsListener;
@@ -15,8 +17,11 @@ import top.ellan.mahjong.gameroom.GameRoomWandListener;
 import top.ellan.mahjong.i18n.MessageService;
 import top.ellan.mahjong.metrics.InMemoryMetricsCollector;
 import top.ellan.mahjong.metrics.MetricsCollector;
+import top.ellan.mahjong.rank.PlayerRankStorage;
+import top.ellan.mahjong.rank.PlayerRankStorageFactory;
 import top.ellan.mahjong.render.display.DisplayVisibilityRegistry;
 import top.ellan.mahjong.render.display.DisplayEntities;
+import top.ellan.mahjong.render.display.DisplayInteractionRayRegistry;
 import top.ellan.mahjong.render.display.TableDisplayRegistry;
 import top.ellan.mahjong.runtime.AsyncService;
 import top.ellan.mahjong.runtime.PluginTask;
@@ -26,6 +31,7 @@ import top.ellan.mahjong.table.core.MahjongTableManager;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.io.IOException;
 import java.util.Collection;
 import java.util.Locale;
 import java.util.Objects;
@@ -44,7 +50,9 @@ public final class MahjongPaperPlugin extends JavaPlugin {
     private AsyncService async;
     private ServerScheduler scheduler;
     private DatabaseService database;
+    private PlayerRankStorage playerRankStorage;
     private CraftEngineService craftEngine;
+    private ProtectionService protection;
     private MahjongTableManager tableManager;
     private GameRoomManager gameRoomManager;
     private GameRoomSelectionService gameRoomSelectionService;
@@ -62,6 +70,14 @@ public final class MahjongPaperPlugin extends JavaPlugin {
             this.getServer().getPluginManager().disablePlugin(this);
             return;
         }
+        this.protection = new ProtectionService(this);
+        this.playerRankStorage = PlayerRankStorageFactory.create(
+            this,
+            this::database,
+            () -> this.settings,
+            this.scheduler,
+            this.getLogger()
+        );
 
         if (this.database != null) {
             this.getLogger().info("Database enabled: " + this.database.databaseType());
@@ -77,7 +93,9 @@ public final class MahjongPaperPlugin extends JavaPlugin {
             this.async,
             () -> this.settings,
             () -> this.craftEngine,
+            this.protection,
             () -> this.database,
+            () -> this.playerRankStorage,
             this.metrics,
             () -> this.tableManager,
             () -> this.gameRoomManager
@@ -105,6 +123,7 @@ public final class MahjongPaperPlugin extends JavaPlugin {
             this.async,
             this.scheduler,
             this::database,
+            () -> this.playerRankStorage,
             this::reloadMahjongConfiguration,
             () -> this.gameRoomManager,
             this.gameRoomSelectionService
@@ -114,6 +133,7 @@ public final class MahjongPaperPlugin extends JavaPlugin {
         }
 
         this.getServer().getPluginManager().registerEvents(this.tableManager, this);
+        this.getServer().getPluginManager().registerEvents(this.tableManager.eventListener(), this);
         this.getServer().getPluginManager().registerEvents(new top.ellan.mahjong.gameroom.GameRoomListener(() -> this.gameRoomManager, this.messages, () -> this.settings), this);
         this.getServer().getPluginManager().registerEvents(new GameRoomWandListener(this.gameRoomSelectionService, this.gameRoomSelectionPreviewService, this.messages, () -> this.settings), this);
         this.gameRoomTickTask = this.scheduler.runGlobalTimer(() -> {
@@ -154,6 +174,7 @@ public final class MahjongPaperPlugin extends JavaPlugin {
         }
         TableDisplayRegistry.clear();
         DisplayVisibilityRegistry.clear();
+        DisplayInteractionRayRegistry.clear();
         // Close async executor BEFORE the database pool: the async queue may
         // still hold pending persistRoundResult / persistMatchRanks tasks that
         // need a live DataSource. Closing the DB first would cause those tasks
@@ -166,12 +187,17 @@ public final class MahjongPaperPlugin extends JavaPlugin {
             this.async.close();
             this.async = null;
         }
+        if (this.playerRankStorage != null) {
+            this.playerRankStorage.close();
+            this.playerRankStorage = null;
+        }
         if (this.database != null) {
             this.database.close();
             this.database = null;
         }
         this.scheduler = null;
         this.craftEngine = null;
+        this.protection = null;
         if (this.debug != null) {
             this.debug.log("lifecycle", "Plugin shutdown complete.");
         }
@@ -296,20 +322,37 @@ public final class MahjongPaperPlugin extends JavaPlugin {
     }
 
     public String reloadMahjongConfiguration() {
-        this.reloadConfig();
-
         PluginSettings previousSettings = this.settings;
-        PluginSettings reloadedSettings = PluginSettings.from(this.getConfig());
+        PluginSettings reloadedSettings;
+        try {
+            reloadedSettings = PluginSettings.load(this.getDataFolder().toPath().resolve("config.yml"));
+        } catch (IOException | RuntimeException exception) {
+            this.getLogger().log(Level.SEVERE, "Failed to load config.yml with Sparrow YAML.", exception);
+            return "config.yml could not be parsed: " + Objects.toString(exception.getMessage(), exception.getClass().getSimpleName());
+        }
+        CraftEngineCompatibility.Result craftEngineCompatibility =
+            CraftEngineCompatibility.inspect(this.getServer().getPluginManager());
+        if (!craftEngineCompatibility.compatible()) {
+            return craftEngineCompatibility.failureMessage();
+        }
+
         DebugService reloadedDebug = new DebugService(this.getLogger(), reloadedSettings.debug());
-        CraftEngineService reloadedCraftEngine = new CraftEngineService(
-            this,
-            this.scheduler,
-            this.async,
-            reloadedDebug,
-            this.messages,
-            () -> reloadedSettings,
-            reloadedSettings.craftEngine()
-        );
+        CraftEngineService reloadedCraftEngine;
+        try {
+            reloadedCraftEngine = new CraftEngineService(
+                this,
+                this.scheduler,
+                this.async,
+                reloadedDebug,
+                this.messages,
+                () -> reloadedSettings,
+                reloadedSettings.craftEngine()
+            );
+        } catch (LinkageError error) {
+            String failure = craftEngineCompatibility.directBridgeFailure(error);
+            this.getLogger().log(Level.SEVERE, failure, error);
+            return failure;
+        }
         DatabaseService reloadedDatabase = null;
         if (DatabaseService.isEnabled(reloadedSettings.database())) {
             try {
@@ -333,19 +376,24 @@ public final class MahjongPaperPlugin extends JavaPlugin {
 
         CraftEngineService previousCraftEngine = this.craftEngine;
         DatabaseService previousDatabase = this.database;
+        // Wait for every operation that captured the old DatabaseService,
+        // including retries currently sleeping in backoff. A timed-out reload
+        // is aborted instead of closing a pool that may still be in use and
+        // silently losing the corresponding round/rank write.
+        if (previousDatabase != null && this.async != null && !this.async.awaitQuiescence(5L)) {
+            if (reloadedDatabase != null) {
+                reloadedDatabase.close();
+            }
+            String failure = "Timed out waiting for pending persistence operations; configuration reload was cancelled.";
+            this.getLogger().warning(failure);
+            return failure;
+        }
+        if (this.tableManager != null) {
+            this.tableManager.overheadViews().closeAll();
+        }
         if (previousCraftEngine != null) {
             previousCraftEngine.disableFurnitureInteractionBridge();
             previousCraftEngine.clearTrackedCullables();
-        }
-        // Drain pending async DB tasks before closing the old DataSource.
-        // Without this, any persistRoundResult / persistMatchRanks tasks still
-        // in the async queue would race the close and throw SQLException on
-        // getConnection() — AsyncService swallows the error but the round
-        // result is lost. awaitQuiescence blocks the (player-triggered) reload
-        // thread for up to 2s; on timeout we proceed and accept the race,
-        // matching prior behavior for the rare slow-persist case.
-        if (previousDatabase != null && this.async != null) {
-            this.async.awaitQuiescence(2L);
         }
         if (previousDatabase != null) {
             previousDatabase.close();
@@ -363,6 +411,7 @@ public final class MahjongPaperPlugin extends JavaPlugin {
         // already clears these; reload is the missing symmetric path.
         TableDisplayRegistry.clear();
         DisplayVisibilityRegistry.clear();
+        DisplayInteractionRayRegistry.clear();
         // Also clear the static tile item cache: a resourcepack update or a
         // CraftEngine custom-item config change (both possible via reload)
         // would otherwise leave stale ItemStacks cached under the same path
@@ -436,6 +485,10 @@ public final class MahjongPaperPlugin extends JavaPlugin {
 
     public DatabaseService database() {
         return this.database;
+    }
+
+    public PlayerRankStorage playerRankStorage() {
+        return this.playerRankStorage;
     }
 
     public DebugService debug() {

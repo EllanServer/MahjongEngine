@@ -79,7 +79,7 @@ jobs:
         # Pin to the lowest supported Paper baseline so the released jar stays
         # runtime-compatible with Paper/Folia 1.20.1 -> 26.2. Skip native tasks
         # on non-Linux runners where the CMake toolchain may not be configured.
-        run: ${{ matrix.gradle }} ${{ matrix.test_task }} "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=17" -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
+        run: ${{ matrix.gradle }} ${{ matrix.test_task }} "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=21" -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
 
       - name: Upload test reports
         if: always()
@@ -98,3 +98,132 @@ jobs:
           path: |
             build/reports/jacoco/test/html/**
             build/reports/jacoco/test/jacocoTestReport.xml
+
+  performance:
+    needs: wrapper-validation
+    runs-on: ubuntu-latest
+    env:
+      PERF_RUNS: "3"
+      PERF_WARMUPS: "8"
+      PERF_ITERATIONS: "15"
+      PERF_REGRESSION_THRESHOLDS: "render.snapshot.create.started_session=25;render.region_fingerprints.precompute.started_snapshot=25;render.layout.precompute.started_snapshot=30"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Prepare comparison baseline
+        shell: bash
+        env:
+          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          base_sha="$PULL_REQUEST_BASE_SHA"
+          if [[ -z "$base_sha" ]]; then
+            base_sha="$PUSH_BEFORE_SHA"
+          fi
+          if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]] || ! git cat-file -e "$base_sha^{commit}"; then
+            base_sha="$(git rev-parse HEAD^)"
+          fi
+          baseline_worktree="$RUNNER_TEMP/mahjong-perf-baseline"
+          git worktree add --detach "$baseline_worktree" "$base_sha"
+          chmod +x "$baseline_worktree/gradlew"
+          echo "PERF_BASE_SHA=$base_sha" >> "$GITHUB_ENV"
+          echo "PERF_BASELINE_WORKTREE=$baseline_worktree" >> "$GITHUB_ENV"
+
+      - name: Run paired performance benchmarks
+        shell: bash
+        run: |
+          set -euo pipefail
+          comparison_dir="$GITHUB_WORKSPACE/build/perf-comparison"
+          mkdir -p "$comparison_dir/baseline" "$comparison_dir/candidate"
+
+          run_benchmark() {
+            local project_dir="$1"
+            local series="$2"
+            local run_id="$3"
+            rm -rf \
+              "$project_dir/build/reports/performance" \
+              "$project_dir/build/reports/tests/perfTest" \
+              "$project_dir/build/test-results/perfTest"
+            (
+              cd "$project_dir"
+              ./gradlew perfTest \
+                "-PperfWarmups=$PERF_WARMUPS" \
+                "-PperfIterations=$PERF_ITERATIONS" \
+                "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" \
+                "-PmahjongJavaToolchain=25" \
+                "-PmahjongJavaTarget=21" \
+                -x configureGbMahjongNative \
+                -x buildGbMahjongNative \
+                -x packageGbMahjongNative \
+                --no-build-cache \
+                --console plain
+            )
+            cp "$project_dir/build/reports/performance/results.json" \
+              "$comparison_dir/$series/run-$run_id.json"
+            cp "$project_dir/build/reports/performance/results.md" \
+              "$comparison_dir/$series/run-$run_id.md"
+          }
+
+          for run_id in $(seq 1 "$PERF_RUNS"); do
+            if (( run_id % 2 == 1 )); then
+              run_benchmark "$PERF_BASELINE_WORKTREE" baseline "$run_id"
+              run_benchmark "$GITHUB_WORKSPACE" candidate "$run_id"
+            else
+              run_benchmark "$GITHUB_WORKSPACE" candidate "$run_id"
+              run_benchmark "$PERF_BASELINE_WORKTREE" baseline "$run_id"
+            fi
+          done
+
+      - name: Check performance regressions
+        run: >-
+          ./gradlew perfRegressionCheck
+          "-PperfBaselineDir=${{ github.workspace }}/build/perf-comparison/baseline"
+          "-PperfCandidateDir=${{ github.workspace }}/build/perf-comparison/candidate"
+          "-PperfRegressionMinRuns=${{ env.PERF_RUNS }}"
+          "-PperfRegressionThresholds=${{ env.PERF_REGRESSION_THRESHOLDS }}"
+          "-PperfWarmups=${{ env.PERF_WARMUPS }}"
+          "-PperfIterations=${{ env.PERF_ITERATIONS }}"
+          "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT"
+          "-PmahjongJavaToolchain=25"
+          "-PmahjongJavaTarget=21"
+          -x configureGbMahjongNative
+          -x buildGbMahjongNative
+          -x packageGbMahjongNative
+          --console plain
+
+      - name: Add performance summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f build/reports/performance/regression.md ]]; then
+            cat build/reports/performance/regression.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload performance reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mahjong-performance-reports
+          path: |
+            build/reports/performance/**
+            build/perf-comparison/**
+            build/reports/tests/perfTest/**
+            build/test-results/perfTest/**
+            build/reports/tests/perfRegressionCheck/**
+            build/test-results/perfRegressionCheck/**

@@ -1,24 +1,30 @@
 package top.ellan.mahjong.compat;
 
-import top.ellan.mahjong.render.display.DisplayClickAction;
-import top.ellan.mahjong.render.display.TableDisplayRegistry;
-import top.ellan.mahjong.table.core.MahjongTableManager;
-import java.lang.reflect.Method;
+import net.momirealms.craftengine.bukkit.api.event.FurnitureBreakEvent;
+import net.momirealms.craftengine.bukkit.api.event.FurnitureHitEvent;
+import net.momirealms.craftengine.bukkit.api.event.FurnitureInteractEvent;
+import net.momirealms.craftengine.bukkit.entity.furniture.BukkitFurniture;
+import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
-import org.bukkit.event.Event;
-import org.bukkit.event.EventException;
+import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
-import org.bukkit.plugin.EventExecutor;
 import org.bukkit.plugin.Plugin;
+import top.ellan.mahjong.render.display.DisplayClickAction;
+import top.ellan.mahjong.render.display.DisplayInteractionRayRegistry;
+import top.ellan.mahjong.render.display.TableDisplayRegistry;
+import top.ellan.mahjong.table.core.MahjongTableManager;
+import top.ellan.mahjong.table.core.TableOverheadViews;
 
-final class CraftEngineInteractionBridge {
+final class CraftEngineInteractionBridge implements Listener {
+    private static final double FURNITURE_INTERACTION_EPSILON = 0.05D;
     private final CraftEngineBridgeContext context;
     private final CraftEngineFurnitureBridge furnitureBridge;
-    private Listener furnitureInteractListener;
+    private MahjongTableManager tableManager;
+    private boolean registered;
 
     CraftEngineInteractionBridge(CraftEngineBridgeContext context, CraftEngineFurnitureBridge furnitureBridge) {
         this.context = context;
@@ -26,7 +32,7 @@ final class CraftEngineInteractionBridge {
     }
 
     void enableFurnitureInteractionBridge(MahjongTableManager tableManager) {
-        if (this.furnitureInteractListener != null) {
+        if (this.registered) {
             return;
         }
         Plugin craftEngine = this.context.craftEnginePlugin();
@@ -34,141 +40,104 @@ final class CraftEngineInteractionBridge {
             this.context.plugin().getLogger().warning("CraftEngine interaction bridge is unavailable because CraftEngine is not enabled.");
             return;
         }
-        try {
-            ClassLoader classLoader = craftEngine.getClass().getClassLoader();
-            Class<? extends Event> interactEventClass = Class.forName(
-                "net.momirealms.craftengine.bukkit.api.event.FurnitureInteractEvent",
-                true,
-                classLoader
-            ).asSubclass(Event.class);
-            Class<? extends Event> breakEventClass = Class.forName(
-                "net.momirealms.craftengine.bukkit.api.event.FurnitureBreakEvent",
-                true,
-                classLoader
-            ).asSubclass(Event.class);
-            Class<? extends Event> hitEventClass = Class.forName(
-                "net.momirealms.craftengine.bukkit.api.event.FurnitureHitEvent",
-                true,
-                classLoader
-            ).asSubclass(Event.class);
-            Method playerMethod = interactEventClass.getMethod("player");
-            Method furnitureMethod = interactEventClass.getMethod("furniture");
-            Method entityIdMethod = furnitureMethod.getReturnType().getMethod("entityId");
-            Method bukkitEntityMethod = furnitureMethod.getReturnType().getMethod("bukkitEntity");
-            Method breakFurnitureMethod = breakEventClass.getMethod("furniture");
-            Method hitFurnitureMethod = hitEventClass.getMethod("furniture");
-            Listener listener = new Listener() {
-            };
-            EventExecutor interactExecutor = (ignored, event) -> this.handleFurnitureInteractEvent(
-                event,
-                tableManager,
-                playerMethod,
-                furnitureMethod,
-                entityIdMethod
-            );
-            EventExecutor breakProtectionExecutor = (ignored, event) -> this.handleProtectedFurnitureEvent(
-                event,
-                breakFurnitureMethod,
-                bukkitEntityMethod
-            );
-            EventExecutor hitProtectionExecutor = (ignored, event) -> this.handleProtectedFurnitureEvent(
-                event,
-                hitFurnitureMethod,
-                bukkitEntityMethod
-            );
-            this.context.plugin().getServer().getPluginManager().registerEvent(
-                interactEventClass,
-                listener,
-                EventPriority.NORMAL,
-                interactExecutor,
-                this.context.bukkitPlugin(),
-                true
-            );
-            this.context.plugin().getServer().getPluginManager().registerEvent(
-                breakEventClass,
-                listener,
-                EventPriority.HIGHEST,
-                breakProtectionExecutor,
-                this.context.bukkitPlugin(),
-                true
-            );
-            this.context.plugin().getServer().getPluginManager().registerEvent(
-                hitEventClass,
-                listener,
-                EventPriority.HIGHEST,
-                hitProtectionExecutor,
-                this.context.bukkitPlugin(),
-                true
-            );
-            this.furnitureInteractListener = listener;
-        } catch (ReflectiveOperationException exception) {
-            this.context.plugin().getLogger().warning(
-                "CraftEngine was detected, but MahjongPaper could not register the furniture bridge. CraftEngine interactions or protection may be unavailable."
-            );
-            this.context.plugin().debug().log(
-                "lifecycle",
-                "CraftEngine furniture bridge registration failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
-            );
-        }
+        this.tableManager = tableManager;
+        this.context.plugin().getServer().getPluginManager().registerEvents(this, this.context.bukkitPlugin());
+        this.registered = true;
     }
 
     void disableFurnitureInteractionBridge() {
-        if (this.furnitureInteractListener != null) {
-            HandlerList.unregisterAll(this.furnitureInteractListener);
-            this.furnitureInteractListener = null;
+        if (!this.registered) {
+            return;
         }
+        HandlerList.unregisterAll(this);
+        this.registered = false;
+        this.tableManager = null;
     }
 
-    private void handleFurnitureInteractEvent(
-        Event event,
-        MahjongTableManager tableManager,
-        Method playerMethod,
-        Method furnitureMethod,
-        Method entityIdMethod
-    ) throws EventException {
-        try {
-            Player player = (Player) playerMethod.invoke(event);
-            Object furniture = furnitureMethod.invoke(event);
-            int entityId = (int) entityIdMethod.invoke(furniture);
-            DisplayClickAction action = TableDisplayRegistry.get(entityId);
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    public void onFurnitureInteract(FurnitureInteractEvent event) {
+        MahjongTableManager manager = this.tableManager;
+        if (manager == null) {
+            return;
+        }
+        BukkitFurniture furniture = event.furniture();
+        if (furniture == null) {
+            return;
+        }
+        this.handleFurnitureInteraction(
+            manager,
+            event.player(),
+            furniture.bukkitEntity(),
+            furniture.entityId(),
+            event.interactionPoint(),
+            event
+        );
+    }
+
+    void handleFurnitureInteraction(
+        MahjongTableManager manager,
+        Player player,
+        Entity furnitureEntity,
+        int furnitureEntityId,
+        Location interactionPoint,
+        Cancellable event
+    ) {
+        if (manager == null || player == null || event == null) {
+            return;
+        }
+        DisplayClickAction action = TableDisplayRegistry.get(furnitureEntityId);
+        boolean rayResolved = false;
+        if (action == null) {
+            TableOverheadViews overheadViews = manager.overheadViews();
+            if (!this.furnitureBridge.isManagedFurnitureEntity(furnitureEntity)
+                || overheadViews != null && overheadViews.isActive(player.getUniqueId())) {
+                return;
+            }
+            Location eye = player.getEyeLocation();
+            if (interactionPoint == null
+                || eye.getWorld() == null
+                || !eye.getWorld().equals(interactionPoint.getWorld())) {
+                return;
+            }
+            double maxDistance = interactionPoint.distance(eye) + FURNITURE_INTERACTION_EPSILON;
+            action = DisplayInteractionRayRegistry.resolve(player, maxDistance);
             if (action == null) {
                 return;
             }
-            if (event instanceof Cancellable cancellable) {
-                cancellable.setCancelled(true);
+            rayResolved = true;
+        }
+        event.setCancelled(true);
+        boolean accepted = manager.handleDisplayAction(player, action);
+        if (!accepted) {
+            if (action.actionType() == DisplayClickAction.ActionType.HAND_TILE) {
+                this.context.plugin().messages().actionBar(player, "packet.cannot_click_tile");
+            } else {
+                this.context.plugin().messages().actionBar(player, "command.join_failed");
             }
-            boolean accepted = tableManager.handleDisplayAction(player, action);
-            if (!accepted) {
-                if (action.actionType() == DisplayClickAction.ActionType.HAND_TILE) {
-                    this.context.plugin().messages().actionBar(player, "packet.cannot_click_tile");
-                } else {
-                    this.context.plugin().messages().actionBar(player, "command.join_failed");
-                }
-            }
-        } catch (ReflectiveOperationException exception) {
-            throw new EventException(exception);
+        } else if (rayResolved) {
+            player.swingMainHand();
         }
     }
 
-    private void handleProtectedFurnitureEvent(
-        Event event,
-        Method furnitureMethod,
-        Method bukkitEntityMethod
-    ) throws EventException {
-        try {
-            Object furniture = furnitureMethod.invoke(event);
-            if (furniture == null) {
-                return;
-            }
-            Object bukkitEntity = bukkitEntityMethod.invoke(furniture);
-            if (!(bukkitEntity instanceof Entity entity)) {
-                return;
-            }
-            if (this.furnitureBridge.isManagedFurnitureEntity(entity) && event instanceof Cancellable cancellable) {
-                cancellable.setCancelled(true);
-            }
-        } catch (ReflectiveOperationException exception) {
-            throw new EventException(exception);
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onFurnitureBreak(FurnitureBreakEvent event) {
+        if (this.isManagedFurniture(event.furniture())) {
+            event.setCancelled(true);
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onFurnitureHit(FurnitureHitEvent event) {
+        if (this.isManagedFurniture(event.furniture())) {
+            event.setCancelled(true);
+        }
+    }
+
+    private boolean isManagedFurniture(BukkitFurniture furniture) {
+        if (furniture == null) {
+            return false;
+        }
+        Entity entity = furniture.bukkitEntity();
+        return entity != null && this.furnitureBridge.isManagedFurnitureEntity(entity);
     }
 }

@@ -11,8 +11,6 @@ import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 final class GbRoundSupport {
-    static final int DEAD_WALL_SIZE = 14;
-
     private GbRoundSupport() {
     }
 
@@ -219,24 +217,39 @@ final class GbRoundSupport {
         return List.copyOf(wall);
     }
 
-    static List<MahjongTile> reorderWallForDice(List<MahjongTile> wall, int dicePoints, int roundIndex) {
-        return reorderWallForDice(wall, dicePoints, dicePoints, roundIndex);
+    static List<MahjongTile> reorderWallForDice(List<MahjongTile> wall, int dicePoints, int dealerIndex) {
+        return reorderWallForDice(wall, dicePoints, dicePoints, dealerIndex);
     }
 
-    static List<MahjongTile> reorderWallForDice(List<MahjongTile> wall, int directionDicePoints, int breakDicePoints, int roundIndex) {
+    static List<MahjongTile> reorderWallForDice(List<MahjongTile> wall, int directionDicePoints, int breakDicePoints, int dealerIndex) {
         if (wall == null || wall.isEmpty()) {
             return List.of();
         }
         int seatCount = SeatWind.values().length;
         int wallTilesPerSide = wall.size() / seatCount;
-        int directionIndex = seatCount - (((directionDicePoints % seatCount) - 1 + roundIndex) % seatCount);
-        int startingStackIndex = 2 * breakDicePoints;
+        int openDoorIndex = Math.floorMod(dealerIndex + directionDicePoints - 1, seatCount);
+        int startingStackIndex = 2 * (directionDicePoints + breakDicePoints);
         List<MahjongTile> reordered = new ArrayList<>(wall.size());
         for (int i = 0; i < wall.size(); i++) {
-            int tileIndex = Math.floorMod(directionIndex * wallTilesPerSide + startingStackIndex + i, wall.size());
+            int tileIndex = Math.floorMod(openDoorIndex * wallTilesPerSide + startingStackIndex + i, wall.size());
+            reordered.add(wall.get(tileIndex));
+        }
+        return List.copyOf(reordered);
+    }
+
+    static List<MahjongTile> reorderSichuanWallForDice(List<MahjongTile> wall, int dicePoints, int smallerDie, int dealerIndex) {
+        if (wall == null || wall.isEmpty()) {
+            return List.of();
+        }
+        int seatCount = SeatWind.values().length;
+        int wallTilesPerSide = wall.size() / seatCount;
+        int openDoorIndex = Math.floorMod(dealerIndex + dicePoints - 1, seatCount);
+        int startingTileIndex = 2 * Math.max(1, Math.min(6, smallerDie));
+        List<MahjongTile> reordered = new ArrayList<>(wall.size());
+        for (int i = 0; i < wall.size(); i++) {
+            int tileIndex = Math.floorMod(openDoorIndex * wallTilesPerSide + startingTileIndex + i, wall.size());
             reordered.add(wall.get(tileIndex));
         }
         return List.copyOf(reordered);
     }
 }
-

@@ -4,6 +4,7 @@ import top.ellan.mahjong.model.SeatWind;
 import java.util.Map;
 import java.util.UUID;
 import org.bukkit.Location;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 final class TableMembershipCoordinator {
@@ -92,6 +93,7 @@ final class TableMembershipCoordinator {
     }
 
     MahjongTableManager.LeaveResult leave(UUID playerId) {
+        this.closeOverheadView(playerId);
         MahjongTableSession session = this.manager.tableFor(playerId);
         if (session == null) {
             MahjongTableSession spectatorSession = this.unspectate(playerId);
@@ -100,12 +102,13 @@ final class TableMembershipCoordinator {
                 : new MahjongTableManager.LeaveResult(MahjongTableManager.LeaveStatus.UNSPECTATED, spectatorSession);
         }
         if (session.isStarted()) {
-            return session.queueLeaveAfterRound(playerId)
-                ? new MahjongTableManager.LeaveResult(MahjongTableManager.LeaveStatus.DEFERRED, session)
-                : new MahjongTableManager.LeaveResult(MahjongTableManager.LeaveStatus.BLOCKED, session);
+            if (session.queueLeaveAfterRound(playerId)) {
+                session.setPlayerUnattended(playerId, true);
+                return new MahjongTableManager.LeaveResult(MahjongTableManager.LeaveStatus.DEFERRED, session);
+            }
+            return new MahjongTableManager.LeaveResult(MahjongTableManager.LeaveStatus.BLOCKED, session);
         }
         SeatWind seatWind = session.seatOf(playerId);
-        this.manager.seatCoordinatorRef().ejectSeatOccupant(playerId);
         if (!session.removePlayer(playerId)) {
             return new MahjongTableManager.LeaveResult(MahjongTableManager.LeaveStatus.BLOCKED, session);
         }
@@ -117,6 +120,7 @@ final class TableMembershipCoordinator {
     }
 
     MahjongTableSession unspectate(UUID playerId) {
+        this.closeOverheadView(playerId);
         String tableId = this.manager.directoryRef().removeSpectator(playerId);
         MahjongTableSession session = tableId == null ? null : this.manager.directoryRef().resolveTable(tableId);
         if (session == null) {
@@ -132,6 +136,7 @@ final class TableMembershipCoordinator {
         if (playerId == null || session == null) {
             return;
         }
+        this.closeOverheadView(playerId);
         SeatWind seatWind = session.seatOf(playerId);
         if (seatWind != null) {
             this.manager.seatCoordinatorRef().ejectSeatOccupant(playerId);
@@ -171,7 +176,7 @@ final class TableMembershipCoordinator {
         for (Map.Entry<UUID, SeatWind> entry : playerSeats.entrySet()) {
             UUID playerId = entry.getKey();
             SeatWind wind = entry.getValue();
-            this.manager.seatCoordinatorRef().ejectSeatOccupant(playerId);
+            this.closeOverheadView(playerId);
             this.manager.directoryRef().removePlayer(playerId);
             this.manager.seatCoordinatorRef().movePlayerToSeatExit(playerId, session, wind);
             this.manager.pluginRef().debug().log("table", "Player " + playerId + " left table " + session.id() + " after round end");
@@ -210,5 +215,16 @@ final class TableMembershipCoordinator {
     private void sendReadyPrompt(Player player) {
         this.manager.pluginRef().messages().send(player, "command.ready_prompt");
     }
-}
 
+    private void closeOverheadView(UUID playerId) {
+        if (playerId == null) {
+            return;
+        }
+        Player player = Bukkit.getPlayer(playerId);
+        if (player == null || !player.isOnline()) {
+            this.manager.overheadViewCoordinatorRef().discard(playerId);
+            return;
+        }
+        this.manager.overheadViewCoordinatorRef().exit(player, false);
+    }
+}

@@ -96,12 +96,14 @@ public final class DisplayVisibilityRegistry {
         PRIVATE_VIEWERS.remove(entityId);
         EXCLUDED_VIEWERS.remove(entityId);
         HIDDEN_ENTITIES.remove(entityId);
+        DisplayEntities.forgetAppliedBuiltInSpec(entityId);
     }
 
     public static void clear() {
         PRIVATE_VIEWERS.clear();
         EXCLUDED_VIEWERS.clear();
         HIDDEN_ENTITIES.clear();
+        DisplayEntities.clearAppliedBuiltInSpecs();
     }
 
     private static boolean sameViewerSet(Set<UUID> current, Collection<UUID> viewers) {
@@ -114,4 +116,3 @@ public final class DisplayVisibilityRegistry {
         return current.equals(Set.copyOf(viewers));
     }
 }
-

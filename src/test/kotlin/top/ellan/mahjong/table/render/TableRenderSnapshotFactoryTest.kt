@@ -8,6 +8,7 @@ import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import top.ellan.mahjong.model.MahjongVariant
 import top.ellan.mahjong.model.SeatWind
 import top.ellan.mahjong.render.scene.MeldView
 import top.ellan.mahjong.table.core.MahjongTableSession
@@ -42,6 +43,7 @@ class TableRenderSnapshotFactoryTest {
             listOf(southViewer, westViewer, duplicateEastViewer, eastViewer),
         )
         `when`(session.isStarted()).thenReturn(false)
+        `when`(session.currentVariant()).thenReturn(MahjongVariant.GB)
         `when`(session.isRoundFinished()).thenReturn(false)
         `when`(session.remainingWallCount()).thenReturn(0)
         `when`(session.kanCount()).thenReturn(0)
@@ -111,6 +113,19 @@ class TableRenderSnapshotFactoryTest {
             westSeat.viewerMembershipSignature(),
         )
         assertTrue(northSeat.viewerMembershipSignature().isEmpty())
+        assertEquals(MahjongVariant.GB, snapshot.variant())
+        assertEquals(144, snapshot.wallCapacity())
+        assertTrue(!snapshot.usesDeadWall())
+
+        `when`(session.playerAt(SeatWind.NORTH)).thenReturn(null)
+        val emptyNorthSeat = factory.create(session, 2L, 0L).seat(SeatWind.NORTH)
+        assertEquals(listOf(eastId, westId, southId), emptyNorthSeat.viewerIdsExcluding())
+        assertEquals(
+            "00000000-0000-0000-0000-000000000011" +
+                "7fffffff-ffff-ffff-ffff-ffffffffffff" +
+                "80000000-0000-0000-0000-000000000012",
+            emptyNorthSeat.viewerMembershipSignature(),
+        )
 
         verify(session, never()).onlinePlayer(ArgumentMatchers.any(UUID::class.java))
         verify(session, never()).viewerIdsExcluding(ArgumentMatchers.any(UUID::class.java))

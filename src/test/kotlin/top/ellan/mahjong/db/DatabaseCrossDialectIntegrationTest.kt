@@ -1,16 +1,15 @@
 package top.ellan.mahjong.db
 
-import org.bukkit.configuration.file.YamlConfiguration
 import org.junit.jupiter.api.AfterAll
+import org.mockito.Mockito.mock
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.MariaDBContainer
-import top.ellan.mahjong.config.PluginSettings
 import top.ellan.mahjong.debug.DebugService
+import top.ellan.mahjong.model.MahjongVariant
+import top.ellan.mahjong.pluginSettings
 import top.ellan.mahjong.riichi.model.MahjongRule
 import top.ellan.mahjong.runtime.AsyncService
-import top.ellan.mahjong.model.MahjongVariant
 import top.ellan.mahjong.table.core.TableFinalStanding
-import org.mockito.Mockito.mock
 import java.nio.file.Files
 import java.sql.Connection
 import java.sql.ResultSet
@@ -39,37 +38,40 @@ class DatabaseCrossDialectIntegrationTest {
                     TableFinalStanding(playerId, "Alice", 1, 42000, 57.0, false),
                     TableFinalStanding(secondId, "Bob", 2, 30000, 10.0, false),
                     TableFinalStanding(thirdId, "Carol", 3, 20000, -20.0, false),
-                    TableFinalStanding(fourthId, "Dave", 4, 8000, -47.0, false)
-                )
+                    TableFinalStanding(fourthId, "Dave", 4, 8000, -47.0, false),
+                ),
             )
 
             val profile = service.loadRankProfile(playerId, "Alice")
             assertNotNull(profile)
-            val history = withConnection(service) { connection ->
-                connection.createStatement().use { statement ->
-                    statement.executeQuery(
-                        "SELECT mode_code, room_code, place, rank_point_change FROM rank_history WHERE player_uuid = '$playerId'"
-                    ).use { result ->
-                        assertTrue(result.next())
-                        RankHistoryRow(
-                            modeCode = result.getString("mode_code"),
-                            roomCode = result.getString("room_code"),
-                            place = result.getInt("place"),
-                            rankPointChange = result.getInt("rank_point_change")
-                        )
+            val history =
+                withConnection(service) { connection ->
+                    connection.createStatement().use { statement ->
+                        statement
+                            .executeQuery(
+                                "SELECT mode_code, room_code, place, rank_point_change FROM rank_history WHERE player_uuid = '$playerId'",
+                            ).use { result ->
+                                assertTrue(result.next())
+                                RankHistoryRow(
+                                    modeCode = result.getString("mode_code"),
+                                    roomCode = result.getString("room_code"),
+                                    place = result.getInt("place"),
+                                    rankPointChange = result.getInt("rank_point_change"),
+                                )
+                            }
                     }
                 }
-            }
-            snapshots[dialect] = RankSnapshot(
-                tier = profile.tier().name,
-                level = profile.level(),
-                rankPoints = profile.rankPoints(),
-                totalMatches = profile.totalMatches(),
-                modeCode = history.modeCode,
-                roomCode = history.roomCode,
-                place = history.place,
-                rankPointChange = history.rankPointChange
-            )
+            snapshots[dialect] =
+                RankSnapshot(
+                    tier = profile.tier().name,
+                    level = profile.level(),
+                    rankPoints = profile.rankPoints(),
+                    totalMatches = profile.totalMatches(),
+                    modeCode = history.modeCode,
+                    roomCode = history.roomCode,
+                    place = history.place,
+                    rankPointChange = history.rankPointChange,
+                )
         }
 
         val h2 = snapshots.getValue(Dialect.H2)
@@ -90,21 +92,23 @@ class DatabaseCrossDialectIntegrationTest {
     @Test
     fun `persistent table round-trip stays consistent between h2 and mariadb`() {
         val snapshots = mutableMapOf<Dialect, PersistentTableSnapshot>()
+        val legacyTournamentProfile = MahjongRule.RiichiProfile.valueOf("TOURNAMENT")
 
         forEachDialect { dialect, service ->
-            val rule = MahjongRule().apply {
-                length = MahjongRule.GameLength.SOUTH
-                thinkingTime = MahjongRule.ThinkingTime.LONG
-                startingPoints = 30000
-                minPointsToWin = 35000
-                minimumHan = MahjongRule.MinimumHan.TWO
-                spectate = false
-                redFive = MahjongRule.RedFive.FOUR
-                openTanyao = true
-                localYaku = true
-                ronMode = MahjongRule.RonMode.MULTI_RON
-                riichiProfile = MahjongRule.RiichiProfile.TOURNAMENT
-            }
+            val rule =
+                MahjongRule().apply {
+                    length = MahjongRule.GameLength.SOUTH
+                    thinkingTime = MahjongRule.ThinkingTime.LONG
+                    startingPoints = 30000
+                    minPointsToWin = 35000
+                    minimumHan = MahjongRule.MinimumHan.TWO
+                    spectate = false
+                    redFive = MahjongRule.RedFive.FOUR
+                    openTanyao = true
+                    localYaku = true
+                    ronMode = MahjongRule.RonMode.MULTI_RON
+                    riichiProfile = legacyTournamentProfile
+                }
             service.replacePersistentTables(
                 listOf(
                     DatabaseService.PersistentTableRecord(
@@ -116,35 +120,36 @@ class DatabaseCrossDialectIntegrationTest {
                         UUID.fromString("00000000-0000-0000-0000-000000000099"),
                         MahjongVariant.GB,
                         rule,
-                        true
-                    )
-                )
+                        true,
+                    ),
+                ),
             )
 
             val loaded = service.loadPersistentTables()
             assertEquals(1, loaded.size)
             val row = loaded.single()
-            snapshots[dialect] = PersistentTableSnapshot(
-                id = row.id(),
-                worldName = row.worldName(),
-                x = row.x(),
-                y = row.y(),
-                z = row.z(),
-                ownerId = row.ownerId().toString(),
-                variant = row.variant().name,
-                botMatch = row.botMatch(),
-                length = row.rule().length.name,
-                thinkingTime = row.rule().thinkingTime.name,
-                startingPoints = row.rule().startingPoints,
-                minPointsToWin = row.rule().minPointsToWin,
-                minimumHan = row.rule().minimumHan.name,
-                spectate = row.rule().spectate,
-                redFive = row.rule().redFive.name,
-                openTanyao = row.rule().openTanyao,
-                localYaku = row.rule().localYaku,
-                ronMode = row.rule().ronMode.name,
-                riichiProfile = row.rule().riichiProfile.name
-            )
+            snapshots[dialect] =
+                PersistentTableSnapshot(
+                    id = row.id(),
+                    worldName = row.worldName(),
+                    x = row.x(),
+                    y = row.y(),
+                    z = row.z(),
+                    ownerId = row.ownerId().toString(),
+                    variant = row.variant().name,
+                    botMatch = row.botMatch(),
+                    length = row.rule().length.name,
+                    thinkingTime = row.rule().thinkingTime.name,
+                    startingPoints = row.rule().startingPoints,
+                    minPointsToWin = row.rule().minPointsToWin,
+                    minimumHan = row.rule().minimumHan.name,
+                    spectate = row.rule().spectate,
+                    redFive = row.rule().redFive.name,
+                    openTanyao = row.rule().openTanyao,
+                    localYaku = row.rule().localYaku,
+                    ronMode = row.rule().ronMode.name,
+                    riichiProfile = row.rule().riichiProfile.name,
+                )
         }
 
         val h2 = snapshots.getValue(Dialect.H2)
@@ -169,43 +174,47 @@ class DatabaseCrossDialectIntegrationTest {
         }
     }
 
-    private fun withDialect(dialect: Dialect, block: (Dialect, DatabaseService) -> Unit) {
+    private fun withDialect(
+        dialect: Dialect,
+        block: (Dialect, DatabaseService) -> Unit,
+    ) {
         val tempDir = Files.createTempDirectory("mahjongpaper-db-${dialect.name.lowercase()}-")
         val async = AsyncService(Logger.getLogger("DatabaseCrossDialect-${dialect.name}-Async"))
         val logger = Logger.getLogger("DatabaseCrossDialect-${dialect.name}")
 
-        val config = YamlConfiguration()
-        config.set("database.pool.maxSize", 2)
-        config.set("database.pool.minIdle", 1)
-        config.set("database.pool.connectionTimeoutMillis", 10000L)
+        val configValues = mutableListOf<Pair<String, Any?>>()
+        configValues += "database.pool.maxSize" to 2
+        configValues += "database.pool.minIdle" to 1
+        configValues += "database.pool.connectionTimeoutMillis" to 10000L
         when (dialect) {
             Dialect.H2 -> {
-                config.set("database.connection.type", "h2")
-                config.set("database.h2.path", "data/test-db")
+                configValues += "database.connection.type" to "h2"
+                configValues += "database.h2.path" to "data/test-db"
             }
 
             Dialect.MARIADB -> {
                 val container = mariaDbContainer()
-                config.set("database.connection.type", "mariadb")
-                config.set("database.connection.host", container.host)
-                config.set("database.connection.port", container.getMappedPort(3306))
-                config.set("database.connection.name", container.databaseName)
-                config.set("database.connection.parameters", "useUnicode=true&characterEncoding=UTF-8")
-                config.set("database.credentials.username", container.username)
-                config.set("database.credentials.password", container.password)
+                configValues += "database.connection.type" to "mariadb"
+                configValues += "database.connection.host" to container.host
+                configValues += "database.connection.port" to container.getMappedPort(3306)
+                configValues += "database.connection.name" to container.databaseName
+                configValues += "database.connection.parameters" to "useUnicode=true&characterEncoding=UTF-8"
+                configValues += "database.credentials.username" to container.username
+                configValues += "database.credentials.password" to container.password
             }
         }
 
-        val service = DatabaseService(
-            PluginSettings.from(config).database(),
-            mock(DebugService::class.java),
-            async,
-            logger,
-            tempDir,
-            true,
-            "SILVER",
-            "GOLD"
-        )
+        val service =
+            DatabaseService(
+                pluginSettings(*configValues.toTypedArray()).database(),
+                mock(DebugService::class.java),
+                async,
+                logger,
+                tempDir,
+                true,
+                "SILVER",
+                "GOLD",
+            )
         try {
             block(dialect, service)
         } finally {
@@ -215,30 +224,33 @@ class DatabaseCrossDialectIntegrationTest {
         }
     }
 
-    private fun <T> withConnection(service: DatabaseService, block: (Connection) -> T): T {
+    private fun <T> withConnection(
+        service: DatabaseService,
+        block: (Connection) -> T,
+    ): T {
         val field = DatabaseService::class.java.getDeclaredField("dataSource")
         field.isAccessible = true
         val dataSource = field.get(service) as DataSource
         return dataSource.connection.use(block)
     }
 
-    private fun dockerAvailable(): Boolean {
-        return try {
+    private fun dockerAvailable(): Boolean =
+        try {
             DockerClientFactory.instance().isDockerAvailable
         } catch (_: Throwable) {
             false
         }
-    }
 
     private fun mariaDbContainer(): MariaDBContainer<*> {
         synchronized(containerLock) {
             if (mariadbContainer == null) {
-                mariadbContainer = MariaDBContainer("mariadb:11.4").apply {
-                    withDatabaseName("mahjongpaper_test")
-                    withUsername("mahjong")
-                    withPassword("mahjong")
-                    start()
-                }
+                mariadbContainer =
+                    MariaDBContainer("mariadb:11.4").apply {
+                        withDatabaseName("mahjongpaper_test")
+                        withUsername("mahjong")
+                        withPassword("mahjong")
+                        start()
+                    }
             }
             return mariadbContainer!!
         }
@@ -246,7 +258,7 @@ class DatabaseCrossDialectIntegrationTest {
 
     private enum class Dialect {
         H2,
-        MARIADB
+        MARIADB,
     }
 
     private data class RankSnapshot(
@@ -257,14 +269,14 @@ class DatabaseCrossDialectIntegrationTest {
         val modeCode: String,
         val roomCode: String,
         val place: Int,
-        val rankPointChange: Int
+        val rankPointChange: Int,
     )
 
     private data class RankHistoryRow(
         val modeCode: String,
         val roomCode: String,
         val place: Int,
-        val rankPointChange: Int
+        val rankPointChange: Int,
     )
 
     private data class PersistentTableSnapshot(
@@ -286,7 +298,7 @@ class DatabaseCrossDialectIntegrationTest {
         val openTanyao: Boolean,
         val localYaku: Boolean,
         val ronMode: String,
-        val riichiProfile: String
+        val riichiProfile: String,
     )
 
     companion object {

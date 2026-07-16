@@ -108,6 +108,8 @@ final class CraftEngineBundleExporter {
     }
 
     private boolean invokeWrappedBlockStateRegister(Plugin craftEngine, String packageName, String sourceName) {
+        // CraftEngine 26.7 has no public API for registering PacketEvents' wrapped-block-state
+        // package. Keep this optional anti-cheat compatibility hook isolated to this one method.
         try {
             ClassLoader classLoader = craftEngine.getClass().getClassLoader();
             Class<?> helperClass = Class.forName(WRAPPED_BLOCK_STATE_HELPER_CLASS, true, classLoader);

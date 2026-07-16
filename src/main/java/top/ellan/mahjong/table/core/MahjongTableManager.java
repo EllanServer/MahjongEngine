@@ -12,11 +12,11 @@ import top.ellan.mahjong.riichi.ReactionResponses;
 import top.ellan.mahjong.table.runtime.BotActionScheduler;
 import top.ellan.mahjong.table.runtime.ChunkNeighborhood;
 import top.ellan.mahjong.table.runtime.TableRefreshCoordinator;
+import top.ellan.mahjong.table.runtime.TableOverheadViewCoordinator;
 import top.ellan.mahjong.table.runtime.TableSeatCoordinator;
 import top.ellan.mahjong.ui.RuleSettingsUi;
 import top.ellan.mahjong.ui.SettlementUi;
 import top.ellan.mahjong.ui.TableControlUi;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -30,7 +30,6 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.block.Block;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Interaction;
@@ -42,36 +41,33 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.entity.Player;
-import org.bukkit.event.entity.EntityDamageEvent;
-import org.bukkit.event.player.PlayerInteractAtEntityEvent;
-import org.bukkit.event.player.PlayerInteractEntityEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.plugin.EventExecutor;
 import top.ellan.mahjong.runtime.PluginTask;
 
 public final class MahjongTableManager implements Listener {
     private static final String ADMIN_PERMISSION = "mahjongpaper.admin";
+    private static final long DUPLICATE_DISPLAY_ACTION_WINDOW_NANOS = 40_000_000L;
     private static final long DUPLICATE_HAND_TILE_CLICK_WINDOW_NANOS = 40_000_000L;
+    private static final long RECENT_DISPLAY_ACTION_TTL_SECONDS = 60L;
     private static final long RECENT_HAND_TILE_CLICK_TTL_SECONDS = 60L;
     private static final double PERSISTED_TABLE_CLEANUP_RADIUS_XZ = 4.5D;
     private static final double PERSISTED_TABLE_CLEANUP_RADIUS_Y = 3.5D;
     private static final double ADMIN_NEAREST_TABLE_RADIUS = 4.5D;
-    private static final double TABLE_CREATE_MIN_CENTER_DISTANCE_XZ = 5.5D;
-    private static final double TABLE_CREATE_VERTICAL_OVERLAP_DISTANCE = 4.0D;
-    private static final int TABLE_CREATE_CLEARANCE_RADIUS_BLOCKS = 3;
-    private static final int TABLE_CREATE_CLEARANCE_HEIGHT_BLOCKS = 4;
     private static final int PERSISTED_TABLE_CLEANUP_REMOVALS_PER_TICK = 8;
     private final TableRuntimeServices plugin;
     private final PersistentTableStore persistentTableStore;
     private final TableDirectory directory = new TableDirectory();
+    private final TablePlacementService placementService;
     // Caffeine cache with 1-minute TTL bounds memory growth even if a PlayerQuitEvent
     // is missed; entries also expire naturally once the duplicate-click window passes.
     private final Cache<UUID, RecentHandTileClick> recentHandTileClicks = Caffeine.newBuilder()
         .expireAfterWrite(RECENT_HAND_TILE_CLICK_TTL_SECONDS, TimeUnit.SECONDS)
         .build();
+    private final Cache<UUID, RecentDisplayAction> recentDisplayActions = Caffeine.newBuilder()
+        .expireAfterWrite(RECENT_DISPLAY_ACTION_TTL_SECONDS, TimeUnit.SECONDS)
+        .build();
     private final TableSeatCoordinator seatCoordinator;
+    private final TableOverheadViewCoordinator overheadViewCoordinator;
     private final TableRefreshCoordinator refreshCoordinator;
     private final TableEventCoordinator eventCoordinator;
     private final TableMembershipCoordinator membershipCoordinator;
@@ -85,7 +81,9 @@ public final class MahjongTableManager implements Listener {
             plugin.bukkitPlugin().getLogger(),
             plugin.settings().tablePersistenceEnabled()
         );
+        this.placementService = new TablePlacementService(plugin, this.directory);
         this.seatCoordinator = new TableSeatCoordinator(plugin::craftEngine, plugin.scheduler(), this);
+        this.overheadViewCoordinator = new TableOverheadViewCoordinator(plugin);
         this.refreshCoordinator = new TableRefreshCoordinator(
             plugin.debug(),
             plugin.scheduler(),
@@ -97,6 +95,10 @@ public final class MahjongTableManager implements Listener {
         this.membershipCoordinator = new TableMembershipCoordinator(this);
         this.registerSeatVehicleEvents();
         this.tableTickTask = plugin.scheduler().runGlobalTimer(this::dispatchTableTicks, 20L, 20L);
+    }
+
+    public Listener eventListener() {
+        return this.eventCoordinator;
     }
 
     private void registerSeatVehicleEvents() {
@@ -115,7 +117,7 @@ public final class MahjongTableManager implements Listener {
             @SuppressWarnings("unchecked")
             Class<? extends Event> eventClass = (Class<? extends Event>) rawEventClass;
             EventExecutor executor = (listener, event) -> handler.accept(event);
-            this.plugin.bukkitPlugin().getServer().getPluginManager().registerEvent(eventClass, this, priority, executor, this.plugin.bukkitPlugin(), true);
+            this.plugin.bukkitPlugin().getServer().getPluginManager().registerEvent(eventClass, this.eventCoordinator, priority, executor, this.plugin.bukkitPlugin(), true);
         } catch (ClassNotFoundException exception) {
             // The mount/dismount event package changed across Paper versions; the other package may be present.
         }
@@ -127,13 +129,7 @@ public final class MahjongTableManager implements Listener {
         }
         String id = this.nextId();
         Location center = this.normalizedTableCenter(owner.getLocation());
-        CreateTableFailure failure = this.validateTablePlacement(center);
-        if (failure != null) {
-            this.plugin.debug().log("table", "Rejected table create for " + owner.getName() + ": " + failure.reason());
-            return CreateTableResult.rejected(failure);
-        }
-        // Game room restriction check
-        failure = this.validateGameRoomRestriction(center);
+        CreateTableFailure failure = this.placementService.validateCreation(owner, center);
         if (failure != null) {
             this.plugin.debug().log("table", "Rejected table create for " + owner.getName() + ": " + failure.reason());
             return CreateTableResult.rejected(failure);
@@ -164,10 +160,9 @@ public final class MahjongTableManager implements Listener {
         String id = this.nextId();
         Location center = this.normalizedTableCenter(owner.getLocation());
 
-        // Game room restriction check
-        CreateTableFailure roomFailure = this.validateGameRoomRestriction(center);
-        if (roomFailure != null) {
-            this.plugin.messages().send(owner, "command.create_failed_not_in_room");
+        CreateTableFailure placementFailure = this.placementService.validateCreation(owner, center);
+        if (placementFailure != null) {
+            this.placementService.sendCreationFailure(owner, placementFailure);
             return null;
         }
 
@@ -236,6 +231,14 @@ public final class MahjongTableManager implements Listener {
         return this.seatCoordinator;
     }
 
+    TableOverheadViewCoordinator overheadViewCoordinatorRef() {
+        return this.overheadViewCoordinator;
+    }
+
+    public TableOverheadViews overheadViews() {
+        return this.overheadViewCoordinator;
+    }
+
     TableRefreshCoordinator refreshCoordinatorRef() {
         return this.refreshCoordinator;
     }
@@ -246,6 +249,7 @@ public final class MahjongTableManager implements Listener {
 
     void clearRecentHandInput(UUID playerId) {
         this.recentHandTileClicks.invalidate(playerId);
+        this.recentDisplayActions.invalidate(playerId);
     }
 
     boolean isViewingAnyTableInternal(UUID playerId) {
@@ -301,7 +305,6 @@ public final class MahjongTableManager implements Listener {
             this.refreshCoordinator.enqueueStartupRefresh(id);
             this.plugin.debug().log("table", "Queued persistent table " + id + " for startup rebuild");
         }
-        this.persistTables();
     }
 
     public void persistTables() {
@@ -332,6 +335,7 @@ public final class MahjongTableManager implements Listener {
         if (session == null) {
             return null;
         }
+        this.overheadViewCoordinator.closeTable(session.id());
         this.plugin.debug().log("table", "Force-ended table " + session.id());
         session.forceEndMatch();
         return session;
@@ -348,9 +352,12 @@ public final class MahjongTableManager implements Listener {
         }
         Location center = session.center();
 
+        this.overheadViewCoordinator.closeTable(session.id());
+
         for (UUID playerId : session.players()) {
-            this.seatCoordinator.ejectSeatOccupant(playerId);
+            SeatWind wind = session.seatOf(playerId);
             this.directory.removePlayer(playerId);
+            this.seatCoordinator.movePlayerToSeatExit(playerId, session, wind);
         }
         for (UUID spectatorId : session.spectators()) {
             this.directory.removeSpectator(spectatorId);
@@ -385,6 +392,13 @@ public final class MahjongTableManager implements Listener {
     public boolean handleDisplayAction(Player player, DisplayClickAction action) {
         if (player == null || action == null) {
             return false;
+        }
+        UUID playerId = player.getUniqueId();
+        if (playerId != null) {
+            if (this.isDuplicateDisplayAction(playerId, action)) {
+                return true;
+            }
+            this.recentDisplayActions.put(playerId, new RecentDisplayAction(action, System.nanoTime()));
         }
         if (action.actionType() == ActionType.HAND_TILE) {
             return this.clickTile(player, action.tableId(), action.ownerId(), action.tileIndex());
@@ -457,7 +471,25 @@ public final class MahjongTableManager implements Listener {
         if ("lobby".equals(category)) {
             return this.handleLobbyCommand(player, session, playerId, operation, parts);
         }
+        if ("view".equals(category)) {
+            return this.handleViewCommand(player, session, playerId, operation);
+        }
         return false;
+    }
+
+    private boolean handleViewCommand(Player player, MahjongTableSession session, UUID playerId, String operation) {
+        if (!"river".equals(operation)) {
+            return false;
+        }
+        SeatWind wind = session.seatOf(playerId);
+        if (wind == null) {
+            return false;
+        }
+        TableOverheadViewCoordinator.ToggleResult result = this.overheadViewCoordinator.toggle(player, session, wind);
+        if (result == TableOverheadViewCoordinator.ToggleResult.REJECTED) {
+            session.flushViewerActionsNow(playerId);
+        }
+        return true;
     }
 
     private boolean handleReactionCommand(MahjongTableSession session, UUID playerId, String operation, String[] parts) {
@@ -491,11 +523,27 @@ public final class MahjongTableManager implements Listener {
         return this.canManageTable(player, session) && (player.hasPermission(ADMIN_PERMISSION) || !session.isStarted());
     }
 
+    public boolean canBreakTable(Player player, MahjongTableSession session) {
+        return player != null
+            && session != null
+            && this.placementService.canBreak(player, session.center());
+    }
+
     private boolean handleTurnCommand(MahjongTableSession session, UUID playerId, String operation, String[] parts) {
         return switch (operation) {
             case "tsumo" -> session.declareTsumo(playerId);
             case "kyuushu" -> session.declareKyuushuKyuuhai(playerId);
             case "kan" -> parts.length < 3 ? false : session.declareKan(playerId, parts[2].toLowerCase(Locale.ROOT));
+            case "flower" -> {
+                if (parts.length < 3) {
+                    yield false;
+                }
+                try {
+                    yield session.declareFlower(playerId, Integer.parseInt(parts[2]));
+                } catch (NumberFormatException ignored) {
+                    yield false;
+                }
+            }
             case "dingque" -> parts.length < 3 ? false : session.chooseSichuanMissingSuit(playerId, parts[2]);
             case "riichi" -> {
                 if (parts.length < 3) {
@@ -517,7 +565,10 @@ public final class MahjongTableManager implements Listener {
             session.flushViewerActionsNow(playerId);
             return true;
         }
-        if (!"react-chii".equals(operation) && !"turn-kan".equals(operation) && !"turn-riichi".equals(operation)) {
+        if (!"react-chii".equals(operation)
+            && !"turn-kan".equals(operation)
+            && !"turn-riichi".equals(operation)
+            && !"turn-flower".equals(operation)) {
             return false;
         }
         session.setViewerActionMenuState(playerId, operation);
@@ -590,41 +641,12 @@ public final class MahjongTableManager implements Listener {
 
     public void shutdown() {
         this.tableTickTask.cancel();
+        this.overheadViewCoordinator.shutdown();
         this.seatCoordinator.shutdown();
         this.refreshCoordinator.shutdown();
         this.persistentTableStore.flush(this.directory.tables());
         this.directory.tables().forEach(MahjongTableSession::shutdown);
         this.directory.clear();
-    }
-
-    @EventHandler
-    public void onQuit(PlayerQuitEvent event) {
-        this.eventCoordinator.onQuit(event);
-    }
-
-    @EventHandler
-    public void onJoin(PlayerJoinEvent event) {
-        this.eventCoordinator.onJoin(event);
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onSeatSneak(PlayerToggleSneakEvent event) {
-        this.eventCoordinator.onSeatSneak(event);
-    }
-
-    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
-    public void onDisplayInteract(PlayerInteractEntityEvent event) {
-        this.eventCoordinator.onDisplayInteract(event);
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onProtectedDisplayDamage(EntityDamageEvent event) {
-        this.eventCoordinator.onProtectedDisplayDamage(event);
-    }
-
-    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
-    public void onDisplayInteractAt(PlayerInteractAtEntityEvent event) {
-        this.eventCoordinator.onDisplayInteractAt(event);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -670,6 +692,14 @@ public final class MahjongTableManager implements Listener {
             return false;
         }
         return System.nanoTime() - recent.timestampNanos() <= DUPLICATE_HAND_TILE_CLICK_WINDOW_NANOS;
+    }
+
+    private boolean isDuplicateDisplayAction(UUID playerId, DisplayClickAction action) {
+        RecentDisplayAction recent = this.recentDisplayActions.getIfPresent(playerId);
+        if (recent == null || !recent.matches(action)) {
+            return false;
+        }
+        return System.nanoTime() - recent.timestampNanos() <= DUPLICATE_DISPLAY_ACTION_WINDOW_NANOS;
     }
 
     private void rememberHandTileClick(UUID playerId, String tableId, UUID ownerId, int tileIndex) {
@@ -786,6 +816,12 @@ public final class MahjongTableManager implements Listener {
         }
     }
 
+    private record RecentDisplayAction(DisplayClickAction action, long timestampNanos) {
+        private boolean matches(DisplayClickAction candidate) {
+            return sameDisplayAction(this.action, candidate);
+        }
+    }
+
     public boolean canUseSeat(Player player, String tableId, SeatWind wind) {
         if (player == null || tableId == null || wind == null) {
             return false;
@@ -853,94 +889,20 @@ public final class MahjongTableManager implements Listener {
         this.directory.registerTable(session);
     }
 
-    private CreateTableFailure validateTablePlacement(Location center) {
-        if (center == null || center.getWorld() == null) {
-            return CreateTableFailure.invalidLocation();
-        }
-        MahjongTableSession overlappingTable = this.overlappingTable(center);
-        if (overlappingTable != null) {
-            return CreateTableFailure.tooCloseToTable(overlappingTable.id());
-        }
-        return firstBlockedTableSpace(center);
-    }
-
-    private CreateTableFailure validateGameRoomRestriction(Location center) {
-        top.ellan.mahjong.gameroom.GameRoomManager gameRoomManager = this.plugin.gameRoomManager();
-        if (gameRoomManager == null || !gameRoomManager.isRestrictNewTables()) {
-            return null;
-        }
-        if (!gameRoomManager.isTableInAnyRoom(center)) {
-            return CreateTableFailure.notInGameRoom();
-        }
-        return null;
-    }
-
-    private MahjongTableSession overlappingTable(Location center) {
-        MahjongTableSession nearest = null;
-        double nearestDistanceSquared = Double.MAX_VALUE;
-        for (MahjongTableSession table : this.directory.tables()) {
-            Location tableCenter = table.center();
-            if (!isOverlappingTableCenter(center, tableCenter)) {
-                continue;
-            }
-            double distanceSquared = horizontalDistanceSquared(center, tableCenter);
-            if (distanceSquared >= nearestDistanceSquared) {
-                continue;
-            }
-            nearest = table;
-            nearestDistanceSquared = distanceSquared;
-        }
-        return nearest;
-    }
-
     public void finalizeDeferredLeaves(MahjongTableSession session, Map<UUID, SeatWind> playerSeats) {
         this.membershipCoordinator.finalizeDeferredLeaves(session, playerSeats);
     }
 
     static CreateTableFailure firstBlockedTableSpace(Location center) {
-        World world = center == null ? null : center.getWorld();
-        if (world == null) {
-            return CreateTableFailure.invalidLocation();
-        }
-
-        int minY = Math.max(world.getMinHeight(), center.getBlockY());
-        int maxY = Math.min(world.getMaxHeight() - 1, center.getBlockY() + TABLE_CREATE_CLEARANCE_HEIGHT_BLOCKS - 1);
-        if (maxY - minY + 1 < TABLE_CREATE_CLEARANCE_HEIGHT_BLOCKS) {
-            return CreateTableFailure.notEnoughHeight();
-        }
-
-        int centerX = center.getBlockX();
-        int centerZ = center.getBlockZ();
-        for (int y = minY; y <= maxY; y++) {
-            for (int x = centerX - TABLE_CREATE_CLEARANCE_RADIUS_BLOCKS; x <= centerX + TABLE_CREATE_CLEARANCE_RADIUS_BLOCKS; x++) {
-                for (int z = centerZ - TABLE_CREATE_CLEARANCE_RADIUS_BLOCKS; z <= centerZ + TABLE_CREATE_CLEARANCE_RADIUS_BLOCKS; z++) {
-                    Block block = world.getBlockAt(x, y, z);
-                    if (block == null || !block.isPassable() || block.isLiquid()) {
-                        return CreateTableFailure.blockedSpace(x, y, z);
-                    }
-                }
-            }
-        }
-        return null;
+        return TablePlacementService.firstBlockedTableSpace(center);
     }
 
     static boolean isOverlappingTableCenter(Location left, Location right) {
-        if (left == null || right == null || left.getWorld() == null || right.getWorld() == null) {
-            return false;
-        }
-        if (!left.getWorld().equals(right.getWorld())) {
-            return false;
-        }
-        if (Math.abs(left.getY() - right.getY()) > TABLE_CREATE_VERTICAL_OVERLAP_DISTANCE) {
-            return false;
-        }
-        return horizontalDistanceSquared(left, right) < TABLE_CREATE_MIN_CENTER_DISTANCE_XZ * TABLE_CREATE_MIN_CENTER_DISTANCE_XZ;
+        return TablePlacementService.isOverlappingTableCenter(left, right);
     }
 
-    private static double horizontalDistanceSquared(Location left, Location right) {
-        double dx = left.getX() - right.getX();
-        double dz = left.getZ() - right.getZ();
-        return dx * dx + dz * dz;
+    static List<Location> tableFootprint(Location center) {
+        return TablePlacementService.tableFootprint(center);
     }
 
     static boolean isSameSeatJoin(MahjongTableSession currentSeat, UUID playerId, DisplayClickAction action) {
@@ -1033,6 +995,10 @@ public final class MahjongTableManager implements Listener {
         private static CreateTableFailure notInGameRoom() {
             return new CreateTableFailure(CreateTableFailureReason.NOT_IN_GAME_ROOM, null, null, null, null);
         }
+
+        private static CreateTableFailure protectedArea() {
+            return new CreateTableFailure(CreateTableFailureReason.PROTECTED_AREA, null, null, null, null);
+        }
     }
 
     public enum CreateTableFailureReason {
@@ -1040,7 +1006,8 @@ public final class MahjongTableManager implements Listener {
         TOO_CLOSE_TO_TABLE,
         BLOCKED_SPACE,
         NOT_ENOUGH_HEIGHT,
-        NOT_IN_GAME_ROOM
+        NOT_IN_GAME_ROOM,
+        PROTECTED_AREA
     }
 
     public record LeaveResult(LeaveStatus status, MahjongTableSession session) {

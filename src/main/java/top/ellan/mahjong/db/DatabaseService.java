@@ -11,11 +11,14 @@ import top.ellan.mahjong.riichi.model.MahjongRule;
 import top.ellan.mahjong.riichi.model.ScoreItem;
 import top.ellan.mahjong.riichi.model.ScoreSettlement;
 import top.ellan.mahjong.riichi.model.YakuSettlement;
+import top.ellan.mahjong.model.MahjongTile;
 import top.ellan.mahjong.model.MahjongVariant;
 import top.ellan.mahjong.runtime.AsyncService;
 import top.ellan.mahjong.table.core.TableSessionContext;
 import top.ellan.mahjong.table.core.TableFinalStanding;
+import kotlin.Pair;
 import java.net.ConnectException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -25,6 +28,7 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.concurrent.CompletableFuture;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -32,9 +36,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.StringJoiner;
+import java.util.UUID;
 import java.util.logging.Logger;
 
 public final class DatabaseService {
+    private static final AsyncService.RetryPolicy PERSISTENCE_RETRY_POLICY =
+        new AsyncService.RetryPolicy(4, 250L, 1000L);
+    private static final String ROUND_RESULT_OPERATION = "ROUND_RESULT";
+    private static final String MATCH_RANK_OPERATION = "MATCH_RANK";
     private static final String LEADERBOARD_TIER_ORDER_SQL = """
         CASE rank_tier
             WHEN 'NOVICE' THEN 0
@@ -111,54 +120,148 @@ public final class DatabaseService {
         return this.rankingEnabled;
     }
 
-    public void persistRoundResultAsync(TableSessionContext session, RoundResolution resolution) {
-        this.debug.log("database", "Queueing round persistence for table=" + session.id() + " title=" + resolution.getTitle());
-        this.async.execute("persist-round-result", () -> {
-            try {
-                this.persistRoundResult(session, resolution);
-                this.debug.log("database", "Persisted round result for table=" + session.id() + " title=" + resolution.getTitle());
-            } catch (SQLException ex) {
-                MahjongInfrastructureException failure = new MahjongInfrastructureException(
-                    MahjongErrorCode.DATABASE_OPERATION_FAILED,
-                    MahjongErrorCode.DATABASE_OPERATION_FAILED.publicMessage(),
-                    ex
-                );
-                this.logger.log(
-                    failure.logLevel(),
-                    failure.code().name() + " operation=persist-round-result databaseType=" + this.databaseType,
-                    ex
-                );
+    public CompletableFuture<Void> persistRoundResultAsync(TableSessionContext session, RoundResolution resolution) {
+        RoundPersistenceSnapshot snapshot = this.snapshotRoundResult(session, resolution);
+        String operationKey = UUID.randomUUID().toString();
+        this.debug.log("database", "Queueing round persistence for table=" + snapshot.tableId() + " title=" + snapshot.resolution().getTitle());
+        CompletableFuture<Void> result = this.async.executeWithRetry(
+            "persist-round-result",
+            () -> this.persistRoundResult(operationKey, snapshot),
+            PERSISTENCE_RETRY_POLICY
+        );
+        result.whenComplete((ignored, failure) -> {
+            if (failure == null) {
+                this.debug.log("database", "Persisted round result for table=" + snapshot.tableId() + " title=" + snapshot.resolution().getTitle());
+            } else {
+                this.logPersistenceFailure("persist-round-result", failure);
             }
         });
+        return result;
     }
 
-    public void persistMatchRanksAsync(String tableId, MahjongVariant mode, MahjongRule.GameLength length, List<TableFinalStanding> standings) {
+    public CompletableFuture<Void> persistMatchRanksAsync(
+        String tableId,
+        MahjongVariant mode,
+        MahjongRule.GameLength length,
+        List<TableFinalStanding> standings
+    ) {
+        return this.enqueueMatchRankPersistence(UUID.randomUUID().toString(), tableId, mode, length, standings);
+    }
+
+    public CompletableFuture<Void> persistMatchRanksAsync(
+        String operationId,
+        String tableId,
+        MahjongVariant mode,
+        MahjongRule.GameLength length,
+        List<TableFinalStanding> standings
+    ) {
+        String operationKey = UUID.nameUUIDFromBytes(
+            ("mahjongpaper:rank:" + Objects.requireNonNull(operationId, "operationId")).getBytes(StandardCharsets.UTF_8)
+        ).toString();
+        return this.enqueueMatchRankPersistence(operationKey, tableId, mode, length, standings);
+    }
+
+    private CompletableFuture<Void> enqueueMatchRankPersistence(
+        String operationKey,
+        String tableId,
+        MahjongVariant mode,
+        MahjongRule.GameLength length,
+        List<TableFinalStanding> standings
+    ) {
         if (!this.rankingEnabled() || standings.isEmpty()) {
-            return;
+            return CompletableFuture.completedFuture(null);
         }
-        List<TableFinalStanding> snapshot = List.copyOf(standings);
-        this.debug.log("database", "Queueing rank persistence for table=" + tableId + " standings=" + snapshot.size());
-        this.async.execute("persist-match-ranks", () -> {
-            try {
-                this.persistMatchRanks(tableId, mode, length, snapshot);
-                this.debug.log("database", "Persisted match rank results for table=" + tableId);
-            } catch (SQLException ex) {
-                MahjongInfrastructureException failure = new MahjongInfrastructureException(
-                    MahjongErrorCode.DATABASE_OPERATION_FAILED,
-                    MahjongErrorCode.DATABASE_OPERATION_FAILED.publicMessage(),
-                    ex
-                );
-                this.logger.log(
-                    failure.logLevel(),
-                    failure.code().name() + " operation=persist-match-ranks databaseType=" + this.databaseType,
-                    ex
-                );
+        RankPersistenceSnapshot snapshot = new RankPersistenceSnapshot(
+            Objects.requireNonNull(tableId, "tableId"),
+            Objects.requireNonNull(mode, "mode"),
+            Objects.requireNonNull(length, "length"),
+            List.copyOf(standings)
+        );
+        this.debug.log("database", "Queueing rank persistence for table=" + snapshot.tableId() + " standings=" + snapshot.standings().size());
+        CompletableFuture<Void> result = this.async.executeWithRetry(
+            "persist-match-ranks",
+            () -> this.persistMatchRanks(operationKey, snapshot),
+            PERSISTENCE_RETRY_POLICY
+        );
+        result.whenComplete((ignored, failure) -> {
+            if (failure == null) {
+                this.debug.log("database", "Persisted match rank results for table=" + snapshot.tableId());
+            } else {
+                this.logPersistenceFailure("persist-match-ranks", failure);
             }
         });
+        return result;
     }
 
-    public void persistMatchRanksAsync(String tableId, MahjongRule.GameLength length, List<TableFinalStanding> standings) {
-        this.persistMatchRanksAsync(tableId, MahjongVariant.RIICHI, length, standings);
+    public CompletableFuture<Void> persistRankProjectionAsync(
+        String operationId,
+        String tableId,
+        MahjongVariant mode,
+        List<RankProjectionEntry> entries
+    ) {
+        if (!this.rankingEnabled() || entries.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        String operationKey = UUID.nameUUIDFromBytes(
+            ("mahjongpaper:rank-projection:" + Objects.requireNonNull(operationId, "operationId")).getBytes(StandardCharsets.UTF_8)
+        ).toString();
+        List<RankProjectionEntry> snapshot = List.copyOf(entries);
+        CompletableFuture<Void> result = this.async.executeWithRetry(
+            "persist-rank-projection",
+            () -> this.persistRankProjection(operationKey, tableId, mode, snapshot),
+            PERSISTENCE_RETRY_POLICY
+        );
+        result.whenComplete((ignored, failure) -> {
+            if (failure == null) {
+                this.debug.log("database", "Persisted non-canonical InvSync leaderboard projection for table=" + tableId);
+            } else {
+                this.logPersistenceFailure("persist-rank-projection", failure);
+            }
+        });
+        return result;
+    }
+
+    /** Repairs the non-canonical leaderboard projection from an authoritative InvSync profile without adding history. */
+    public CompletableFuture<Void> repairRankProjectionAsync(Map<MahjongVariant, MahjongSoulRankProfile> profiles) {
+        if (!this.rankingEnabled() || profiles.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        Map<MahjongVariant, MahjongSoulRankProfile> snapshot = Map.copyOf(profiles);
+        CompletableFuture<Void> result = this.async.executeWithRetry(
+            "repair-rank-projection",
+            () -> this.repairRankProjection(snapshot),
+            PERSISTENCE_RETRY_POLICY
+        );
+        result.whenComplete((ignored, failure) -> {
+            if (failure != null) {
+                this.logPersistenceFailure("repair-rank-projection", failure);
+            }
+        });
+        return result;
+    }
+
+    public CompletableFuture<Void> persistMatchRanksAsync(
+        String tableId,
+        MahjongRule.GameLength length,
+        List<TableFinalStanding> standings
+    ) {
+        return this.persistMatchRanksAsync(tableId, MahjongVariant.RIICHI, length, standings);
+    }
+
+    private void logPersistenceFailure(String operation, Throwable cause) {
+        Throwable rootCause = cause instanceof java.util.concurrent.CompletionException && cause.getCause() != null
+            ? cause.getCause()
+            : cause;
+        MahjongInfrastructureException failure = new MahjongInfrastructureException(
+            MahjongErrorCode.DATABASE_OPERATION_FAILED,
+            MahjongErrorCode.DATABASE_OPERATION_FAILED.publicMessage(),
+            rootCause
+        );
+        this.logger.log(
+            failure.logLevel(),
+            failure.code().name() + " operation=" + operation + " databaseType=" + this.databaseType,
+            rootCause
+        );
     }
 
     public MahjongSoulRankProfile loadRankProfile(java.util.UUID playerId, String displayName) throws SQLException {
@@ -247,11 +350,25 @@ public final class DatabaseService {
     }
 
     void persistRoundResultSync(TableSessionContext session, RoundResolution resolution) throws SQLException {
-        this.persistRoundResult(session, resolution);
+        this.persistRoundResultSync(UUID.randomUUID().toString(), session, resolution);
+    }
+
+    void persistRoundResultSync(String operationKey, TableSessionContext session, RoundResolution resolution) throws SQLException {
+        this.persistRoundResult(operationKey, this.snapshotRoundResult(session, resolution));
     }
 
     void persistMatchRanksSync(String tableId, MahjongVariant mode, MahjongRule.GameLength length, List<TableFinalStanding> standings) throws SQLException {
-        this.persistMatchRanks(tableId, mode, length, standings);
+        this.persistMatchRanksSync(UUID.randomUUID().toString(), tableId, mode, length, standings);
+    }
+
+    void persistMatchRanksSync(
+        String operationKey,
+        String tableId,
+        MahjongVariant mode,
+        MahjongRule.GameLength length,
+        List<TableFinalStanding> standings
+    ) throws SQLException {
+        this.persistMatchRanks(operationKey, new RankPersistenceSnapshot(tableId, mode, length, List.copyOf(standings)));
     }
 
     void persistMatchRanksSync(String tableId, MahjongRule.GameLength length, List<TableFinalStanding> standings) throws SQLException {
@@ -375,6 +492,13 @@ public final class DatabaseService {
 
     private void initializeSchema(HikariDataSource dataSource) throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.executeUpdate("""
+                CREATE TABLE IF NOT EXISTS persistence_operation (
+                    operation_key VARCHAR(64) PRIMARY KEY,
+                    operation_type VARCHAR(32) NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """);
             statement.executeUpdate("""
                 CREATE TABLE IF NOT EXISTS round_history (
                     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -549,16 +673,89 @@ public final class DatabaseService {
         }
     }
 
-    private void persistRoundResult(TableSessionContext session, RoundResolution resolution) throws SQLException {
+    RoundPersistenceSnapshot snapshotRoundResult(TableSessionContext session, RoundResolution resolution) {
+        Objects.requireNonNull(session, "session");
+        Objects.requireNonNull(resolution, "resolution");
+        List<YakuSettlement> frozenYakuSettlements = resolution.getYakuSettlements().stream()
+            .map(this::freezeYakuSettlement)
+            .toList();
+        RoundResolution frozenResolution = new RoundResolution(
+            resolution.getTitle(),
+            frozenYakuSettlements,
+            resolution.getScoreSettlement() == null
+                ? null
+                : new ScoreSettlement(
+                    resolution.getScoreSettlement().getTitle(),
+                    List.copyOf(resolution.getScoreSettlement().getScoreList())
+                ),
+            resolution.getDraw()
+        );
+        Map<String, ScoreItem> scoreItems = this.scoreItemsByUuid(frozenResolution.getScoreSettlement());
+        Map<String, YakuSettlement> yakuSettlements = this.yakuSettlementsByUuid(frozenResolution.getYakuSettlements());
+        Map<String, String> displayNames = new HashMap<>();
+        for (String uuid : unionKeys(scoreItems, yakuSettlements)) {
+            String fallback = uuid;
+            try {
+                fallback = Objects.toString(session.displayName(java.util.UUID.fromString(uuid)), uuid);
+            } catch (IllegalArgumentException ignored) {
+                // Persist malformed external identifiers verbatim; the database
+                // layer should not make a queued write depend on live session state.
+            }
+            displayNames.put(uuid, fallback);
+        }
+        return new RoundPersistenceSnapshot(
+            session.id(),
+            session.roundDisplay(),
+            session.dealerName(),
+            session.remainingWallCount(),
+            session.dicePoints(),
+            List.copyOf(Objects.requireNonNullElse(session.doraIndicators(), List.of())),
+            List.copyOf(Objects.requireNonNullElse(session.uraDoraIndicators(), List.of())),
+            Map.copyOf(displayNames),
+            frozenResolution
+        );
+    }
+
+    private YakuSettlement freezeYakuSettlement(YakuSettlement settlement) {
+        List<Pair<Boolean, List<top.ellan.mahjong.riichi.model.MahjongTile>>> frozenMelds = settlement.getFuuroList().stream()
+            .map(meld -> new Pair<>(meld.getFirst(), List.copyOf(meld.getSecond())))
+            .toList();
+        return new YakuSettlement(
+            settlement.getDisplayName(),
+            settlement.getUuid(),
+            List.copyOf(settlement.getYakuList()),
+            List.copyOf(settlement.getYakumanList()),
+            List.copyOf(settlement.getDoubleYakumanList()),
+            settlement.getNagashiMangan(),
+            settlement.getRedFiveCount(),
+            settlement.getRiichi(),
+            settlement.getWinningTile(),
+            List.copyOf(settlement.getHands()),
+            frozenMelds,
+            List.copyOf(settlement.getDoraIndicators()),
+            List.copyOf(settlement.getUraDoraIndicators()),
+            settlement.getFu(),
+            settlement.getHan(),
+            settlement.getScore(),
+            List.copyOf(settlement.getPaymentBreakdown())
+        );
+    }
+
+    private void persistRoundResult(String operationKey, RoundPersistenceSnapshot snapshot) throws SQLException {
+        RoundResolution resolution = snapshot.resolution();
         Map<String, ScoreItem> scoreItemsByUuid = this.scoreItemsByUuid(resolution.getScoreSettlement());
         Map<String, YakuSettlement> yakuByUuid = this.yakuSettlementsByUuid(resolution.getYakuSettlements());
 
         try (Connection connection = this.dataSource.getConnection()) {
             connection.setAutoCommit(false);
             try {
-                long roundHistoryId = this.insertRoundHistory(connection, session, resolution);
+                if (!this.claimPersistenceOperation(connection, operationKey, ROUND_RESULT_OPERATION)) {
+                    connection.commit();
+                    return;
+                }
+                long roundHistoryId = this.insertRoundHistory(connection, snapshot);
                 for (String uuid : unionKeys(scoreItemsByUuid, yakuByUuid)) {
-                    this.insertPlayerResult(connection, roundHistoryId, uuid, session, scoreItemsByUuid.get(uuid), yakuByUuid.get(uuid));
+                    this.insertPlayerResult(connection, roundHistoryId, uuid, snapshot, scoreItemsByUuid.get(uuid), yakuByUuid.get(uuid));
                 }
                 connection.commit();
             } catch (SQLException ex) {
@@ -570,22 +767,23 @@ public final class DatabaseService {
         }
     }
 
-    private long insertRoundHistory(Connection connection, TableSessionContext session, RoundResolution resolution) throws SQLException {
+    private long insertRoundHistory(Connection connection, RoundPersistenceSnapshot snapshot) throws SQLException {
+        RoundResolution resolution = snapshot.resolution();
         try (PreparedStatement statement = connection.prepareStatement("""
             INSERT INTO round_history (
                 table_id, resolution_title, round_display, dealer_name, draw_type,
                 wall_count, dice_points, dora_indicators, ura_dora_indicators, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, Statement.RETURN_GENERATED_KEYS)) {
-            statement.setString(1, session.id());
+            statement.setString(1, snapshot.tableId());
             statement.setString(2, resolution.getTitle());
-            statement.setString(3, session.roundDisplay());
-            statement.setString(4, session.dealerName());
+            statement.setString(3, snapshot.roundDisplay());
+            statement.setString(4, snapshot.dealerName());
             statement.setString(5, resolution.getDraw() == null ? null : resolution.getDraw().name());
-            statement.setInt(6, session.remainingWallCount());
-            statement.setInt(7, session.dicePoints());
-            statement.setString(8, this.joinTokens(session.doraIndicators()));
-            statement.setString(9, this.joinTokens(session.uraDoraIndicators()));
+            statement.setInt(6, snapshot.remainingWallCount());
+            statement.setInt(7, snapshot.dicePoints());
+            statement.setString(8, this.joinTokens(snapshot.doraIndicators()));
+            statement.setString(9, this.joinTokens(snapshot.uraDoraIndicators()));
             statement.setTimestamp(10, Timestamp.from(Instant.now()));
             statement.executeUpdate();
             try (ResultSet keys = statement.getGeneratedKeys()) {
@@ -601,7 +799,7 @@ public final class DatabaseService {
         Connection connection,
         long roundHistoryId,
         String uuid,
-        TableSessionContext session,
+        RoundPersistenceSnapshot snapshot,
         ScoreItem scoreItem,
         YakuSettlement yakuSettlement
     ) throws SQLException {
@@ -611,7 +809,7 @@ public final class DatabaseService {
                 winning, riichi, fu, han, score, winning_tile, yaku_summary, hand_summary, meld_summary, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """)) {
-            String displayName = scoreItem != null ? scoreItem.getDisplayName() : session.displayName(java.util.UUID.fromString(uuid));
+            String displayName = scoreItem != null ? scoreItem.getDisplayName() : snapshot.displayNames().getOrDefault(uuid, uuid);
             Integer scoreOrigin = scoreItem == null ? null : scoreItem.getScoreOrigin();
             Integer scoreChange = scoreItem == null ? null : scoreItem.getScoreChange();
             Integer scoreTotal = scoreItem == null ? null : scoreItem.getScoreOrigin() + scoreItem.getScoreChange();
@@ -655,14 +853,17 @@ public final class DatabaseService {
         return results;
     }
 
-    private void persistMatchRanks(
-        String tableId,
-        MahjongVariant mode,
-        MahjongRule.GameLength gameLength,
-        List<TableFinalStanding> standings
-    ) throws SQLException {
-        MahjongVariant rankMode = normalizeRankMode(mode);
-        List<TableFinalStanding> humanStandings = standings.stream()
+    private synchronized void persistMatchRanks(String operationKey, RankPersistenceSnapshot snapshot) throws SQLException {
+        String tableId = snapshot.tableId();
+        MahjongVariant rankMode = normalizeRankMode(snapshot.mode());
+        if (rankMode != MahjongVariant.RIICHI) {
+            this.debug.log(
+                "database",
+                "Skipping Mahjong Soul rank persistence for table=" + tableId + " mode=" + rankMode.name() + ": ranking formula is RIICHI-only"
+            );
+            return;
+        }
+        List<TableFinalStanding> humanStandings = snapshot.standings().stream()
             .filter(standing -> !standing.bot())
             .toList();
         if (humanStandings.size() < 4) {
@@ -670,7 +871,7 @@ public final class DatabaseService {
             return;
         }
 
-        MahjongSoulRankRules.MatchLength matchLength = MahjongSoulRankRules.matchLength(gameLength);
+        MahjongSoulRankRules.MatchLength matchLength = MahjongSoulRankRules.matchLength(snapshot.gameLength());
         MahjongSoulRankRules.Room room = MahjongSoulRankRules.roomFor(
             matchLength,
             this.rankingEastRoom,
@@ -680,6 +881,10 @@ public final class DatabaseService {
         try (Connection connection = this.dataSource.getConnection()) {
             connection.setAutoCommit(false);
             try {
+                if (!this.claimPersistenceOperation(connection, operationKey, MATCH_RANK_OPERATION)) {
+                    connection.commit();
+                    return;
+                }
                 Map<java.util.UUID, MahjongSoulRankProfile> currentProfiles = new HashMap<>();
                 boolean allPlayersCelestial = true;
                 for (TableFinalStanding standing : humanStandings) {
@@ -716,6 +921,91 @@ public final class DatabaseService {
                 connection.setAutoCommit(true);
             }
         }
+    }
+
+    private synchronized void persistRankProjection(
+        String operationKey,
+        String tableId,
+        MahjongVariant mode,
+        List<RankProjectionEntry> entries
+    ) throws SQLException {
+        MahjongVariant rankMode = normalizeRankMode(mode);
+        try (Connection connection = this.dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                if (!this.claimPersistenceOperation(connection, operationKey, MATCH_RANK_OPERATION)) {
+                    connection.commit();
+                    return;
+                }
+                for (RankProjectionEntry entry : entries) {
+                    MahjongSoulRankRules.RankedMatchResult result = entry.result();
+                    this.upsertRankProfile(connection, result.updated().playerId(), rankMode, result.updated());
+                    this.insertRankHistory(connection, tableId, rankMode, entry.displayName(), result);
+                }
+                connection.commit();
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    private synchronized void repairRankProjection(Map<MahjongVariant, MahjongSoulRankProfile> profiles) throws SQLException {
+        try (Connection connection = this.dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                for (Map.Entry<MahjongVariant, MahjongSoulRankProfile> entry : profiles.entrySet()) {
+                    MahjongSoulRankProfile profile = entry.getValue();
+                    this.upsertRankProfile(connection, profile.playerId(), normalizeRankMode(entry.getKey()), profile);
+                }
+                connection.commit();
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    /**
+     * Claims an idempotency key inside the caller's transaction. The marker
+     * commits atomically with the persisted result; a rolled-back attempt does
+     * not consume the key, while an ambiguous successful commit is detected by
+     * the next retry before any score or rank mutation is repeated.
+     */
+    private boolean claimPersistenceOperation(Connection connection, String operationKey, String operationType) throws SQLException {
+        Objects.requireNonNull(operationKey, "operationKey");
+        try (PreparedStatement select = connection.prepareStatement("""
+            SELECT operation_type
+            FROM persistence_operation
+            WHERE operation_key = ?
+            """)) {
+            select.setString(1, operationKey);
+            try (ResultSet result = select.executeQuery()) {
+                if (result.next()) {
+                    String existingType = result.getString("operation_type");
+                    if (!operationType.equals(existingType)) {
+                        throw new SQLException(
+                            "Persistence operation key " + operationKey + " already belongs to " + existingType
+                        );
+                    }
+                    return false;
+                }
+            }
+        }
+        try (PreparedStatement insert = connection.prepareStatement("""
+            INSERT INTO persistence_operation (operation_key, operation_type, created_at)
+            VALUES (?, ?, ?)
+            """)) {
+            insert.setString(1, operationKey);
+            insert.setString(2, operationType);
+            insert.setTimestamp(3, Timestamp.from(Instant.now()));
+            insert.executeUpdate();
+        }
+        return true;
     }
 
     private static List<String> unionKeys(Map<String, ScoreItem> scoreItems, Map<String, YakuSettlement> yakuSettlements) {
@@ -1064,7 +1354,36 @@ public final class DatabaseService {
     ) {
     }
 
+    record RoundPersistenceSnapshot(
+        String tableId,
+        String roundDisplay,
+        String dealerName,
+        int remainingWallCount,
+        int dicePoints,
+        List<MahjongTile> doraIndicators,
+        List<MahjongTile> uraDoraIndicators,
+        Map<String, String> displayNames,
+        RoundResolution resolution
+    ) {
+    }
+
+    private record RankPersistenceSnapshot(
+        String tableId,
+        MahjongVariant mode,
+        MahjongRule.GameLength gameLength,
+        List<TableFinalStanding> standings
+    ) {
+    }
+
     public record LeaderboardEntry(MahjongVariant mode, int position, MahjongSoulRankProfile profile) {
+    }
+
+    /** A non-canonical leaderboard/history projection whose authoritative updated profile lives in InvSync. */
+    public record RankProjectionEntry(String displayName, MahjongSoulRankRules.RankedMatchResult result) {
+        public RankProjectionEntry {
+            displayName = Objects.requireNonNull(displayName, "displayName");
+            result = Objects.requireNonNull(result, "result");
+        }
     }
 
     public static final class InitializationException extends RuntimeException {

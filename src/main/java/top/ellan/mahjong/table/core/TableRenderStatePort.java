@@ -47,8 +47,6 @@ public interface TableRenderStatePort extends TableIdentityPort {
 
     String viewerActionMenuState(UUID viewerId);
 
-    String riichiFingerprintValue();
-
     TableViewerOverlaySnapshot captureViewerOverlaySnapshot(Player viewer);
 
     TableViewerHudSnapshot captureViewerHudSnapshot(Locale locale, UUID viewerId);

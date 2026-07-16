@@ -6,13 +6,17 @@ import top.ellan.mahjong.model.MahjongTile;
 import top.ellan.mahjong.model.MahjongVariant;
 import top.ellan.mahjong.runtime.ServerScheduler;
 import net.kyori.adventure.text.Component;
+import java.lang.ref.ReferenceQueue;
+import java.lang.ref.WeakReference;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
@@ -42,6 +46,14 @@ public final class DisplayEntities {
     private static final float LABEL_VIEW_RANGE = 48.0F;
     private static final Map<String, ItemStack> TILE_ITEM_CACHE = new ConcurrentHashMap<>();
     private static final Map<Plugin, NamespacedKey> MANAGED_ENTITY_KEYS = new ConcurrentHashMap<>();
+    /**
+     * Last immutable built-in spec applied to a managed entity. Entries use the server entity ID
+     * for lock-free lookup but retain the entity only through a queued weak reference; UUID checks
+     * prevent a recycled entity ID from inheriting an older display's state. Snapshot values contain
+     * no Bukkit Entity, World, Location, Plugin, or session reference.
+     */
+    private static final ConcurrentMap<Integer, AppliedBuiltInSpec> APPLIED_BUILT_IN_SPECS = new ConcurrentHashMap<>();
+    private static final ReferenceQueue<Entity> APPLIED_BUILT_IN_SPEC_ENTITY_QUEUE = new ReferenceQueue<>();
     /**
      * Per-Material BlockData cache. Material.createBlockData allocates a fresh
      * CraftBlockData on every call; for the ~5 distinct Materials used by
@@ -74,6 +86,12 @@ public final class DisplayEntities {
     public static void clearCaches() {
         TILE_ITEM_CACHE.clear();
         BLOCK_DATA_CACHE.clear();
+        clearAppliedBuiltInSpecs();
+    }
+
+    static void clearAppliedBuiltInSpecs() {
+        APPLIED_BUILT_IN_SPECS.clear();
+        drainCollectedAppliedSpecEntities();
     }
 
     /**
@@ -100,7 +118,19 @@ public final class DisplayEntities {
         }
     }
 
-    private record SnapshotDisplayEntityRuntime(DisplayEntityRuntime delegate, List<Player> onlinePlayers) implements DisplayEntityRuntime {
+    /**
+     * Takes the online-player snapshot only if a visibility change actually needs it. Most
+     * reconciles update metadata while retaining the same private-viewer set, so eagerly copying
+     * Bukkit's full player collection here amplified both allocation and packet-side work.
+     */
+    private static final class SnapshotDisplayEntityRuntime implements DisplayEntityRuntime {
+        private final DisplayEntityRuntime delegate;
+        private List<Player> onlinePlayers;
+
+        private SnapshotDisplayEntityRuntime(DisplayEntityRuntime delegate) {
+            this.delegate = delegate;
+        }
+
         @Override
         public Plugin bukkitPlugin() {
             return this.delegate.bukkitPlugin();
@@ -114,6 +144,49 @@ public final class DisplayEntities {
         @Override
         public Supplier<CraftEngineService> craftEngineSupplier() {
             return this.delegate.craftEngineSupplier();
+        }
+
+        @Override
+        public void teleport(Entity entity, Location location) {
+            this.delegate.teleport(entity, location);
+        }
+
+        @Override
+        public void runForViewer(Player player, Runnable runnable) {
+            this.delegate.runForViewer(player, runnable);
+        }
+
+        @Override
+        public void registerCullableEntity(Entity entity) {
+            this.delegate.registerCullableEntity(entity);
+        }
+
+        @Override
+        public boolean requiresVisibilityResync() {
+            return this.delegate.requiresVisibilityResync();
+        }
+
+        @Override
+        public ItemStack resolveTileItem(MahjongVariant variant, MahjongTile tile, boolean faceDown) {
+            return this.delegate.resolveTileItem(variant, tile, faceDown);
+        }
+
+        @Override
+        public Entity placeFurniture(Location location, String furnitureItemId, DisplayClickAction clickAction) {
+            return this.delegate.placeFurniture(location, furnitureItemId, clickAction);
+        }
+
+        @Override
+        public boolean reconcileFurniture(Entity entity, Location location, String furnitureItemId, DisplayClickAction clickAction) {
+            return this.delegate.reconcileFurniture(entity, location, furnitureItemId, clickAction);
+        }
+
+        @Override
+        public Collection<? extends Player> onlinePlayers() {
+            if (this.onlinePlayers == null) {
+                this.onlinePlayers = List.copyOf(this.delegate.onlinePlayers());
+            }
+            return this.onlinePlayers;
         }
     }
 
@@ -155,14 +228,61 @@ public final class DisplayEntities {
             if (entity == null || spec == null || !spec.canReuse(scopedRuntime, entity)) {
                 return false;
             }
+            if (requiresPrivateTileRespawn(entity, spec)) {
+                return false;
+            }
             if (!spec.managesOwnReuse() && !isManagedEntity(scopedRuntime.bukkitPlugin(), entity)) {
                 return false;
             }
         }
         for (int i = 0; i < specs.size(); i++) {
-            specs.get(i).apply(scopedRuntime, entities.get(i));
+            Entity entity = entities.get(i);
+            EntitySpec spec = specs.get(i);
+            BuiltInSpecSnapshot snapshot = builtInSpecSnapshot(spec);
+            if (snapshot == null) {
+                // Custom and CraftEngine furniture specs retain their original apply-on-every-
+                // reconcile semantics. They may mutate state not represented by the built-in
+                // snapshots, so a stale built-in cache entry must not survive this transition.
+                forgetAppliedBuiltInSpec(entity);
+                spec.apply(scopedRuntime, entity);
+                continue;
+            }
+            AppliedBuiltInSpec applied = appliedBuiltInSpec(entity);
+            if (applied != null && applied.snapshot().equals(snapshot)) {
+                continue;
+            }
+            applyBuiltInSpec(
+                scopedRuntime,
+                entity,
+                spec,
+                applied == null ? null : applied.snapshot(),
+                snapshot
+            );
+            rememberAppliedBuiltInSpec(entity, snapshot);
         }
         return true;
+    }
+
+    /**
+     * A private tile cannot safely change owners in place. Viewer visibility changes may be
+     * scheduled on another entity thread, while ItemDisplay metadata is written immediately. A
+     * respawn guarantees the old owner receives removal before the new owner's tile identity is
+     * installed on a fresh, hidden-by-default entity.
+     */
+    private static boolean requiresPrivateTileRespawn(Entity entity, EntitySpec spec) {
+        if (!(spec instanceof TileDisplaySpec)) {
+            return false;
+        }
+        BuiltInSpecSnapshot current = builtInSpecSnapshot(spec);
+        if (!(current instanceof TileDisplaySpecSnapshot currentTile)) {
+            return false;
+        }
+        AppliedBuiltInSpec applied = appliedBuiltInSpec(entity);
+        if (applied == null || !(applied.snapshot() instanceof TileDisplaySpecSnapshot previous)) {
+            return currentTile.privateViewers() != null;
+        }
+        return (previous.privateViewers() != null || currentTile.privateViewers() != null)
+            && !sameViewerIds(previous.privateViewers(), currentTile.privateViewers());
     }
 
     public static TileDisplayBuilder tileDisplay(Location location, float yaw, MahjongTile tile, TileRenderPose pose) {
@@ -329,7 +449,7 @@ public final class DisplayEntities {
 
         @Override
         public Entity spawn(DisplayEntityRuntime runtime) {
-            return spawnTileDisplayInternal(
+            Entity entity = spawnTileDisplayInternal(
                 runtime,
                 this.location,
                 this.yaw,
@@ -345,6 +465,8 @@ public final class DisplayEntities {
                 this.billboard,
                 this.smoothMovement
             );
+            rememberAppliedBuiltInSpec(entity, builtInSpecSnapshot(this));
+            return entity;
         }
 
         @Override
@@ -354,7 +476,7 @@ public final class DisplayEntities {
 
         @Override
         public void apply(DisplayEntityRuntime runtime, Entity entity) {
-            applyTileDisplay(runtime, (ItemDisplay) entity, this);
+            applyTileDisplay(runtime, (ItemDisplay) entity, this, true);
         }
     }
 
@@ -374,7 +496,9 @@ public final class DisplayEntities {
 
         @Override
         public Entity spawn(DisplayEntityRuntime runtime) {
-            return spawnLabel(runtime, this.location, this.text, this.color, this.privateViewers, this.billboard, this.yaw, this.pitch, this.shadowed);
+            Entity entity = spawnLabel(runtime, this.location, this.text, this.color, this.privateViewers, this.billboard, this.yaw, this.pitch, this.shadowed);
+            rememberAppliedBuiltInSpec(entity, builtInSpecSnapshot(this));
+            return entity;
         }
 
         @Override
@@ -384,7 +508,7 @@ public final class DisplayEntities {
 
         @Override
         public void apply(DisplayEntityRuntime runtime, Entity entity) {
-            applyLabel(runtime, (TextDisplay) entity, this);
+            applyLabel(runtime, (TextDisplay) entity, this, true);
         }
     }
 
@@ -401,7 +525,9 @@ public final class DisplayEntities {
 
         @Override
         public Entity spawn(DisplayEntityRuntime runtime) {
-            return spawnInteraction(runtime, this.location, this.width, this.height, this.clickAction, this.privateViewers);
+            Entity entity = spawnInteraction(runtime, this.location, this.width, this.height, this.clickAction, this.privateViewers);
+            rememberAppliedBuiltInSpec(entity, builtInSpecSnapshot(this));
+            return entity;
         }
 
         @Override
@@ -411,12 +537,12 @@ public final class DisplayEntities {
 
         @Override
         public void apply(DisplayEntityRuntime runtime, Entity entity) {
-            applyInteraction(runtime, (Interaction) entity, this);
+            applyInteraction(runtime, (Interaction) entity, this, true);
         }
     }
 
     public static ItemDisplay spawnTileDisplay(Plugin plugin, TileDisplaySpec spec) {
-        return spawnTileDisplayInternal(
+        ItemDisplay display = spawnTileDisplayInternal(
             new BukkitDisplayEntityRuntime(plugin),
             spec.location(),
             spec.yaw(),
@@ -432,6 +558,8 @@ public final class DisplayEntities {
             spec.billboard(),
             spec.smoothMovement()
         );
+        rememberAppliedBuiltInSpec(display, builtInSpecSnapshot(spec));
+        return display;
     }
 
     private static ItemDisplay spawnTileDisplayInternal(
@@ -573,13 +701,12 @@ public final class DisplayEntities {
         display.text(text);
         display.setSeeThrough(false);
         display.setShadowed(shadowed);
-        display.setDefaultBackground(false);
+        display.setDefaultBackground(color != null);
         display.setBillboard(billboard);
         display.setRotation(yaw, pitch);
         display.setLineWidth(160);
         display.setViewRange(LABEL_VIEW_RANGE);
         display.setBrightness(new Display.Brightness(15, 15));
-        display.setBackgroundColor(color);
         if (privateViewers != null && !privateViewers.isEmpty()) {
             DisplayVisibilityRegistry.registerPrivate(display.getEntityId(), privateViewers);
             syncPrivateVisibility(runtime, display, privateViewers);
@@ -709,8 +836,10 @@ public final class DisplayEntities {
         return display;
     }
 
-    private static void applyTileDisplay(DisplayEntityRuntime runtime, ItemDisplay display, TileDisplaySpec spec) {
-        applyEntityLocation(runtime, display, spec.location(), spec.yaw(), 0.0F);
+    private static void applyTileDisplay(DisplayEntityRuntime runtime, ItemDisplay display, TileDisplaySpec spec, boolean locationChanged) {
+        if (locationChanged) {
+            applyEntityLocation(runtime, display, spec.location(), spec.yaw(), 0.0F);
+        }
         display.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.HEAD);
         display.setInterpolationDuration(spec.smoothMovement() ? 1 : 0);
         display.setInterpolationDelay(0);
@@ -721,47 +850,200 @@ public final class DisplayEntities {
         display.setDisplayWidth(0.4F * spec.scale());
         display.setDisplayHeight(0.6F * spec.scale());
         display.setBillboard(spec.billboard() == null ? Display.Billboard.FIXED : spec.billboard());
-        if (spec.glowColor() != null) {
-            display.setGlowing(true);
-            display.setGlowColorOverride(spec.glowColor());
-            display.setBrightness(new Display.Brightness(15, 15));
-        } else {
-            display.setGlowing(false);
-            display.setGlowColorOverride(null);
-            display.setBrightness(null);
-        }
-        display.setTransformation(new Transformation(
-            new Vector3f(),
-            new AxisAngle4f((float) Math.toRadians(spec.pose().xRotationDegrees()), 1.0F, 0.0F, 0.0F),
-            new Vector3f(spec.scale(), spec.scale(), spec.scale()),
-            new AxisAngle4f()
-        ));
+        applyTileGlow(display, spec.glowColor());
+        applyTileTransformation(display, spec.pose(), spec.scale());
         display.setItemStack(tileItem(runtime, spec.variant(), spec.tile(), spec.pose().faceDown()));
         applyClickAction(display.getEntityId(), spec.clickAction());
         applyTileVisibility(runtime, display, spec.privateViewers(), spec.hiddenViewers(), spec.visibleByDefault());
     }
 
-    private static void applyLabel(DisplayEntityRuntime runtime, TextDisplay display, LabelSpec spec) {
-        applyEntityLocation(runtime, display, spec.location(), spec.yaw(), spec.pitch());
+    private static void reconcileTileDisplay(
+        DisplayEntityRuntime runtime,
+        ItemDisplay display,
+        TileDisplaySpec spec,
+        TileDisplaySpecSnapshot previous,
+        TileDisplaySpecSnapshot current
+    ) {
+        if (builtInEntityLocationChanged(previous, current)) {
+            applyEntityLocation(runtime, display, spec.location(), spec.yaw(), 0.0F);
+        }
+        if (previous.smoothMovement() != current.smoothMovement()) {
+            int duration = spec.smoothMovement() ? 1 : 0;
+            display.setInterpolationDuration(duration);
+            PaperCompatibility.setTeleportDuration(display, duration);
+        }
+        if (Float.compare(previous.scale(), current.scale()) != 0) {
+            display.setDisplayWidth(0.4F * spec.scale());
+            display.setDisplayHeight(0.6F * spec.scale());
+        }
+        Display.Billboard previousBillboard = tileBillboard(previous.billboard());
+        Display.Billboard currentBillboard = tileBillboard(current.billboard());
+        if (previousBillboard != currentBillboard) {
+            display.setBillboard(currentBillboard);
+        }
+        if (!Objects.equals(previous.glowColor(), current.glowColor())) {
+            applyTileGlowDelta(display, previous.glowColor(), current.glowColor());
+        }
+        if (previous.pose() != current.pose()
+            || Float.compare(previous.scale(), current.scale()) != 0) {
+            applyTileTransformation(display, spec.pose(), spec.scale());
+        }
+        if (tileItemAppearanceChanged(previous, current)) {
+            display.setItemStack(tileItem(runtime, spec.variant(), spec.tile(), spec.pose().faceDown()));
+        }
+        if (!Objects.equals(previous.clickAction(), current.clickAction())) {
+            applyClickAction(display.getEntityId(), spec.clickAction());
+        }
+        if (previous.visibleByDefault() != current.visibleByDefault()
+            || !sameViewerIds(previous.privateViewers(), current.privateViewers())
+            || !sameViewerIds(previous.hiddenViewers(), current.hiddenViewers())) {
+            applyTileVisibility(
+                runtime,
+                display,
+                spec.privateViewers(),
+                spec.hiddenViewers(),
+                spec.visibleByDefault(),
+                tileVisibleByDefault(previous) != tileVisibleByDefault(current)
+            );
+        }
+    }
+
+    private static Display.Billboard tileBillboard(Display.Billboard billboard) {
+        return billboard == null ? Display.Billboard.FIXED : billboard;
+    }
+
+    private static boolean tileVisibleByDefault(TileDisplaySpecSnapshot snapshot) {
+        return (snapshot.privateViewers() == null || snapshot.privateViewers().isEmpty())
+            && snapshot.visibleByDefault();
+    }
+
+    private static void applyTileGlow(ItemDisplay display, Color glowColor) {
+        if (glowColor != null) {
+            display.setGlowing(true);
+            display.setGlowColorOverride(glowColor);
+            display.setBrightness(new Display.Brightness(15, 15));
+            return;
+        }
+        display.setGlowing(false);
+        display.setGlowColorOverride(null);
+        display.setBrightness(null);
+    }
+
+    private static void applyTileGlowDelta(ItemDisplay display, Color previous, Color current) {
+        if (previous == null || current == null) {
+            applyTileGlow(display, current);
+            return;
+        }
+        display.setGlowColorOverride(current);
+    }
+
+    private static void applyTileTransformation(ItemDisplay display, TileRenderPose pose, float scale) {
+        display.setTransformation(new Transformation(
+            new Vector3f(),
+            new AxisAngle4f((float) Math.toRadians(pose.xRotationDegrees()), 1.0F, 0.0F, 0.0F),
+            new Vector3f(scale, scale, scale),
+            new AxisAngle4f()
+        ));
+    }
+
+    private static boolean tileItemAppearanceChanged(
+        TileDisplaySpecSnapshot previous,
+        TileDisplaySpecSnapshot current
+    ) {
+        return previous.variant() != current.variant()
+            || previous.tile() != current.tile()
+            || previous.pose().faceDown() != current.pose().faceDown();
+    }
+
+    private static void applyLabel(DisplayEntityRuntime runtime, TextDisplay display, LabelSpec spec, boolean locationChanged) {
+        if (locationChanged) {
+            applyEntityLocation(runtime, display, spec.location(), spec.yaw(), spec.pitch());
+        }
         display.text(spec.text());
         display.setSeeThrough(false);
         display.setShadowed(spec.shadowed());
-        display.setDefaultBackground(false);
+        display.setDefaultBackground(spec.color() != null);
         display.setBillboard(spec.billboard());
         display.setLineWidth(160);
         display.setViewRange(LABEL_VIEW_RANGE);
         display.setBrightness(new Display.Brightness(15, 15));
-        display.setBackgroundColor(spec.color());
         applyPrivateVisibility(runtime, display, spec.privateViewers(), true);
     }
 
-    private static void applyInteraction(DisplayEntityRuntime runtime, Interaction interaction, InteractionSpec spec) {
-        applyEntityLocation(runtime, interaction, spec.location(), interaction.getYaw(), interaction.getPitch());
+    private static void reconcileLabel(
+        DisplayEntityRuntime runtime,
+        TextDisplay display,
+        LabelSpec spec,
+        LabelSpecSnapshot previous,
+        LabelSpecSnapshot current
+    ) {
+        if (builtInEntityLocationChanged(previous, current)) {
+            applyEntityLocation(runtime, display, spec.location(), spec.yaw(), spec.pitch());
+        }
+        if (!Objects.equals(previous.text(), current.text())) {
+            display.text(spec.text());
+        }
+        if (previous.shadowed() != current.shadowed()) {
+            display.setShadowed(spec.shadowed());
+        }
+        if (previous.billboard() != current.billboard()) {
+            display.setBillboard(spec.billboard());
+        }
+        if ((previous.color() == null) != (current.color() == null)) {
+            display.setDefaultBackground(spec.color() != null);
+        }
+        if (!sameViewerIds(previous.privateViewers(), current.privateViewers())) {
+            applyPrivateVisibility(
+                runtime,
+                display,
+                spec.privateViewers(),
+                true,
+                privateVisibleByDefault(previous.privateViewers(), true)
+                    != privateVisibleByDefault(current.privateViewers(), true)
+            );
+        }
+    }
+
+    private static void applyInteraction(DisplayEntityRuntime runtime, Interaction interaction, InteractionSpec spec, boolean locationChanged) {
+        if (locationChanged) {
+            applyEntityLocation(runtime, interaction, spec.location(), interaction.getYaw(), interaction.getPitch());
+        }
         interaction.setResponsive(true);
         interaction.setInteractionWidth(spec.width());
         interaction.setInteractionHeight(spec.height());
         applyClickAction(interaction.getEntityId(), spec.clickAction());
         applyPrivateVisibility(runtime, interaction, spec.privateViewers(), true);
+    }
+
+    private static void reconcileInteraction(
+        DisplayEntityRuntime runtime,
+        Interaction interaction,
+        InteractionSpec spec,
+        InteractionSpecSnapshot previous,
+        InteractionSpecSnapshot current
+    ) {
+        if (builtInEntityLocationChanged(previous, current)) {
+            applyEntityLocation(runtime, interaction, spec.location(), interaction.getYaw(), interaction.getPitch());
+        }
+        if (Float.compare(previous.width(), current.width()) != 0) {
+            interaction.setInteractionWidth(spec.width());
+        }
+        if (Float.compare(previous.height(), current.height()) != 0) {
+            interaction.setInteractionHeight(spec.height());
+        }
+        if (!Objects.equals(previous.clickAction(), current.clickAction())) {
+            applyClickAction(interaction.getEntityId(), spec.clickAction());
+        }
+        if (!sameViewerIds(previous.privateViewers(), current.privateViewers())) {
+            applyPrivateVisibility(
+                runtime,
+                interaction,
+                spec.privateViewers(),
+                true,
+                privateVisibleByDefault(previous.privateViewers(), true)
+                    != privateVisibleByDefault(current.privateViewers(), true)
+            );
+        }
     }
 
     private static void applyEntityLocation(DisplayEntityRuntime runtime, Entity entity, Location location, float yaw, float pitch) {
@@ -786,12 +1068,25 @@ public final class DisplayEntities {
         Collection<UUID> hiddenViewers,
         boolean visibleByDefault
     ) {
+        applyTileVisibility(runtime, entity, privateViewers, hiddenViewers, visibleByDefault, true);
+    }
+
+    private static void applyTileVisibility(
+        DisplayEntityRuntime runtime,
+        Entity entity,
+        Collection<UUID> privateViewers,
+        Collection<UUID> hiddenViewers,
+        boolean visibleByDefault,
+        boolean updateVisibleByDefault
+    ) {
         if (privateViewers != null && hiddenViewers != null && !hiddenViewers.isEmpty()) {
             throw new IllegalArgumentException("Tile visibility cannot define both private viewers and hidden viewers");
         }
         boolean privateOnly = privateViewers != null && !privateViewers.isEmpty();
         boolean hiddenSpecific = hiddenViewers != null && !hiddenViewers.isEmpty();
-        entity.setVisibleByDefault(!privateOnly && visibleByDefault);
+        if (updateVisibleByDefault) {
+            entity.setVisibleByDefault(!privateOnly && visibleByDefault);
+        }
         if (privateViewers != null) {
             Set<UUID> previousPrivateViewers = DisplayVisibilityRegistry.privateViewers(entity.getEntityId());
             boolean hadPrivateVisibility = previousPrivateViewers != null
@@ -844,8 +1139,20 @@ public final class DisplayEntities {
     }
 
     private static void applyPrivateVisibility(DisplayEntityRuntime runtime, Entity entity, Collection<UUID> privateViewers, boolean visibleByDefault) {
+        applyPrivateVisibility(runtime, entity, privateViewers, visibleByDefault, true);
+    }
+
+    private static void applyPrivateVisibility(
+        DisplayEntityRuntime runtime,
+        Entity entity,
+        Collection<UUID> privateViewers,
+        boolean visibleByDefault,
+        boolean updateVisibleByDefault
+    ) {
         boolean privateOnly = privateViewers != null && !privateViewers.isEmpty();
-        entity.setVisibleByDefault(!privateOnly && visibleByDefault);
+        if (updateVisibleByDefault) {
+            entity.setVisibleByDefault(!privateOnly && visibleByDefault);
+        }
         Set<UUID> previousPrivateViewers = DisplayVisibilityRegistry.privateViewers(entity.getEntityId());
         boolean hadPrivateVisibility = previousPrivateViewers != null
             && DisplayVisibilityRegistry.excludedViewers(entity.getEntityId()) == null
@@ -877,6 +1184,10 @@ public final class DisplayEntities {
         } else {
             syncPrivateVisibility(runtime, entity, privateViewers);
         }
+    }
+
+    private static boolean privateVisibleByDefault(Collection<UUID> privateViewers, boolean visibleByDefault) {
+        return (privateViewers == null || privateViewers.isEmpty()) && visibleByDefault;
     }
 
     private static void syncExcludedVisibility(DisplayEntityRuntime runtime, Entity entity, Collection<UUID> hiddenViewers, boolean visibleByDefault) {
@@ -981,7 +1292,304 @@ public final class DisplayEntities {
         if (runtime == null) {
             return null;
         }
-        return new SnapshotDisplayEntityRuntime(runtime, List.copyOf(runtime.onlinePlayers()));
+        return new SnapshotDisplayEntityRuntime(runtime);
+    }
+
+    private static BuiltInSpecSnapshot builtInSpecSnapshot(EntitySpec spec) {
+        if (spec instanceof TileDisplaySpec tile) {
+            return new TileDisplaySpecSnapshot(
+                locationSnapshot(tile.location()),
+                tile.yaw(),
+                tile.variant(),
+                tile.tile(),
+                tile.pose(),
+                tile.clickAction(),
+                tile.visibleByDefault(),
+                immutableViewerIds(tile.privateViewers()),
+                immutableViewerIds(tile.hiddenViewers()),
+                tile.scale(),
+                tile.glowColor(),
+                tile.billboard(),
+                tile.smoothMovement()
+            );
+        }
+        if (spec instanceof LabelSpec label) {
+            return new LabelSpecSnapshot(
+                locationSnapshot(label.location()),
+                label.text(),
+                label.color(),
+                immutableViewerIds(label.privateViewers()),
+                label.billboard(),
+                label.yaw(),
+                label.pitch(),
+                label.shadowed()
+            );
+        }
+        if (spec instanceof InteractionSpec interaction) {
+            return new InteractionSpecSnapshot(
+                locationSnapshot(interaction.location()),
+                interaction.width(),
+                interaction.height(),
+                interaction.clickAction(),
+                immutableViewerIds(interaction.privateViewers())
+            );
+        }
+        return null;
+    }
+
+    private static LocationSnapshot locationSnapshot(Location location) {
+        if (location == null) {
+            return null;
+        }
+        World world = location.getWorld();
+        return new LocationSnapshot(
+            world == null ? null : world.getUID(),
+            world == null ? "" : Objects.toString(world.getName(), ""),
+            location.getX(),
+            location.getY(),
+            location.getZ(),
+            location.getYaw(),
+            location.getPitch()
+        );
+    }
+
+    private static List<UUID> immutableViewerIds(Collection<UUID> viewers) {
+        return viewers == null ? null : List.copyOf(viewers);
+    }
+
+    private static boolean sameViewerIds(List<UUID> previous, List<UUID> current) {
+        if (previous == current) {
+            return true;
+        }
+        return previous != null
+            && current != null
+            && Set.copyOf(previous).equals(Set.copyOf(current));
+    }
+
+    private static void applyBuiltInSpec(
+        DisplayEntityRuntime runtime,
+        Entity entity,
+        EntitySpec spec,
+        BuiltInSpecSnapshot previous,
+        BuiltInSpecSnapshot current
+    ) {
+        if (spec instanceof TileDisplaySpec tile) {
+            if (previous instanceof TileDisplaySpecSnapshot previousTile
+                && current instanceof TileDisplaySpecSnapshot currentTile) {
+                reconcileTileDisplay(runtime, (ItemDisplay) entity, tile, previousTile, currentTile);
+            } else {
+                applyTileDisplay(runtime, (ItemDisplay) entity, tile, true);
+            }
+            return;
+        }
+        if (spec instanceof LabelSpec label) {
+            if (previous instanceof LabelSpecSnapshot previousLabel
+                && current instanceof LabelSpecSnapshot currentLabel) {
+                reconcileLabel(runtime, (TextDisplay) entity, label, previousLabel, currentLabel);
+            } else {
+                applyLabel(runtime, (TextDisplay) entity, label, true);
+            }
+            return;
+        }
+        if (spec instanceof InteractionSpec interaction) {
+            if (previous instanceof InteractionSpecSnapshot previousInteraction
+                && current instanceof InteractionSpecSnapshot currentInteraction) {
+                reconcileInteraction(
+                    runtime,
+                    (Interaction) entity,
+                    interaction,
+                    previousInteraction,
+                    currentInteraction
+                );
+            } else {
+                applyInteraction(runtime, (Interaction) entity, interaction, true);
+            }
+            return;
+        }
+
+        // builtInSpecSnapshot currently recognizes exactly the three types above. Keep a safe
+        // fallback if another built-in snapshot is introduced without updating this dispatcher.
+        spec.apply(runtime, entity);
+    }
+
+    private static boolean builtInEntityLocationChanged(
+        BuiltInSpecSnapshot previous,
+        BuiltInSpecSnapshot current
+    ) {
+        if (previous == null || current == null || previous.getClass() != current.getClass()) {
+            return true;
+        }
+        if (!sameEntityPosition(previous.location(), current.location())) {
+            return true;
+        }
+        if (previous instanceof TileDisplaySpecSnapshot previousTile
+            && current instanceof TileDisplaySpecSnapshot currentTile) {
+            return Float.compare(previousTile.yaw(), currentTile.yaw()) != 0;
+        }
+        if (previous instanceof LabelSpecSnapshot previousLabel
+            && current instanceof LabelSpecSnapshot currentLabel) {
+            return Float.compare(previousLabel.yaw(), currentLabel.yaw()) != 0
+                || Float.compare(previousLabel.pitch(), currentLabel.pitch()) != 0;
+        }
+        return false;
+    }
+
+    private static boolean sameEntityPosition(LocationSnapshot previous, LocationSnapshot current) {
+        if (previous == current) {
+            return true;
+        }
+        if (previous == null || current == null) {
+            return false;
+        }
+        return Objects.equals(previous.worldUuid(), current.worldUuid())
+            && Objects.equals(previous.worldName(), current.worldName())
+            && Double.compare(previous.x(), current.x()) == 0
+            && Double.compare(previous.y(), current.y()) == 0
+            && Double.compare(previous.z(), current.z()) == 0;
+    }
+
+    private static AppliedBuiltInSpec appliedBuiltInSpec(Entity entity) {
+        if (entity == null) {
+            return null;
+        }
+        drainCollectedAppliedSpecEntities();
+        int entityId = entity.getEntityId();
+        AppliedBuiltInSpec applied = APPLIED_BUILT_IN_SPECS.get(entityId);
+        if (applied == null) {
+            return null;
+        }
+        if (!sameCachedEntity(applied, entity)) {
+            APPLIED_BUILT_IN_SPECS.remove(entityId, applied);
+            return null;
+        }
+        return applied;
+    }
+
+    private static void rememberAppliedBuiltInSpec(Entity entity, BuiltInSpecSnapshot snapshot) {
+        if (entity == null || snapshot == null) {
+            return;
+        }
+        drainCollectedAppliedSpecEntities();
+        int entityId = entity.getEntityId();
+        APPLIED_BUILT_IN_SPECS.put(
+            entityId,
+            new AppliedBuiltInSpec(
+                entity.getUniqueId(),
+                System.identityHashCode(entity),
+                new AppliedSpecEntityReference(entity, entityId, APPLIED_BUILT_IN_SPEC_ENTITY_QUEUE),
+                snapshot
+            )
+        );
+    }
+
+    private static void forgetAppliedBuiltInSpec(Entity entity) {
+        if (entity == null) {
+            return;
+        }
+        drainCollectedAppliedSpecEntities();
+        int entityId = entity.getEntityId();
+        AppliedBuiltInSpec applied = APPLIED_BUILT_IN_SPECS.get(entityId);
+        if (applied != null && sameCachedEntity(applied, entity)) {
+            APPLIED_BUILT_IN_SPECS.remove(entityId, applied);
+        }
+    }
+
+    static void forgetAppliedBuiltInSpec(int entityId) {
+        drainCollectedAppliedSpecEntities();
+        APPLIED_BUILT_IN_SPECS.remove(entityId);
+    }
+
+    private static boolean sameCachedEntity(AppliedBuiltInSpec applied, Entity entity) {
+        UUID entityUuid = entity.getUniqueId();
+        if (entityUuid != null || applied.entityUuid() != null) {
+            return Objects.equals(applied.entityUuid(), entityUuid);
+        }
+        Entity cachedEntity = applied.entityReference().get();
+        return cachedEntity == entity && applied.identityHash() == System.identityHashCode(entity);
+    }
+
+    private static void drainCollectedAppliedSpecEntities() {
+        AppliedSpecEntityReference collected;
+        while ((collected = (AppliedSpecEntityReference) APPLIED_BUILT_IN_SPEC_ENTITY_QUEUE.poll()) != null) {
+            AppliedBuiltInSpec applied = APPLIED_BUILT_IN_SPECS.get(collected.entityId());
+            if (applied != null && applied.entityReference() == collected) {
+                APPLIED_BUILT_IN_SPECS.remove(collected.entityId(), applied);
+            }
+        }
+    }
+
+    private interface BuiltInSpecSnapshot {
+        LocationSnapshot location();
+    }
+
+    private record AppliedBuiltInSpec(
+        UUID entityUuid,
+        int identityHash,
+        AppliedSpecEntityReference entityReference,
+        BuiltInSpecSnapshot snapshot
+    ) {
+    }
+
+    private static final class AppliedSpecEntityReference extends WeakReference<Entity> {
+        private final int entityId;
+
+        private AppliedSpecEntityReference(Entity entity, int entityId, ReferenceQueue<Entity> queue) {
+            super(entity, queue);
+            this.entityId = entityId;
+        }
+
+        private int entityId() {
+            return this.entityId;
+        }
+    }
+
+    private record LocationSnapshot(
+        UUID worldUuid,
+        String worldName,
+        double x,
+        double y,
+        double z,
+        float yaw,
+        float pitch
+    ) {
+    }
+
+    private record TileDisplaySpecSnapshot(
+        LocationSnapshot location,
+        float yaw,
+        MahjongVariant variant,
+        MahjongTile tile,
+        TileRenderPose pose,
+        DisplayClickAction clickAction,
+        boolean visibleByDefault,
+        List<UUID> privateViewers,
+        List<UUID> hiddenViewers,
+        float scale,
+        Color glowColor,
+        Display.Billboard billboard,
+        boolean smoothMovement
+    ) implements BuiltInSpecSnapshot {
+    }
+
+    private record LabelSpecSnapshot(
+        LocationSnapshot location,
+        Component text,
+        Color color,
+        List<UUID> privateViewers,
+        Display.Billboard billboard,
+        float yaw,
+        float pitch,
+        boolean shadowed
+    ) implements BuiltInSpecSnapshot {
+    }
+
+    private record InteractionSpecSnapshot(
+        LocationSnapshot location,
+        float width,
+        float height,
+        DisplayClickAction clickAction,
+        List<UUID> privateViewers
+    ) implements BuiltInSpecSnapshot {
     }
 
     public static boolean isManagedEntity(Plugin plugin, Entity entity) {

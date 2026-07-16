@@ -13,6 +13,10 @@ public final class DeleteTableSubcommand extends AbstractMahjongSubcommand {
     @Override protected void execute(CommandSender sender, Player player, String[] args) {
         MahjongTableSession target = this.context.resolveAdminTable(player, args);
         if (target == null) { return; }
+        if (!this.context.tableManager().canBreakTable(player, target)) {
+            this.context.messages().send(player, "command.deletetable_protected");
+            return;
+        }
         this.context.tableManager().deleteTable(target.id());
         this.context.messages().send(player, "command.deletetable_success", this.context.messages().tag("table_id", target.id()));
     }

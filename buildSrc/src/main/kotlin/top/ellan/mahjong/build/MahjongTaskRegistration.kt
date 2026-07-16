@@ -12,7 +12,7 @@ import org.gradle.kotlin.dsl.get
 import org.gradle.kotlin.dsl.getByType
 import org.gradle.kotlin.dsl.named
 import org.gradle.kotlin.dsl.register
-import org.gradle.testing.jacoco.tasks.JacocoReport
+import org.gradle.process.CommandLineArgumentProvider
 import java.io.File
 
 /**
@@ -26,36 +26,6 @@ object MahjongTaskRegistration {
     ) {
         registerPerfTestTask(project)
         MahjongJmhConfiguration.configure(project, paperApiVersion)
-    }
-
-    fun configureVerificationTasks(
-        project: Project,
-        javaTargetVersion: Int,
-    ) {
-        val jacocoReport =
-            project.tasks.named<JacocoReport>("jacocoTestReport") {
-                dependsOn(project.tasks.named("test"))
-                reports {
-                    xml.required.set(true)
-                    html.required.set(true)
-                    csv.required.set(false)
-                }
-            }
-        project.tasks.named<Test>("test") {
-            useJUnitPlatform { excludeTags("perf") }
-            jvmArgs("-Dnet.bytebuddy.experimental=true")
-            systemProperty("mahjong.test.expectedClassfileMajor", javaTargetVersion + 44)
-            finalizedBy(jacocoReport)
-        }
-        project.tasks.named("check") {
-            dependsOn(
-                jacocoReport,
-                "verifyMahjongTileResources",
-                "generateCraftEngineBundle",
-                "spotlessCheck",
-                "detekt",
-            )
-        }
     }
 
     @Suppress("LongMethod")
@@ -179,6 +149,18 @@ object MahjongTaskRegistration {
         val gbNativeToolchainAvailable =
             gbNativeCmakeExecutable != null &&
                 gbNativeGxxExecutable != null
+        val gbNativeRequired =
+            project.providers
+                .gradleProperty("mahjongRequireNative")
+                .map(String::toBoolean)
+                .orElse(false)
+                .get()
+        if (gbNativeRequired && !gbNativeToolchainAvailable) {
+            throw GradleException(
+                "mahjongRequireNative=true but the GB Mahjong toolchain is incomplete " +
+                    "(cmake=${gbNativeCmakeExecutable ?: "missing"}, g++=${gbNativeGxxExecutable ?: "missing"})",
+            )
+        }
         val gbNativeWindowsRuntimeDir = gbNativeGxxExecutable?.let { File(it).parentFile }
         val gbNativeCurrentOsName = System.getProperty("os.name", "")
         val gbNativeCurrentArch = System.getProperty("os.arch", "")
@@ -205,6 +187,7 @@ object MahjongTaskRegistration {
                         sourceDir.absolutePath,
                         "-B",
                         buildDir.absolutePath,
+                        "-DCMAKE_BUILD_TYPE=Release",
                     )
                 if (gbNativeNinjaExecutable != null) {
                     command += listOf("-G", "Ninja", "-DCMAKE_MAKE_PROGRAM=$gbNativeNinjaExecutable")
@@ -257,6 +240,10 @@ object MahjongTaskRegistration {
                         val winPthread = gbNativeWindowsRuntimeDir?.let { File(it, "libwinpthread-1.dll") }
                         if (winPthread?.isFile == true) {
                             winPthread.copyTo(File(outputDir, winPthread.name), overwrite = true)
+                        } else if (gbNativeRequired) {
+                            throw GradleException(
+                                "mahjongRequireNative=true but libwinpthread-1.dll was not found next to g++",
+                            )
                         }
                     }
                 }
@@ -268,46 +255,121 @@ object MahjongTaskRegistration {
     private fun registerPerfTestTask(project: Project): TaskProvider<Test> {
         val sourceSets = project.extensions.getByType<SourceSetContainer>()
         val testSourceSet = sourceSets["test"]
-        return project.tasks.register<Test>("perfTest") {
+        val mockitoAgent = project.configurations.named("mockitoAgent")
+        val perfBaselineDir =
+            project.providers
+                .gradleProperty("perfBaselineDir")
+                .orElse(
+                    project.layout.buildDirectory
+                        .dir("perf-comparison/baseline")
+                        .map { it.asFile.absolutePath },
+                )
+        val perfCandidateDir =
+            project.providers
+                .gradleProperty("perfCandidateDir")
+                .orElse(
+                    project.layout.buildDirectory
+                        .dir("perf-comparison/candidate")
+                        .map { it.asFile.absolutePath },
+                )
+        val perfRegressionThresholds =
+            project.providers
+                .gradleProperty("perfRegressionThresholds")
+                .orElse("")
+        val perfRegressionMinRuns =
+            project.providers
+                .gradleProperty("perfRegressionMinRuns")
+                .orElse("3")
+        val perfRegressionReportDir = project.layout.buildDirectory.dir("reports/performance")
+        val perfTest =
+            project.tasks.register<Test>("perfTest") {
+                group = "verification"
+                description = "Runs performance benchmarks tagged with @Tag(\"perf\")."
+                dependsOn(project.tasks.named("testClasses"))
+                testClassesDirs = testSourceSet.output.classesDirs
+                classpath = testSourceSet.runtimeClasspath
+                useJUnitPlatform {
+                    includeTags("perf")
+                    excludeTags("perf-regression")
+                }
+                jvmArgumentProviders.add(
+                    CommandLineArgumentProvider {
+                        listOf("-javaagent:${mockitoAgent.get().singleFile.absolutePath}")
+                    },
+                )
+                jvmArgs("-Dnet.bytebuddy.experimental=true")
+                systemProperty(
+                    "mahjong.perf.warmupIterations",
+                    project.providers
+                        .gradleProperty("perfWarmups")
+                        .orElse("5")
+                        .get(),
+                )
+                systemProperty(
+                    "mahjong.perf.measurementIterations",
+                    project.providers
+                        .gradleProperty("perfIterations")
+                        .orElse("10")
+                        .get(),
+                )
+                systemProperty(
+                    "mahjong.perf.batchSize",
+                    project.providers
+                        .gradleProperty("perfBatchSize")
+                        .orElse("200")
+                        .get(),
+                )
+                systemProperty(
+                    "mahjong.perf.reportDir",
+                    project.layout.buildDirectory
+                        .dir("reports/performance")
+                        .get()
+                        .asFile.absolutePath,
+                )
+                shouldRunAfter(project.tasks.named("test"))
+            }
+
+        project.tasks.register<Test>("perfRegressionCheck") {
             group = "verification"
-            description = "Runs performance benchmarks tagged with @Tag(\"perf\")."
+            description = "Compares paired baseline and candidate performance reports."
             dependsOn(project.tasks.named("testClasses"))
             testClassesDirs = testSourceSet.output.classesDirs
             classpath = testSourceSet.runtimeClasspath
             useJUnitPlatform {
-                includeTags("perf")
+                includeTags("perf-regression")
             }
-            jvmArgs("-Dnet.bytebuddy.experimental=true")
+            inputs.dir(perfBaselineDir).withPropertyName("perfBaselineReports")
+            inputs.dir(perfCandidateDir).withPropertyName("perfCandidateReports")
+            inputs.property("perfRegressionThresholds", perfRegressionThresholds)
+            inputs.property("perfRegressionMinRuns", perfRegressionMinRuns)
+            outputs.file(perfRegressionReportDir.map { it.file("regression.md") })
+            outputs.file(perfRegressionReportDir.map { it.file("regression.json") })
             systemProperty(
-                "mahjong.perf.warmupIterations",
-                project.providers
-                    .gradleProperty("perfWarmups")
-                    .orElse("5")
-                    .get(),
+                "mahjong.perf.baselineDir",
+                perfBaselineDir.get(),
             )
             systemProperty(
-                "mahjong.perf.measurementIterations",
-                project.providers
-                    .gradleProperty("perfIterations")
-                    .orElse("10")
-                    .get(),
+                "mahjong.perf.candidateDir",
+                perfCandidateDir.get(),
             )
             systemProperty(
-                "mahjong.perf.batchSize",
-                project.providers
-                    .gradleProperty("perfBatchSize")
-                    .orElse("200")
-                    .get(),
+                "mahjong.perf.regressionThresholds",
+                perfRegressionThresholds.get(),
             )
             systemProperty(
-                "mahjong.perf.reportDir",
-                project.layout.buildDirectory
-                    .dir("reports/performance")
+                "mahjong.perf.regressionMinRuns",
+                perfRegressionMinRuns.get(),
+            )
+            systemProperty(
+                "mahjong.perf.regressionReportDir",
+                perfRegressionReportDir
                     .get()
                     .asFile.absolutePath,
             )
-            shouldRunAfter(project.tasks.named("test"))
+            shouldRunAfter(perfTest)
         }
+
+        return perfTest
     }
 
     fun configureGitRatchet(

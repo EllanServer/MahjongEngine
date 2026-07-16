@@ -20,6 +20,7 @@ import java.util.function.Supplier;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import top.ellan.mahjong.runtime.PluginTask;
@@ -29,6 +30,10 @@ public final class TableSeatCoordinator {
     private static final long SEAT_WATCHDOG_DURATION_TICKS = 40L;
     private static final long SEAT_RESTORE_COOLDOWN_MILLIS = 150L;
     private static final double SEAT_RESTORE_MAX_DISTANCE_SQUARED = 16.0D;
+    private static final double SEAT_EXIT_OUTWARD_DISTANCE = 0.8D;
+    private static final double SEAT_EXIT_FOOT_CLEARANCE = 0.02D;
+    private static final int SEAT_EXIT_GROUND_SCAN_BLOCKS = 4;
+    private static final int SEAT_EXIT_DISMOUNT_RETRIES = 3;
 
     private final Supplier<CraftEngineService> craftEngine;
     private final ServerScheduler scheduler;
@@ -139,16 +144,76 @@ public final class TableSeatCoordinator {
         double deltaX = seatAnchor.getX() - tableCenter.getX();
         double deltaZ = seatAnchor.getZ() - tableCenter.getZ();
         double horizontalLength = Math.hypot(deltaX, deltaZ);
-        double offsetX = horizontalLength > 0.0001D ? deltaX / horizontalLength * 0.8D : 0.0D;
-        double offsetZ = horizontalLength > 0.0001D ? deltaZ / horizontalLength * 0.8D : 0.0D;
-        Location exit = seatAnchor.clone().add(offsetX, 1.05D, offsetZ);
-        exit.setYaw(session.seatFacingYaw(wind));
-        exit.setPitch(0.0F);
-        this.scheduler.runEntity(player, () -> {
-            if (player.isOnline() && !player.isInsideVehicle()) {
-                this.scheduler.teleport(player, exit);
-            }
+        double offsetX = horizontalLength > 0.0001D ? deltaX / horizontalLength * SEAT_EXIT_OUTWARD_DISTANCE : 0.0D;
+        double offsetZ = horizontalLength > 0.0001D ? deltaZ / horizontalLength * SEAT_EXIT_OUTWARD_DISTANCE : 0.0D;
+        Location exitProbe = seatAnchor.clone().add(offsetX, 0.0D, offsetZ);
+        exitProbe.setY(tableCenter.getBlockY());
+        exitProbe.setYaw(session.seatFacingYaw(wind));
+        exitProbe.setPitch(0.0F);
+
+        // Resolve block collision on the destination region, then dismount and teleport as one
+        // entity-thread operation. The CraftEngine chair's hidden seat is deliberately below the
+        // floor; splitting these into unrelated tasks occasionally left the player at that hidden
+        // carrier when the old teleport task observed that dismount had not completed yet.
+        this.scheduler.runRegion(exitProbe, () -> {
+            Location exit = groundedSeatExit(exitProbe, tableCenter.getBlockY());
+            this.scheduler.runEntity(
+                player,
+                () -> this.dismountAndMoveToSeatExit(player, playerId, exit, SEAT_EXIT_DISMOUNT_RETRIES)
+            );
         });
+    }
+
+    static Location groundedSeatExit(Location probe, int preferredFootY) {
+        if (probe == null || probe.getWorld() == null) {
+            return probe;
+        }
+        World world = probe.getWorld();
+        int blockX = probe.getBlockX();
+        int blockZ = probe.getBlockZ();
+        int firstSupportY = Math.min(world.getMaxHeight() - 1, preferredFootY - 1);
+        int lastSupportY = Math.max(world.getMinHeight(), firstSupportY - SEAT_EXIT_GROUND_SCAN_BLOCKS + 1);
+        double footY = preferredFootY;
+        for (int y = firstSupportY; y >= lastSupportY; y--) {
+            Block support = world.getBlockAt(blockX, y, blockZ);
+            if (support == null || support.isPassable() || support.isLiquid()) {
+                continue;
+            }
+            try {
+                double collisionTop = support.getBoundingBox().getMaxY();
+                footY = collisionTop > y && collisionTop <= y + 1.0D
+                    ? collisionTop
+                    : y + 1.0D;
+            } catch (RuntimeException exception) {
+                footY = y + 1.0D;
+            }
+            break;
+        }
+        Location grounded = probe.clone();
+        grounded.setY(footY + SEAT_EXIT_FOOT_CLEARANCE);
+        return grounded;
+    }
+
+    private void dismountAndMoveToSeatExit(Player player, UUID playerId, Location exit, int retriesRemaining) {
+        if (player == null || playerId == null || exit == null || !player.isOnline()) {
+            if (playerId != null) {
+                this.seatDismountBypass.remove(playerId);
+            }
+            return;
+        }
+        if (player.isInsideVehicle()) {
+            this.seatDismountBypass.add(playerId);
+            player.leaveVehicle();
+            if (player.isInsideVehicle() && retriesRemaining > 0) {
+                this.scheduler.runEntityDelayed(
+                    player,
+                    () -> this.dismountAndMoveToSeatExit(player, playerId, exit, retriesRemaining - 1),
+                    1L
+                );
+                return;
+            }
+        }
+        this.scheduler.teleport(player, exit).whenComplete((success, throwable) -> this.seatDismountBypass.remove(playerId));
     }
 
     public void startSeatWatchdog(MahjongTableSession session) {
@@ -377,5 +442,3 @@ public final class TableSeatCoordinator {
         return this.craftEngine.get();
     }
 }
-
-

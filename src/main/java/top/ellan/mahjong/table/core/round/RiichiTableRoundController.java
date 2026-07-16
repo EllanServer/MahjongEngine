@@ -84,7 +84,10 @@ public final class RiichiTableRoundController implements TableRoundController {
 
     @Override
     public boolean react(UUID playerId, ReactionResponse response) {
-        return playerId != null && response != null && this.engine.react(playerId.toString(), response);
+        return playerId != null
+            && response != null
+            && this.isReactionPending(playerId)
+            && this.engine.react(playerId.toString(), response);
     }
 
     @Override
@@ -274,12 +277,22 @@ public final class RiichiTableRoundController implements TableRoundController {
 
     @Override
     public ReactionOptions availableReactions(UUID playerId) {
-        return playerId == null ? null : this.engine.availableReactions(playerId.toString());
+        return this.isReactionPending(playerId) ? this.engine.availableReactions(playerId.toString()) : null;
     }
 
     @Override
     public boolean hasPendingReaction() {
         return this.engine.getPendingReaction() != null;
+    }
+
+    @Override
+    public boolean isReactionPending(UUID playerId) {
+        if (playerId == null || this.engine.getPendingReaction() == null) {
+            return false;
+        }
+        String playerKey = playerId.toString();
+        return this.engine.getPendingReaction().getOptions().containsKey(playerKey)
+            && !this.engine.getPendingReaction().getResponses().containsKey(playerKey);
     }
 
     @Override

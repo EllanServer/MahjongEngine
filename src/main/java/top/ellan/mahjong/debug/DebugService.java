@@ -1,24 +1,14 @@
 package top.ellan.mahjong.debug;
 
-import top.ellan.mahjong.config.ConfigAccess;
 import top.ellan.mahjong.config.PluginSettings;
 import java.util.Locale;
 import java.util.Set;
 import java.util.logging.Logger;
-import org.bukkit.configuration.ConfigurationSection;
 
 public final class DebugService {
     private final Logger logger;
     private final boolean enabled;
     private final Set<String> categories;
-
-    public DebugService(Logger logger, ConfigurationSection section) {
-        this(
-            logger,
-            ConfigAccess.bool(section, false, "enabled"),
-            ConfigAccess.stringList(section, "categories")
-        );
-    }
 
     public DebugService(Logger logger, PluginSettings.DebugSettings settings) {
         this(logger, settings != null && settings.enabled(), settings == null ? java.util.List.of() : settings.categories());
@@ -64,4 +54,3 @@ public final class DebugService {
         return normalized;
     }
 }
-

@@ -7,26 +7,20 @@ import top.ellan.mahjong.model.MahjongTile;
 import top.ellan.mahjong.model.SeatWind;
 import java.util.ArrayList;
 import java.util.EnumMap;
-import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 final class DefaultSichuanRulesEngine implements SichuanRulesEngine {
+    private static final int MAX_SCORING_FAN = 3;
     private static final String SICHUAN_PING_HU = "PING_HU";
     private static final String SICHUAN_DUI_DUI_HU = "DUI_DUI_HU";
     private static final String SICHUAN_QING_YI_SE = "QING_YI_SE";
     private static final String SICHUAN_QI_DUI = "QI_DUI";
-    private static final String SICHUAN_LONG_QI_DUI = "LONG_QI_DUI";
-    private static final String SICHUAN_SHUANG_LONG_QI_DUI = "SHUANG_LONG_QI_DUI";
-    private static final String SICHUAN_HAO_HUA_LONG_QI_DUI = "HAO_HUA_LONG_QI_DUI";
-    private static final String SICHUAN_JIANG_DUI = "JIANG_DUI";
     private static final String SICHUAN_GEN = "GEN";
     private static final String SICHUAN_JIN_GOU_DIAO = "JIN_GOU_DIAO";
     private static final String SICHUAN_HAI_DI = "HAI_DI";
-    private static final String SICHUAN_MIAO_SHOU_HUI_CHUN = "MIAO_SHOU_HUI_CHUN";
     private static final String SICHUAN_GANG_SHANG_HUA = "GANG_SHANG_HUA";
     private static final String SICHUAN_GANG_SHANG_PAO = "GANG_SHANG_PAO";
     private static final String SICHUAN_QIANG_GANG_HU = "QIANG_GANG_HU";
@@ -51,41 +45,40 @@ final class DefaultSichuanRulesEngine implements SichuanRulesEngine {
             return new FanResult(false, 0, List.of(), "Hand is not a valid Sichuan Mahjong winning hand.");
         }
         List<MahjongTile> totalTiles = fullHandTiles(concealedHand, melds, winningTile);
+        if (hasMoreThanFourCopies(totalTiles)) {
+            return new FanResult(false, 0, List.of(), "A Sichuan Mahjong hand cannot contain a fifth copy of a tile.");
+        }
         if (!isMissingOneSuit(totalTiles)) {
             return new FanResult(false, 0, List.of(), "Sichuan Mahjong hand must be missing one suit.");
         }
         List<GbFanEntry> fans = new ArrayList<>();
         boolean allTriplets = isAllTriplets(result, melds);
         int roots = rootCount(totalTiles);
-        boolean is258 = isAll258(totalTiles);
+        int basicFan;
         if (result.sevenPairs()) {
-            // Seven pairs is scored as a single layered fan that already folds in any
-            // four-of-a-kind "roots", so it must not also receive a separate GEN entry.
-            fans.add(sevenPairsFan(roots));
+            fans.add(new GbFanEntry(SICHUAN_QI_DUI, 2, 1));
+            basicFan = 2;
         } else {
-            if (allTriplets && is258) {
-                // Jiang dui is a standalone three-fan hand, not dui dui hu plus a bonus.
-                fans.add(new GbFanEntry(SICHUAN_JIANG_DUI, 3, 1));
-            } else if (allTriplets) {
+            if (allTriplets) {
                 fans.add(new GbFanEntry(SICHUAN_DUI_DUI_HU, 1, 1));
+                basicFan = 1;
             } else {
-                fans.add(new GbFanEntry(SICHUAN_PING_HU, 1, 1));
+                fans.add(new GbFanEntry(SICHUAN_PING_HU, 0, 1));
+                basicFan = 0;
             }
             if (allTriplets && goldenSingleWait) {
                 fans.add(new GbFanEntry(SICHUAN_JIN_GOU_DIAO, 1, 1));
             }
-            if (roots > 0) {
-                fans.add(new GbFanEntry(SICHUAN_GEN, 1, roots));
-            }
+        }
+        if (roots > 0) {
+            fans.add(new GbFanEntry(SICHUAN_GEN, 1, roots));
         }
         if (isSingleSuit(totalTiles)) {
             fans.add(new GbFanEntry(SICHUAN_QING_YI_SE, 2, 1));
+            basicFan = Math.max(basicFan, 2);
         }
-        if ("SELF_DRAW".equals(winType) && flags.contains("LAST_TILE")) {
+        if (flags.contains("LAST_TILE")) {
             fans.add(new GbFanEntry(SICHUAN_HAI_DI, 1, 1));
-        }
-        if ("DISCARD".equals(winType) && flags.contains("LAST_TILE")) {
-            fans.add(new GbFanEntry(SICHUAN_MIAO_SHOU_HUI_CHUN, 1, 1));
         }
         if ("SELF_DRAW".equals(winType) && flags.contains("AFTER_KONG")) {
             fans.add(new GbFanEntry(SICHUAN_GANG_SHANG_HUA, 1, 1));
@@ -96,7 +89,11 @@ final class DefaultSichuanRulesEngine implements SichuanRulesEngine {
         if (flags.contains("ROBBING_KONG")) {
             fans.add(new GbFanEntry(SICHUAN_QIANG_GANG_HU, 1, 1));
         }
-        int totalFan = Math.max(1, totalFan(fans));
+        int modifierFan = fans.stream()
+            .filter(fan -> !isBasicFan(fan.getName()))
+            .mapToInt(fan -> fan.getFan() * Math.max(1, fan.getCount()))
+            .sum();
+        int totalFan = Math.min(MAX_SCORING_FAN, basicFan + modifierFan);
         return new FanResult(true, totalFan, List.copyOf(fans), null);
     }
 
@@ -120,11 +117,8 @@ final class DefaultSichuanRulesEngine implements SichuanRulesEngine {
 
     @Override
     public int scoreUnit(int fan) {
-        int normalizedFan = Math.max(1, fan);
-        if (normalizedFan >= Integer.SIZE) {
-            return Integer.MAX_VALUE;
-        }
-        return 1 << (normalizedFan - 1);
+        int normalizedFan = Math.max(0, Math.min(MAX_SCORING_FAN, fan));
+        return 1 << normalizedFan;
     }
 
     @Override
@@ -132,9 +126,9 @@ final class DefaultSichuanRulesEngine implements SichuanRulesEngine {
         if (waits == null || waits.isEmpty()) {
             return 1;
         }
-        int bestFan = 1;
+        int bestFan = 0;
         for (GbTingCandidate candidate : waits) {
-            bestFan = Math.max(bestFan, Math.max(1, candidate.getTotalFan() == null ? 1 : candidate.getTotalFan()));
+            bestFan = Math.max(bestFan, Math.max(0, candidate.getTotalFan() == null ? 0 : candidate.getTotalFan()));
         }
         return scoreUnit(bestFan);
     }
@@ -148,14 +142,15 @@ final class DefaultSichuanRulesEngine implements SichuanRulesEngine {
         if ("SELF_DRAW".equals(winType)) {
             List<GbScoreDelta> deltas = new ArrayList<>();
             int loserCount = 0;
+            int selfDrawPayment = unit + 1;
             for (SeatWind seat : activeOpponentSeats == null ? List.<SeatWind>of() : activeOpponentSeats) {
                 if (seat == null) {
                     continue;
                 }
-                deltas.add(new GbScoreDelta(seat.name(), -unit));
+                deltas.add(new GbScoreDelta(seat.name(), -selfDrawPayment));
                 loserCount++;
             }
-            deltas.add(new GbScoreDelta(winnerSeat.name(), unit * loserCount));
+            deltas.add(new GbScoreDelta(winnerSeat.name(), selfDrawPayment * loserCount));
             return List.copyOf(deltas);
         }
         if (discarderSeat == null) {
@@ -187,33 +182,15 @@ final class DefaultSichuanRulesEngine implements SichuanRulesEngine {
     @Override
     public List<GbScoreDelta> exhaustiveDrawDeltas(
         List<SeatWind> activeSeats,
-        Map<SeatWind, List<MahjongTile>> hands,
         Set<SeatWind> readySeats,
-        Map<SeatWind, Integer> readyUnits,
-        int huaZhuUnit
+        Map<SeatWind, Integer> readyUnits
     ) {
         if (activeSeats == null || activeSeats.isEmpty()) {
             return List.of();
         }
         List<GbScoreDelta> deltas = new ArrayList<>();
-        List<SeatWind> huaZhuSeats = new ArrayList<>();
-        for (SeatWind seat : activeSeats) {
-            List<MahjongTile> hand = hands == null ? List.of() : hands.getOrDefault(seat, List.of());
-            if (!isMissingOneSuit(hand)) {
-                huaZhuSeats.add(seat);
-            }
-        }
-        for (SeatWind huaZhu : huaZhuSeats) {
-            for (SeatWind receiver : activeSeats) {
-                if (receiver == null || receiver == huaZhu) {
-                    continue;
-                }
-                deltas.add(new GbScoreDelta(huaZhu.name(), -huaZhuUnit));
-                deltas.add(new GbScoreDelta(receiver.name(), huaZhuUnit));
-            }
-        }
         for (SeatWind payer : activeSeats) {
-            if (payer == null || huaZhuSeats.contains(payer) || (readySeats != null && readySeats.contains(payer))) {
+            if (payer == null || (readySeats != null && readySeats.contains(payer))) {
                 continue;
             }
             for (SeatWind receiver : readySeats == null ? Set.<SeatWind>of() : readySeats) {
@@ -234,19 +211,11 @@ final class DefaultSichuanRulesEngine implements SichuanRulesEngine {
         return concealedTripletsOnly && openTripletsOnly;
     }
 
-    private static GbFanEntry sevenPairsFan(int roots) {
-        // Each four-of-a-kind counts as one "root", upgrading the seven-pair tier:
-        // 0 roots -> seven pairs (2), 1 -> dragon (3), 2 -> double dragon (4), 3 -> deluxe (5).
-        return switch (roots) {
-            case 0 -> new GbFanEntry(SICHUAN_QI_DUI, 2, 1);
-            case 1 -> new GbFanEntry(SICHUAN_LONG_QI_DUI, 3, 1);
-            case 2 -> new GbFanEntry(SICHUAN_SHUANG_LONG_QI_DUI, 4, 1);
-            default -> new GbFanEntry(SICHUAN_HAO_HUA_LONG_QI_DUI, 5, 1);
-        };
-    }
-
-    private static int totalFan(List<GbFanEntry> fans) {
-        return fans.stream().mapToInt(fan -> fan.getFan() * Math.max(1, fan.getCount())).sum();
+    private static boolean isBasicFan(String name) {
+        return SICHUAN_PING_HU.equals(name)
+            || SICHUAN_DUI_DUI_HU.equals(name)
+            || SICHUAN_QING_YI_SE.equals(name)
+            || SICHUAN_QI_DUI.equals(name);
     }
 
     private static List<MahjongTile> fullHandTiles(
@@ -268,20 +237,6 @@ final class DefaultSichuanRulesEngine implements SichuanRulesEngine {
         return suitSet(tiles).size() == 1;
     }
 
-    private static boolean isAll258(List<MahjongTile> tiles) {
-        for (MahjongTile tile : tiles == null ? List.<MahjongTile>of() : tiles) {
-            MahjongTile normalized = normalize(tile);
-            if (normalized == null || normalized.isFlower() || GbRoundSupport.isHonor(normalized)) {
-                return false;
-            }
-            int number = GbRoundSupport.tileNumber(normalized);
-            if (number != 2 && number != 5 && number != 8) {
-                return false;
-            }
-        }
-        return tiles != null && !tiles.isEmpty();
-    }
-
     private static int rootCount(List<MahjongTile> tiles) {
         EnumMap<MahjongTile, Integer> counts = new EnumMap<>(MahjongTile.class);
         for (MahjongTile tile : tiles == null ? List.<MahjongTile>of() : tiles) {
@@ -296,6 +251,20 @@ final class DefaultSichuanRulesEngine implements SichuanRulesEngine {
             roots += count / 4;
         }
         return roots;
+    }
+
+    private static boolean hasMoreThanFourCopies(List<MahjongTile> tiles) {
+        EnumMap<MahjongTile, Integer> counts = new EnumMap<>(MahjongTile.class);
+        for (MahjongTile tile : tiles == null ? List.<MahjongTile>of() : tiles) {
+            MahjongTile normalized = normalize(tile);
+            if (normalized == null || normalized == MahjongTile.UNKNOWN || normalized.isFlower() || GbRoundSupport.isHonor(normalized)) {
+                continue;
+            }
+            if (counts.merge(normalized, 1, Integer::sum) > 4) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Set<Character> suitSet(List<MahjongTile> tiles) {
