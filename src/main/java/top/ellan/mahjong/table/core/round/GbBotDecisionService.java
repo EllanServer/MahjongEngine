@@ -9,12 +9,13 @@ import top.ellan.mahjong.riichi.ReactionOptions;
 import top.ellan.mahjong.riichi.ReactionResponse;
 import top.ellan.mahjong.riichi.ReactionResponses;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import kotlin.Pair;
 
 final class GbBotDecisionService {
+    private static final int TILE_KIND_COUNT = MahjongTile.values().length;
+
     private final int minimumFan;
 
     GbBotDecisionService(int minimumFan) {
@@ -188,19 +189,20 @@ final class GbBotDecisionService {
         int bestIndex = -1;
         long bestReadyScore = 0;
         int bestDiscardPreference = 0;
-        EnumMap<MahjongTile, GbTingResponse> tingMemo = new EnumMap<>(MahjongTile.class);
+        GbTingResponse[] tingMemo = new GbTingResponse[TILE_KIND_COUNT];
         MahjongTile previousDiscarded = null;
         int previousDiscardPreference = 0;
         for (int i = 0; i < hand.size(); i++) {
             MahjongTile discarded = hand.get(i);
-            GbTingResponse ting = tingMemo.get(discarded);
+            int discardedOrdinal = discarded.ordinal();
+            GbTingResponse ting = tingMemo[discardedOrdinal];
             boolean tingMemoHit = ting != null;
             if (ting == null) {
                 List<MahjongTile> remaining = new ArrayList<>(hand);
                 remaining.remove(i);
                 ting = tingEvaluator.evaluate(remaining, melds);
                 if (ting != null) {
-                    tingMemo.put(discarded, ting);
+                    tingMemo[discardedOrdinal] = ting;
                 }
             }
             long candidateReadyScore = readyScore(ting);
