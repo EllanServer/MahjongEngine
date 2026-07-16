@@ -124,6 +124,20 @@
         "top/ellan/mahjong/render/display/DisplayEntities.class"
       ]
     },
+    "region-queue": {
+      "include": "^top\\.ellan\\.mahjong\\.perf\\.RegionUpdateQueueBenchmark\\.orderRepresentativeTableRegions$",
+      "benchmark_ids": [
+        "region.queue.time",
+        "region.queue.alloc"
+      ],
+      "minimum_passes": 2,
+      "must_pass": [
+        "region.queue.time"
+      ],
+      "required_classes": [
+        "top/ellan/mahjong/table/render/TableRegionDisplayCoordinator.class"
+      ]
+    },
     "ray-proxy": {
       "include": "^top\\.ellan\\.mahjong\\.perf\\.RayProxyCoordinatorBenchmark\\.proxyPlan(?:1Viewer|4Viewers|32Viewers)$",
       "benchmark_ids": [
@@ -262,6 +276,18 @@
     {
       "id": "display.spawn.alloc",
       "benchmark": "top.ellan.mahjong.perf.DisplayEntitiesSpawnAllBenchmark.spawnRepresentativeTableRegions",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "region.queue.time",
+      "benchmark": "top.ellan.mahjong.perf.RegionUpdateQueueBenchmark.orderRepresentativeTableRegions",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "region.queue.alloc",
+      "benchmark": "top.ellan.mahjong.perf.RegionUpdateQueueBenchmark.orderRepresentativeTableRegions",
       "metric": "gc.alloc.rate.norm",
       "direction": "lower"
     },
