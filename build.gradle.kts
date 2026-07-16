@@ -1,3 +1,4 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import dev.detekt.gradle.Detekt
 import top.ellan.mahjong.build.MahjongBuildConfiguration
 import top.ellan.mahjong.build.MahjongBuildInputs
@@ -8,7 +9,7 @@ plugins {
     jacoco
     kotlin("jvm") version "2.4.0"
     kotlin("plugin.serialization") version "2.4.0"
-    id("com.gradleup.shadow") version "9.5.1"
+    id("com.gradleup.shadow") version "9.5.1" apply false
     id("io.papermc.paperweight.userdev") version "2.0.0-SNAPSHOT"
     id("com.diffplug.spotless") version "8.8.0"
     id("dev.detekt") version "2.0.0-alpha.5"
@@ -23,7 +24,7 @@ val paperDevBundleVersion =
         .orElse(minimumPaperDevBundleVersion)
         .get()
 val paperApiVersion = "1.20"
-val minimumJavaVersion = 21
+val minimumJavaVersion = 17
 val javaTargetVersion =
     providers
         .gradleProperty("mahjongJavaTarget")
@@ -72,6 +73,7 @@ val nativeTasks =
         generatedNativeResourcesDir,
     )
 MahjongTaskRegistration.registerPerformanceTasks(project, minimumPaperDevBundleVersion)
+pluginManager.apply("com.gradleup.shadow")
 
 dependencies {
     paperweight.paperDevBundle(paperDevBundleVersion)
@@ -135,8 +137,8 @@ tasks {
         archiveClassifier.set("dev")
     }
 
-    shadowJar {
-        configurations = project.configurations.named("relocatedRuntime").map { listOf(it) }
+    named<ShadowJar>("shadowJar") {
+        configurations = listOf(relocatedRuntime)
         duplicatesStrategy = DuplicatesStrategy.INCLUDE
         archiveClassifier.set("")
         relocate(
@@ -147,7 +149,7 @@ tasks {
     }
 
     assemble {
-        dependsOn(shadowJar)
+        dependsOn(named("shadowJar"))
     }
 
     withType<Detekt>().configureEach {
