@@ -155,6 +155,7 @@ class ServerSchedulerCapabilityCacheTest {
             new ServerScheduler(plugin),
             entity,
             new Location(world, 8.0, 64.0, -8.0),
+            world,
             foliaInvocations,
             paperInvocations
         );
@@ -303,6 +304,7 @@ class ServerSchedulerCapabilityCacheTest {
         ServerScheduler scheduler,
         Entity entity,
         Location location,
+        World world,
         Counter foliaInvocations,
         Counter paperInvocations
     ) {
