@@ -18,12 +18,13 @@ import kotlin.test.assertTrue
 
 class TableRenderSnapshotFactoryTest {
     @Test
-    fun `render snapshot reuses precomputed online viewers`() {
+    fun `render snapshot derives exclusions only for online seats`() {
         val session = mock(MahjongTableSession::class.java)
         val factory = TableRenderSnapshotFactory()
 
         val eastId = UUID.fromString("00000000-0000-0000-0000-000000000011")
         val southId = UUID.fromString("00000000-0000-0000-0000-000000000012")
+        val westId = UUID.fromString("00000000-0000-0000-0000-000000000013")
         val eastViewer = mock(Player::class.java)
         val southViewer = mock(Player::class.java)
 
@@ -49,7 +50,7 @@ class TableRenderSnapshotFactoryTest {
         `when`(session.doraIndicators()).thenReturn(emptyList())
         `when`(session.playerAt(SeatWind.EAST)).thenReturn(eastId)
         `when`(session.playerAt(SeatWind.SOUTH)).thenReturn(southId)
-        `when`(session.playerAt(SeatWind.WEST)).thenReturn(null)
+        `when`(session.playerAt(SeatWind.WEST)).thenReturn(westId)
         `when`(session.playerAt(SeatWind.NORTH)).thenReturn(null)
 
         doAnswer { invocation ->
@@ -61,7 +62,7 @@ class TableRenderSnapshotFactoryTest {
             `when`(session.stickLayoutCount(wind)).thenReturn(0)
             `when`(session.cornerSticks(wind)).thenReturn(emptyList())
         }
-        for (playerId in listOf(eastId, southId)) {
+        for (playerId in listOf(eastId, southId, westId)) {
             `when`(session.points(playerId)).thenReturn(25000)
             `when`(session.isRiichi(playerId)).thenReturn(false)
             `when`(session.isReady(playerId)).thenReturn(false)
@@ -77,6 +78,7 @@ class TableRenderSnapshotFactoryTest {
         val snapshot = factory.create(session, 1L, 0L)
         val eastSeat = snapshot.seat(SeatWind.EAST)
         val southSeat = snapshot.seat(SeatWind.SOUTH)
+        val westSeat = snapshot.seat(SeatWind.WEST)
 
         assertTrue(eastSeat.online())
         assertTrue(southSeat.online())
@@ -84,6 +86,9 @@ class TableRenderSnapshotFactoryTest {
         assertEquals(listOf(eastId), southSeat.viewerIdsExcluding())
         assertEquals(southId.toString(), eastSeat.viewerMembershipSignature())
         assertEquals(eastId.toString(), southSeat.viewerMembershipSignature())
+        assertTrue(!westSeat.online())
+        assertTrue(westSeat.viewerIdsExcluding().isEmpty())
+        assertTrue(westSeat.viewerMembershipSignature().isEmpty())
 
         verify(session, never()).onlinePlayer(ArgumentMatchers.any(UUID::class.java))
         verify(session, never()).viewerIdsExcluding(ArgumentMatchers.any(UUID::class.java))

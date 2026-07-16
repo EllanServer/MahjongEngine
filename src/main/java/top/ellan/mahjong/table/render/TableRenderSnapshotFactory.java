@@ -5,10 +5,8 @@ import top.ellan.mahjong.render.TableRenderSubject;
 import top.ellan.mahjong.render.snapshot.TableRenderSnapshot;
 import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot;
 import java.util.EnumMap;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -26,15 +24,9 @@ public final class TableRenderSnapshotFactory {
             .sorted(Comparator.comparing(UUID::toString))
             .toList();
         Set<UUID> onlineViewerIdSet = new HashSet<>(onlineViewerIds);
-        Map<UUID, String> viewerMembershipSignatures = new HashMap<>();
-        Map<UUID, List<UUID>> viewerIdsExcluding = new HashMap<>();
-        for (UUID viewerId : onlineViewerIds) {
-            viewerMembershipSignatures.put(viewerId, this.viewerMembershipSignature(onlineViewerIds, viewerId));
-            viewerIdsExcluding.put(viewerId, this.viewerIdsExcluding(onlineViewerIds, viewerId));
-        }
         EnumMap<SeatWind, TableSeatRenderSnapshot> seats = new EnumMap<>(SeatWind.class);
         for (SeatWind wind : SeatWind.values()) {
-            seats.put(wind, this.captureSeatSnapshot(session, wind, onlineViewerIdSet, viewerMembershipSignatures, viewerIdsExcluding));
+            seats.put(wind, this.captureSeatSnapshot(session, wind, onlineViewerIds, onlineViewerIdSet));
         }
         return new TableRenderSnapshot(
             version,
@@ -100,12 +92,18 @@ public final class TableRenderSnapshotFactory {
     private TableSeatRenderSnapshot captureSeatSnapshot(
         TableRenderSubject session,
         SeatWind wind,
-        Set<UUID> onlineViewerIdSet,
-        Map<UUID, String> viewerMembershipSignatures,
-        Map<UUID, List<UUID>> viewerIdsExcluding
+        List<UUID> onlineViewerIds,
+        Set<UUID> onlineViewerIdSet
     ) {
         UUID playerId = session.playerAt(wind);
         boolean occupied = playerId != null;
+        boolean online = occupied && onlineViewerIdSet.contains(playerId);
+        String viewerMembershipSignature = online
+            ? this.viewerMembershipSignature(onlineViewerIds, playerId)
+            : "";
+        List<UUID> viewerIdsExcluding = online
+            ? this.viewerIdsExcluding(onlineViewerIds, playerId)
+            : List.of();
         return new TableSeatRenderSnapshot(
             wind,
             playerId,
@@ -115,13 +113,13 @@ public final class TableRenderSnapshotFactory {
             occupied && session.isRiichi(playerId),
             occupied && session.isReady(playerId),
             occupied && session.isQueuedToLeave(playerId),
-            occupied && onlineViewerIdSet.contains(playerId),
-            occupied ? viewerMembershipSignatures.getOrDefault(playerId, "") : "",
+            online,
+            viewerMembershipSignature,
             occupied ? session.selectedHandTileIndex(playerId) : -1,
             occupied ? session.selectedHandTileIndices(playerId) : List.of(),
             occupied ? session.riichiDiscardIndex(playerId) : -1,
             session.stickLayoutCount(wind),
-            occupied ? viewerIdsExcluding.getOrDefault(playerId, List.of()) : List.of(),
+            viewerIdsExcluding,
             occupied ? session.hand(playerId) : List.of(),
             occupied ? session.discards(playerId) : List.of(),
             occupied ? session.fuuro(playerId) : List.of(),
