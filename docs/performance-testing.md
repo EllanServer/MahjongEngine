@@ -414,7 +414,7 @@ python perf/live/download_locked.py `
   --destination build/live-cache/craft-engine-paper-plugin-26.7.3.jar
 python perf/live/run_server.py `
   --paper-jar build/live-cache/server.jar `
-  --plugin-jar build/libs/mahjong-paper-1.4.1.jar `
+  --plugin-jar build/libs/mahjong-paper-1.5.0.jar `
   --craftengine-jar build/live-cache/craft-engine-paper-plugin-26.7.3.jar `
   --required-plugin MahjongPaper `
   --scenario-name majsoul-hanchan-four-bot-spectator `
