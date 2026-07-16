@@ -46,6 +46,64 @@ class GbBotDecisionServiceTest {
     }
 
     @Test
+    fun `discard suggestion compares ready score before discard preference`() {
+        val service = GbBotDecisionService(8)
+        val hand = listOf(MahjongTile.EAST, MahjongTile.M2, MahjongTile.M3)
+        val ready = GbTingResponse(true, listOf(GbTingCandidate("W1", 8)), null)
+        assertTrue(
+            GbBotDecisionService.discardPreference(hand, MahjongTile.EAST) >
+                GbBotDecisionService.discardPreference(hand, MahjongTile.M2),
+        )
+
+        val suggestedIndex =
+            service.suggestedDiscardIndex(hand, emptyList()) { remaining, _ ->
+                if (MahjongTile.M2 !in remaining) {
+                    ready
+                } else {
+                    GbTingResponse(true, emptyList(), null)
+                }
+            }
+
+        assertEquals(1, suggestedIndex)
+    }
+
+    @Test
+    fun `discard suggestion compares discard preference after equal ready scores`() {
+        val service = GbBotDecisionService(8)
+        val hand = listOf(MahjongTile.M2, MahjongTile.M3, MahjongTile.EAST)
+
+        val suggestedIndex =
+            service.suggestedDiscardIndex(hand, emptyList()) { _, _ ->
+                GbTingResponse(true, emptyList(), null)
+            }
+
+        assertEquals(2, suggestedIndex)
+    }
+
+    @Test
+    fun `discard suggestion evaluates unique candidates in hand order`() {
+        val service = GbBotDecisionService(8)
+        val hand = listOf(MahjongTile.M1, MahjongTile.P1, MahjongTile.S1)
+        val evaluatedHands = mutableListOf<List<MahjongTile>>()
+
+        val suggestedIndex =
+            service.suggestedDiscardIndex(hand, emptyList()) { remaining, _ ->
+                evaluatedHands += remaining.toList()
+                GbTingResponse(true, emptyList(), null)
+            }
+
+        assertEquals(0, suggestedIndex)
+        assertEquals(
+            listOf(
+                listOf(MahjongTile.P1, MahjongTile.S1),
+                listOf(MahjongTile.M1, MahjongTile.S1),
+                listOf(MahjongTile.M1, MahjongTile.P1),
+            ),
+            evaluatedHands,
+        )
+    }
+
+    @Test
     fun `discard suggestion evaluates the first remaining hand once per duplicated tile`() {
         val service = GbBotDecisionService(8)
         val hand = listOf(MahjongTile.M1, MahjongTile.M2, MahjongTile.M1)

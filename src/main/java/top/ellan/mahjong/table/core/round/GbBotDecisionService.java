@@ -185,7 +185,9 @@ final class GbBotDecisionService {
         if (hand == null || hand.isEmpty()) {
             return null;
         }
-        DiscardChoice best = null;
+        int bestIndex = -1;
+        long bestReadyScore = 0;
+        int bestDiscardPreference = 0;
         EnumMap<MahjongTile, GbTingResponse> tingMemo = new EnumMap<>(MahjongTile.class);
         MahjongTile previousDiscarded = null;
         int previousDiscardPreference = 0;
@@ -205,14 +207,17 @@ final class GbBotDecisionService {
             int candidateDiscardPreference = tingMemoHit && discarded == previousDiscarded
                 ? previousDiscardPreference
                 : discardPreference(hand, discarded);
-            DiscardChoice candidate = new DiscardChoice(i, candidateReadyScore, candidateDiscardPreference);
             previousDiscarded = discarded;
             previousDiscardPreference = candidateDiscardPreference;
-            if (best == null || candidate.compareTo(best) > 0) {
-                best = candidate;
+            if (bestIndex < 0
+                || candidateReadyScore > bestReadyScore
+                || (candidateReadyScore == bestReadyScore && candidateDiscardPreference > bestDiscardPreference)) {
+                bestIndex = i;
+                bestReadyScore = candidateReadyScore;
+                bestDiscardPreference = candidateDiscardPreference;
             }
         }
-        return best;
+        return bestIndex < 0 ? null : new DiscardChoice(bestIndex, bestReadyScore, bestDiscardPreference);
     }
 
     private BotState simulateKan(List<MahjongTile> sourceHand, List<GbMeldState> sourceMelds, MahjongTile target) {
