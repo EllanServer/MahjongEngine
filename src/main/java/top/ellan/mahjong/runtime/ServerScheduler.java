@@ -22,6 +22,38 @@ public final class ServerScheduler {
         }
     };
 
+    private static final ClassValue<ServerCapabilities> SERVER_CAPABILITIES = new ClassValue<>() {
+        @Override
+        protected ServerCapabilities computeValue(Class<?> type) {
+            return new ServerCapabilities(
+                findMethod(type, "getGlobalRegionScheduler"),
+                findMethod(type, "getRegionScheduler")
+            );
+        }
+    };
+    private static final ClassValue<EntityCapabilities> ENTITY_CAPABILITIES = new ClassValue<>() {
+        @Override
+        protected EntityCapabilities computeValue(Class<?> type) {
+            return new EntityCapabilities(
+                findMethod(type, "getScheduler")
+            );
+        }
+    };
+    private static final ClassValue<SchedulerCapabilities> SCHEDULER_CAPABILITIES = new ClassValue<>() {
+        @Override
+        protected SchedulerCapabilities computeValue(Class<?> type) {
+            return new SchedulerCapabilities(
+                findMethod(type, "run", Plugin.class, Consumer.class),
+                findMethod(type, "runDelayed", Plugin.class, Consumer.class, long.class),
+                findMethod(type, "runAtFixedRate", Plugin.class, Consumer.class, long.class, long.class),
+                findMethod(type, "run", Plugin.class, Location.class, Consumer.class),
+                findMethod(type, "runDelayed", Plugin.class, Location.class, Consumer.class, long.class),
+                findMethod(type, "runAtFixedRate", Plugin.class, Location.class, Consumer.class, long.class, long.class),
+                findMethod(type, "run", Plugin.class, Consumer.class, Runnable.class),
+                findMethod(type, "runDelayed", Plugin.class, Consumer.class, Runnable.class, long.class)
+            );
+        }
+    };
     private final Plugin plugin;
 
     public ServerScheduler(Plugin plugin) {
@@ -34,10 +66,10 @@ public final class ServerScheduler {
         }
         Object scheduler = this.globalRegionScheduler();
         if (scheduler != null) {
+            Method method = SCHEDULER_CAPABILITIES.get(scheduler.getClass()).globalRun();
             PluginTask task = this.invokeSchedulerTask(
                 scheduler,
-                "run",
-                new Class<?>[] {Plugin.class, Consumer.class},
+                method,
                 this.plugin,
                 taskConsumer(runnable)
             );
@@ -54,10 +86,10 @@ public final class ServerScheduler {
         }
         Object scheduler = this.globalRegionScheduler();
         if (scheduler != null) {
+            Method method = SCHEDULER_CAPABILITIES.get(scheduler.getClass()).globalDelayed();
             PluginTask task = this.invokeSchedulerTask(
                 scheduler,
-                "runDelayed",
-                new Class<?>[] {Plugin.class, Consumer.class, long.class},
+                method,
                 this.plugin,
                 taskConsumer(runnable),
                 delayTicks
@@ -75,10 +107,10 @@ public final class ServerScheduler {
         }
         Object scheduler = this.globalRegionScheduler();
         if (scheduler != null) {
+            Method method = SCHEDULER_CAPABILITIES.get(scheduler.getClass()).globalTimer();
             PluginTask task = this.invokeSchedulerTask(
                 scheduler,
-                "runAtFixedRate",
-                new Class<?>[] {Plugin.class, Consumer.class, long.class, long.class},
+                method,
                 this.plugin,
                 taskConsumer(runnable),
                 delayTicks,
@@ -97,10 +129,10 @@ public final class ServerScheduler {
         }
         Object scheduler = this.regionScheduler();
         if (scheduler != null) {
+            Method method = SCHEDULER_CAPABILITIES.get(scheduler.getClass()).regionRun();
             PluginTask task = this.invokeSchedulerTask(
                 scheduler,
-                "run",
-                new Class<?>[] {Plugin.class, Location.class, Consumer.class},
+                method,
                 this.plugin,
                 location,
                 taskConsumer(runnable)
@@ -118,10 +150,10 @@ public final class ServerScheduler {
         }
         Object scheduler = this.regionScheduler();
         if (scheduler != null) {
+            Method method = SCHEDULER_CAPABILITIES.get(scheduler.getClass()).regionDelayed();
             PluginTask task = this.invokeSchedulerTask(
                 scheduler,
-                "runDelayed",
-                new Class<?>[] {Plugin.class, Location.class, Consumer.class, long.class},
+                method,
                 this.plugin,
                 location,
                 taskConsumer(runnable),
@@ -140,10 +172,10 @@ public final class ServerScheduler {
         }
         Object scheduler = this.regionScheduler();
         if (scheduler != null) {
+            Method method = SCHEDULER_CAPABILITIES.get(scheduler.getClass()).regionTimer();
             PluginTask task = this.invokeSchedulerTask(
                 scheduler,
-                "runAtFixedRate",
-                new Class<?>[] {Plugin.class, Location.class, Consumer.class, long.class, long.class},
+                method,
                 this.plugin,
                 location,
                 taskConsumer(runnable),
@@ -163,10 +195,10 @@ public final class ServerScheduler {
         }
         Object scheduler = this.entityScheduler(entity);
         if (scheduler != null) {
+            Method method = SCHEDULER_CAPABILITIES.get(scheduler.getClass()).entityRun();
             PluginTask task = this.invokeSchedulerTask(
                 scheduler,
-                "run",
-                new Class<?>[] {Plugin.class, Consumer.class, Runnable.class},
+                method,
                 this.plugin,
                 taskConsumer(runnable),
                 NO_OP_RUNNABLE
@@ -184,10 +216,10 @@ public final class ServerScheduler {
         }
         Object scheduler = this.entityScheduler(entity);
         if (scheduler != null) {
+            Method method = SCHEDULER_CAPABILITIES.get(scheduler.getClass()).entityDelayed();
             PluginTask task = this.invokeSchedulerTask(
                 scheduler,
-                "runDelayed",
-                new Class<?>[] {Plugin.class, Consumer.class, Runnable.class, long.class},
+                method,
                 this.plugin,
                 taskConsumer(runnable),
                 NO_OP_RUNNABLE,
@@ -246,40 +278,44 @@ public final class ServerScheduler {
     }
 
     private Object globalRegionScheduler() {
-        return this.invokeNoArgs(this.plugin.getServer(), "getGlobalRegionScheduler");
+        Object server = this.plugin.getServer();
+        Method method = server == null ? null : SERVER_CAPABILITIES.get(server.getClass()).globalRegionScheduler();
+        return this.invokeNoArgs(server, method);
     }
 
     private Object regionScheduler() {
-        return this.invokeNoArgs(this.plugin.getServer(), "getRegionScheduler");
+        Object server = this.plugin.getServer();
+        Method method = server == null ? null : SERVER_CAPABILITIES.get(server.getClass()).regionScheduler();
+        return this.invokeNoArgs(server, method);
     }
 
     private Object entityScheduler(Entity entity) {
-        return this.invokeNoArgs(entity, "getScheduler");
+        Method method = entity == null ? null : ENTITY_CAPABILITIES.get(entity.getClass()).scheduler();
+        return this.invokeNoArgs(entity, method);
     }
 
     private boolean isPluginEnabled() {
         return this.plugin.isEnabled();
     }
 
-    private Object invokeNoArgs(Object target, String methodName) {
-        if (target == null) {
+    private Object invokeNoArgs(Object target, Method method) {
+        if (target == null || method == null) {
             return null;
         }
         try {
-            Method method = target.getClass().getMethod(methodName);
-            method.setAccessible(true);
             return method.invoke(target);
-        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | RuntimeException exception) {
+        } catch (IllegalAccessException | InvocationTargetException | RuntimeException exception) {
             return null;
         }
     }
 
-    private PluginTask invokeSchedulerTask(Object scheduler, String methodName, Class<?>[] parameterTypes, Object... args) {
+    private PluginTask invokeSchedulerTask(Object scheduler, Method method, Object... args) {
+        if (method == null) {
+            return null;
+        }
         try {
-            Method method = scheduler.getClass().getMethod(methodName, parameterTypes);
-            method.setAccessible(true);
             return wrap(method.invoke(scheduler, args));
-        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | RuntimeException exception) {
+        } catch (IllegalAccessException | InvocationTargetException | RuntimeException exception) {
             return null;
         }
     }
@@ -334,7 +370,34 @@ public final class ServerScheduler {
         }
     }
 
+    private static Method findMethod(Class<?> type, String methodName, Class<?>... parameterTypes) {
+        try {
+            Method method = type.getMethod(methodName, parameterTypes);
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException | RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private record ServerCapabilities(Method globalRegionScheduler, Method regionScheduler) {
+    }
+
+    private record EntityCapabilities(Method scheduler) {
+    }
+
+    private record SchedulerCapabilities(
+        Method globalRun,
+        Method globalDelayed,
+        Method globalTimer,
+        Method regionRun,
+        Method regionDelayed,
+        Method regionTimer,
+        Method entityRun,
+        Method entityDelayed
+    ) {
+    }
+
     private static final Runnable NO_OP_RUNNABLE = () -> {
     };
 }
-
