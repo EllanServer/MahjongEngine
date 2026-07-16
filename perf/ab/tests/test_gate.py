@@ -272,6 +272,25 @@ class GateTest(unittest.TestCase):
         self.assertEqual("INCONCLUSIVE_NOISE_OR_NO_GAIN", gate.INCONCLUSIVE)
         self.assertEqual("FAIL_REGRESSION_OR_BEHAVIOR", gate.FAIL)
 
+    def test_every_profile_has_valid_primary_thresholds(self) -> None:
+        benchmark_index = {entry["id"]: entry for entry in self.config["benchmarks"]}
+        for profile_name, profile in self.config["profiles"].items():
+            with self.subTest(profile=profile_name):
+                benchmark_specs = [benchmark_index[entry] for entry in profile["benchmark_ids"]]
+                gate.validate_profile_config(self.config, profile_name, benchmark_specs)
+
+    def test_profile_validation_rejects_minimum_above_primary_count(self) -> None:
+        config = json.loads(json.dumps(self.config))
+        profile_name = "display-spawn"
+        config["profiles"][profile_name]["minimum_passes"] = 2
+        benchmark_index = {entry["id"]: entry for entry in config["benchmarks"]}
+        benchmark_specs = [
+            benchmark_index[entry]
+            for entry in config["profiles"][profile_name]["benchmark_ids"]
+        ]
+        with self.assertRaisesRegex(ValueError, "invalid primary minimum_passes"):
+            gate.validate_profile_config(config, profile_name, benchmark_specs)
+
 
 class MatrixScheduleTest(unittest.TestCase):
     def test_ab_schedule_is_exactly_four_interleaved_ab_and_ba_pairs(self) -> None:

@@ -451,6 +451,29 @@ def render_markdown(decision: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def validate_profile_config(
+    config: dict[str, Any],
+    profile_name: str,
+    benchmark_specs: list[dict[str, Any]],
+) -> tuple[set[str], int]:
+    profile = config["profiles"][profile_name]
+    configured_ids = [entry["id"] for entry in benchmark_specs]
+    if len(configured_ids) != len(set(configured_ids)):
+        raise ValueError(f"profile {profile_name} contains duplicate benchmark ids")
+    primary_ids = {
+        entry["id"] for entry in benchmark_specs if entry.get("metric", "primary") == "primary"
+    }
+    must_pass = set(profile.get("must_pass", []))
+    if not must_pass or not must_pass.issubset(primary_ids):
+        raise ValueError(f"profile {profile_name} must_pass must contain only primary metrics")
+    minimum_passes = profile.get("minimum_passes")
+    if isinstance(minimum_passes, bool) or not isinstance(minimum_passes, int):
+        raise ValueError(f"profile {profile_name} has a non-integer primary minimum_passes")
+    if not 1 <= minimum_passes <= len(primary_ids):
+        raise ValueError(f"profile {profile_name} has an invalid primary minimum_passes")
+    return must_pass, minimum_passes
+
+
 def evaluate(
     config: dict[str, Any],
     profile_name: str,
@@ -465,19 +488,7 @@ def evaluate(
     aa_passed = True
     reasons: list[str] = []
 
-    profile = config["profiles"][profile_name]
-    must_pass = set(profile.get("must_pass", []))
-    configured_ids = [entry["id"] for entry in benchmark_specs]
-    if len(configured_ids) != len(set(configured_ids)):
-        raise ValueError(f"profile {profile_name} contains duplicate benchmark ids")
-    primary_ids = {
-        entry["id"] for entry in benchmark_specs if entry.get("metric", "primary") == "primary"
-    }
-    if not must_pass or not must_pass.issubset(primary_ids):
-        raise ValueError(f"profile {profile_name} must_pass must contain only primary metrics")
-    minimum_passes = int(profile["minimum_passes"])
-    if not 1 <= minimum_passes <= len(primary_ids):
-        raise ValueError(f"profile {profile_name} has an invalid primary minimum_passes")
+    must_pass, minimum_passes = validate_profile_config(config, profile_name, benchmark_specs)
     for entry in benchmark_specs:
         benchmark_id = entry["id"]
         aa_metrics = paired_statistics(
@@ -583,6 +594,7 @@ def run(args: argparse.Namespace) -> int:
     benchmark_specs = [benchmark_index[benchmark_id] for benchmark_id in profile["benchmark_ids"]]
     if not benchmark_specs:
         raise ValueError("at least one benchmark metric must be configured")
+    validate_profile_config(config, args.profile, benchmark_specs)
     config_sha = sha256_file(config_path)
     repetitions = int(config["matrix"]["repetitions_per_order"])
     aa_pairs, aa_units, aa_run = load_pairs(
