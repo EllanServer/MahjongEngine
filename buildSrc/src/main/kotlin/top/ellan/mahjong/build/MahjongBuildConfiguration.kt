@@ -80,5 +80,4 @@ object MahjongBuildConfiguration {
             rename { targetName }
         }
     }
-
 }
