@@ -26,6 +26,7 @@ jobs:
               { name: "performance-snapshot", color: "bfdadc", description: "Use the viewer snapshot performance profile" },
               { name: "performance-gb-bot", color: "bfdadc", description: "Use the GB bot decision performance profile" },
               { name: "performance-region-fingerprint", color: "bfdadc", description: "Use the table region fingerprint performance profile" },
+              { name: "performance-display-spawn", color: "bfdadc", description: "Use the display entity spawn performance profile" },
               { name: "performance-ray-proxy", color: "bfdadc", description: "Use the client ray-proxy performance profile" }
             ];
 

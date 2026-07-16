@@ -110,6 +110,20 @@
         "top/ellan/mahjong/table/render/TableRegionFingerprintService.class"
       ]
     },
+    "display-spawn": {
+      "include": "^top\\.ellan\\.mahjong\\.perf\\.DisplayEntitiesSpawnAllBenchmark\\.spawnRepresentativeTableRegions$",
+      "benchmark_ids": [
+        "display.spawn.time",
+        "display.spawn.alloc"
+      ],
+      "minimum_passes": 2,
+      "must_pass": [
+        "display.spawn.time"
+      ],
+      "required_classes": [
+        "top/ellan/mahjong/render/display/DisplayEntities.class"
+      ]
+    },
     "ray-proxy": {
       "include": "^top\\.ellan\\.mahjong\\.perf\\.RayProxyCoordinatorBenchmark\\.proxyPlan(?:1Viewer|4Viewers|32Viewers)$",
       "benchmark_ids": [
@@ -236,6 +250,18 @@
     {
       "id": "region.tiles.alloc",
       "benchmark": "top.ellan.mahjong.table.render.TableRegionFingerprintBenchmark.fingerprintRenderedTileBatch",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "display.spawn.time",
+      "benchmark": "top.ellan.mahjong.perf.DisplayEntitiesSpawnAllBenchmark.spawnRepresentativeTableRegions",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "display.spawn.alloc",
+      "benchmark": "top.ellan.mahjong.perf.DisplayEntitiesSpawnAllBenchmark.spawnRepresentativeTableRegions",
       "metric": "gc.alloc.rate.norm",
       "direction": "lower"
     },
