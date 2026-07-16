@@ -11,6 +11,7 @@ on:
       - "gradle/**"
       - "src/perfTest/**"
       - "perf/ab/**"
+      - "perf/live/**"
       - "docs/performance-testing.md"
   push:
     branches:
@@ -24,6 +25,7 @@ on:
       - "gradle/**"
       - "src/perfTest/**"
       - "perf/ab/**"
+      - "perf/live/**"
       - "docs/performance-testing.md"
   workflow_dispatch:
 
@@ -44,7 +46,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "25.0.2+10"
+          java-version: "25.0.2+10.0.LTS"
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -91,11 +93,51 @@ jobs:
             -bm avgt -tu ns -f 1 -wi 1 -i 1 -w 10ms -r 10ms \
             -prof gc -foe true -rf json -rff build/reports/jmh/infra-smoke.json
 
+      - name: Validate live-server harness
+        run: python3 -m unittest discover -s perf/live/tests -v
+
+      - name: Set up pinned external protocol client runtime
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.23.1"
+
+      - name: Install locked protocol client and run frame tests
+        working-directory: perf/live/client
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+
+      - name: Set up pinned Paper runtime JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21.0.11+10.0.LTS"
+
+      - name: Download checksum-locked Paper server.jar
+        run: >-
+          python3 perf/live/download_locked.py
+          --artifact paper-1.20.1-196
+          --destination build/live-cache/server.jar
+
+      - name: Run isolated standard server.jar infrastructure smoke
+        shell: bash
+        run: >-
+          python3 perf/live/run_server.py
+          --paper-jar build/live-cache/server.jar
+          --output-dir build/reports/live-paper-smoke
+          --warmup-seconds 5
+          --measurement-seconds 20
+          --sample-interval-seconds 5
+          --startup-timeout-seconds 360
+          --shutdown-timeout-seconds 60
+
       - name: Upload smoke evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: performance-infrastructure-smoke
-          path: build/reports/jmh/**
+          path: |
+            build/reports/jmh/**
+            build/reports/live-paper-smoke/**
           if-no-files-found: error
           retention-days: 14

@@ -138,6 +138,7 @@ class CorePerformanceBenchmarksTest {
         `when`(settings.craftEngineTableFurnitureId()).thenReturn("mahjongpaper:table_visual")
         `when`(settings.craftEngineSeatFurnitureId()).thenReturn("mahjongpaper:seat_chair")
         `when`(session.plugin()).thenReturn(plugin)
+        `when`(session.settings()).thenReturn(settings)
         return session
     }
 
@@ -184,7 +185,9 @@ class CorePerformanceBenchmarksTest {
             `when`(session.discards(playerId)).thenReturn(listOf(MahjongTile.EAST, MahjongTile.SOUTH, MahjongTile.WEST))
             `when`(session.fuuro(playerId)).thenReturn(emptyList())
             `when`(session.scoringSticks(playerId)).thenReturn(if (wind == SeatWind.EAST) listOf(ScoringStick.P1000) else emptyList())
-            `when`(session.cornerSticks(wind)).thenReturn(if (wind == SeatWind.EAST) listOf(ScoringStick.P100, ScoringStick.P100) else emptyList())
+            `when`(session.cornerSticks(wind)).thenReturn(
+                if (wind == SeatWind.EAST) listOf(ScoringStick.P100, ScoringStick.P100) else emptyList(),
+            )
         }
         return session
     }
@@ -303,7 +306,9 @@ class CorePerformanceBenchmarksTest {
             seats,
             names,
             object : GbNativeRulesGateway() {
-                override fun evaluateTingNative(request: top.ellan.mahjong.gb.jni.GbTingRequest): top.ellan.mahjong.gb.jni.GbTingResponse {
+                override fun evaluateTingNative(
+                    request: top.ellan.mahjong.gb.jni.GbTingRequest,
+                ): top.ellan.mahjong.gb.jni.GbTingResponse {
                     var score = 0
                     repeat(512) {
                         request.handTiles.forEachIndexed { index, tile ->
@@ -311,7 +316,9 @@ class CorePerformanceBenchmarksTest {
                         }
                         request.melds.forEachIndexed { index, meld ->
                             score += meld.type.hashCode() * (index + 3)
-                            meld.tiles.forEach { tile -> score += tile.hashCode() }
+                            meld.tiles.forEach { tile ->
+                                score += tile.hashCode()
+                            }
                         }
                     }
                     PerformanceBenchmarkSupport.consume(score)
