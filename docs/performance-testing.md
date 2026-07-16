@@ -52,8 +52,19 @@ and exactly one profile label to a pure performance PR:
 
 - `performance-snapshot` - real `TableRenderSnapshotFactory` fan-out at 4, 32 and 128 viewers;
 - `performance-gb-bot` - real `GbBotDecisionService` with duplicate, mixed and unique hands;
+- `performance-region-fingerprint` - a real started-table snapshot and layout, measuring the
+  complete region map plus a batch of private/public hands, discards, melds and all 136 wall
+  slots;
 - `performance-ray-proxy` - 1, 4 and 32-viewer coordinator lifecycle and unchanged-geometry
   reuse. This CPU/allocation profile does not measure protocol bytes or client hit coverage.
+
+The region-fingerprint harness checks the complete region map and representative per-tile
+results against an independent copy of the current `Objects.toString(value, "")`, colon-delimited,
+per-character FNV contract before every JMH iteration. That behavior sentinel is outside the
+timed section, so a candidate cannot gain by changing fingerprint encoding while the measured
+time and normalized allocation remain focused on production code. The infrastructure
+fingerprint profile applies the same rule to its exact delimited string and now treats
+normalized allocation as a secondary guardrail.
 
 The workflow is loaded through `pull_request_target`, uses only `contents: read`, persists no
 checkout credentials, disables Gradle's shared cache, and clears GitHub/Actions runtime

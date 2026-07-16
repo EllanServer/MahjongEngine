@@ -49,7 +49,8 @@
     "infra": {
       "include": "^top\\.ellan\\.mahjong\\.perf\\.DelimitedFingerprintBuilderBenchmark\\.buildRepresentativeFingerprint$",
       "benchmark_ids": [
-        "infra.fingerprint.time"
+        "infra.fingerprint.time",
+        "infra.fingerprint.alloc"
       ],
       "minimum_passes": 1,
       "must_pass": [
@@ -93,6 +94,22 @@
         "top/ellan/mahjong/table/core/round/GbBotDecisionService.class"
       ]
     },
+    "region-fingerprint": {
+      "include": "^top\\.ellan\\.mahjong\\.table\\.render\\.TableRegionFingerprintBenchmark\\.(?:precomputeStartedTableRegions|fingerprintRenderedTileBatch)$",
+      "benchmark_ids": [
+        "region.precompute.time",
+        "region.precompute.alloc",
+        "region.tiles.time",
+        "region.tiles.alloc"
+      ],
+      "minimum_passes": 2,
+      "must_pass": [
+        "region.precompute.time"
+      ],
+      "required_classes": [
+        "top/ellan/mahjong/table/render/TableRegionFingerprintService.class"
+      ]
+    },
     "ray-proxy": {
       "include": "^top\\.ellan\\.mahjong\\.perf\\.RayProxyCoordinatorBenchmark\\.proxyPlan(?:1Viewer|4Viewers|32Viewers)$",
       "benchmark_ids": [
@@ -118,6 +135,12 @@
       "id": "infra.fingerprint.time",
       "benchmark": "top.ellan.mahjong.perf.DelimitedFingerprintBuilderBenchmark.buildRepresentativeFingerprint",
       "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "infra.fingerprint.alloc",
+      "benchmark": "top.ellan.mahjong.perf.DelimitedFingerprintBuilderBenchmark.buildRepresentativeFingerprint",
+      "metric": "gc.alloc.rate.norm",
       "direction": "lower"
     },
     {
@@ -189,6 +212,30 @@
     {
       "id": "gb.unique.alloc",
       "benchmark": "top.ellan.mahjong.table.core.round.GbBotDecisionBenchmark.uniqueHand",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "region.precompute.time",
+      "benchmark": "top.ellan.mahjong.table.render.TableRegionFingerprintBenchmark.precomputeStartedTableRegions",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "region.precompute.alloc",
+      "benchmark": "top.ellan.mahjong.table.render.TableRegionFingerprintBenchmark.precomputeStartedTableRegions",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "region.tiles.time",
+      "benchmark": "top.ellan.mahjong.table.render.TableRegionFingerprintBenchmark.fingerprintRenderedTileBatch",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "region.tiles.alloc",
+      "benchmark": "top.ellan.mahjong.table.render.TableRegionFingerprintBenchmark.fingerprintRenderedTileBatch",
       "metric": "gc.alloc.rate.norm",
       "direction": "lower"
     },
