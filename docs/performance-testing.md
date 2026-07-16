@@ -55,6 +55,8 @@ and exactly one profile label to a pure performance PR:
 - `performance-region-fingerprint` - a real started-table snapshot and layout, measuring the
   complete region map plus a batch of private/public hands, discards, melds and all 136 wall
   slots;
+- `performance-region-keys` - all 452 dynamic keys requested while planning one complete
+  table refresh, with exact text, order, uniqueness and checksum sentinels outside timing;
 - `performance-scheduler-reflection` - representative global, region and entity scheduling
   bursts through both Folia-style reflective capabilities and standard Paper fallbacks;
 - `performance-ray-proxy` - 1, 4 and 32-viewer coordinator lifecycle and unchanged-geometry
