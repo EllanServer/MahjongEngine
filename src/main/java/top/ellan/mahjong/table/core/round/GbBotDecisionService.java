@@ -187,9 +187,12 @@ final class GbBotDecisionService {
         }
         DiscardChoice best = null;
         EnumMap<MahjongTile, GbTingResponse> tingMemo = new EnumMap<>(MahjongTile.class);
+        MahjongTile previousDiscarded = null;
+        int previousDiscardPreference = 0;
         for (int i = 0; i < hand.size(); i++) {
             MahjongTile discarded = hand.get(i);
             GbTingResponse ting = tingMemo.get(discarded);
+            boolean tingMemoHit = ting != null;
             if (ting == null) {
                 List<MahjongTile> remaining = new ArrayList<>(hand);
                 remaining.remove(i);
@@ -198,7 +201,13 @@ final class GbBotDecisionService {
                     tingMemo.put(discarded, ting);
                 }
             }
-            DiscardChoice candidate = new DiscardChoice(i, readyScore(ting), discardPreference(hand, discarded));
+            long candidateReadyScore = readyScore(ting);
+            int candidateDiscardPreference = tingMemoHit && discarded == previousDiscarded
+                ? previousDiscardPreference
+                : discardPreference(hand, discarded);
+            DiscardChoice candidate = new DiscardChoice(i, candidateReadyScore, candidateDiscardPreference);
+            previousDiscarded = discarded;
+            previousDiscardPreference = candidateDiscardPreference;
             if (best == null || candidate.compareTo(best) > 0) {
                 best = candidate;
             }
