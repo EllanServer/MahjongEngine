@@ -36,6 +36,7 @@ on:
           - region-fingerprint
           - display-spawn
           - region-queue
+          - region-keys
           - scheduler-reflection
           - ray-proxy
           - infra
@@ -164,6 +165,7 @@ jobs:
               "performance-region-fingerprint": "region-fingerprint",
               "performance-display-spawn": "display-spawn",
               "performance-region-queue": "region-queue",
+              "performance-region-keys": "region-keys",
               "performance-scheduler-reflection": "scheduler-reflection",
               "performance-ray-proxy": "ray-proxy",
           }

@@ -138,6 +138,20 @@
         "top/ellan/mahjong/table/render/TableRegionDisplayCoordinator.class"
       ]
     },
+    "region-keys": {
+      "include": "^top\\.ellan\\.mahjong\\.perf\\.RegionKeyPlanBenchmark\\.buildRepresentativeRegionKeyPlan$",
+      "benchmark_ids": [
+        "region.keys.time",
+        "region.keys.alloc"
+      ],
+      "minimum_passes": 1,
+      "must_pass": [
+        "region.keys.time"
+      ],
+      "required_classes": [
+        "top/ellan/mahjong/table/render/TableRegionDisplayCoordinator.class"
+      ]
+    },
     "scheduler-reflection": {
       "include": "^top\\.ellan\\.mahjong\\.perf\\.ServerSchedulerReflectionBenchmark\\.schedule(?:Folia|Paper)Burst$",
       "benchmark_ids": [
@@ -305,6 +319,18 @@
     {
       "id": "region.queue.alloc",
       "benchmark": "top.ellan.mahjong.perf.RegionUpdateQueueBenchmark.orderRepresentativeTableRegions",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "region.keys.time",
+      "benchmark": "top.ellan.mahjong.perf.RegionKeyPlanBenchmark.buildRepresentativeRegionKeyPlan",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "region.keys.alloc",
+      "benchmark": "top.ellan.mahjong.perf.RegionKeyPlanBenchmark.buildRepresentativeRegionKeyPlan",
       "metric": "gc.alloc.rate.norm",
       "direction": "lower"
     },
