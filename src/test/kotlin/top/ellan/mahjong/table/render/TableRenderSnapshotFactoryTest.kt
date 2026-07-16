@@ -159,4 +159,3 @@ class TableRenderSnapshotFactoryTest {
         verify(session, never()).doraIndicators()
     }
 }
-
