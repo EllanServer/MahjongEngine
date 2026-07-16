@@ -1,8 +1,5 @@
 package top.ellan.mahjong.table.render
 
-import top.ellan.mahjong.model.SeatWind
-import top.ellan.mahjong.render.scene.MeldView
-import top.ellan.mahjong.table.core.MahjongTableSession
 import org.bukkit.Location
 import org.bukkit.entity.Player
 import org.mockito.ArgumentMatchers
@@ -11,6 +8,9 @@ import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import top.ellan.mahjong.model.SeatWind
+import top.ellan.mahjong.render.scene.MeldView
+import top.ellan.mahjong.table.core.MahjongTableSession
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -131,4 +131,3 @@ class TableRenderSnapshotFactoryTest {
         verify(session, never()).doraIndicators()
     }
 }
-
