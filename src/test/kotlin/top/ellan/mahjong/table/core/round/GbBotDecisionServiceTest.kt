@@ -66,6 +66,56 @@ class GbBotDecisionServiceTest {
     }
 
     @Test
+    fun `discard suggestion keeps the earliest index for equal duplicate candidates`() {
+        val service = GbBotDecisionService(8)
+        val hand = listOf(MahjongTile.M1, MahjongTile.M1, MahjongTile.M1)
+        var evaluations = 0
+
+        val suggestedIndex =
+            service.suggestedDiscardIndex(hand, emptyList()) { _, _ ->
+                evaluations++
+                GbTingResponse(true, emptyList(), null)
+            }
+
+        assertEquals(0, suggestedIndex)
+        assertEquals(1, evaluations)
+    }
+
+    @Test
+    fun `discard suggestion recomputes null before memoizing a later duplicate response`() {
+        val service = GbBotDecisionService(8)
+        val hand = listOf(MahjongTile.M1, MahjongTile.M1, MahjongTile.M1)
+        val ready = GbTingResponse(true, listOf(GbTingCandidate("W1", 8)), null)
+        var evaluations = 0
+
+        val suggestedIndex =
+            service.suggestedDiscardIndex(hand, emptyList()) { _, _ ->
+                evaluations++
+                if (evaluations == 1) null else ready
+            }
+
+        assertEquals(1, suggestedIndex)
+        assertEquals(2, evaluations)
+    }
+
+    @Test
+    fun `discard suggestion does not reuse red five preference for the exact regular tile`() {
+        val service = GbBotDecisionService(8)
+        val hand = listOf(MahjongTile.M5, MahjongTile.M5_RED, MahjongTile.M5)
+        val ready = GbTingResponse(true, listOf(GbTingCandidate("W1", 8)), null)
+        var evaluations = 0
+
+        val suggestedIndex =
+            service.suggestedDiscardIndex(hand, emptyList()) { remaining, _ ->
+                evaluations++
+                if (MahjongTile.M5_RED in remaining) ready else GbTingResponse(true, emptyList(), null)
+            }
+
+        assertEquals(0, suggestedIndex)
+        assertEquals(2, evaluations)
+    }
+
+    @Test
     fun `discard suggestion preserves null evaluator recomputation`() {
         val service = GbBotDecisionService(8)
         val hand = listOf(MahjongTile.M1, MahjongTile.M1, MahjongTile.M1)
