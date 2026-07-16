@@ -1,7 +1,10 @@
 name: Release
 
 on:
-  pull_request:
+  # pull_request_target is intentional: pull_request workflows are suppressed when the
+  # promoted dev HEAD carries a CI skip marker. The release job still rejects everything
+  # except an already-merged, same-repository dev -> main pull request.
+  pull_request_target:
     branches:
       - main
     types:
