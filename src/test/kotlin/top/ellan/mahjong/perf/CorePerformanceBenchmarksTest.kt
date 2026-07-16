@@ -184,7 +184,9 @@ class CorePerformanceBenchmarksTest {
             `when`(session.hand(playerId)).thenReturn(List(13) { MahjongTile.M1 })
             `when`(session.discards(playerId)).thenReturn(listOf(MahjongTile.EAST, MahjongTile.SOUTH, MahjongTile.WEST))
             `when`(session.fuuro(playerId)).thenReturn(emptyList())
-            `when`(session.scoringSticks(playerId)).thenReturn(if (wind == SeatWind.EAST) listOf(ScoringStick.P1000) else emptyList())
+            `when`(session.scoringSticks(playerId)).thenReturn(
+                if (wind == SeatWind.EAST) listOf(ScoringStick.P1000) else emptyList(),
+            )
             `when`(session.cornerSticks(wind)).thenReturn(
                 if (wind == SeatWind.EAST) listOf(ScoringStick.P100, ScoringStick.P100) else emptyList(),
             )
@@ -329,9 +331,7 @@ class CorePerformanceBenchmarksTest {
                             top.ellan.mahjong.gb.jni.GbTingCandidate(
                                 "M1",
                                 fan,
-                                listOf(
-                                    top.ellan.mahjong.gb.jni.GbFanEntry("TEST", fan),
-                                ),
+                                listOf(top.ellan.mahjong.gb.jni.GbFanEntry("TEST", fan))
                             )
                         ),
                         null
