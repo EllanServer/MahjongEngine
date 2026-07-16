@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "paper-1.20.1-196": {
+      "kind": "paper-server",
+      "project": "paper",
+      "minecraft_version": "1.20.1",
+      "build": 196,
+      "channel": "STABLE",
+      "filename": "paper-1.20.1-196.jar",
+      "url": "https://fill-data.papermc.io/v1/objects/234a9b32098100c6fc116664d64e36ccdb58b5b649af0f80bcccb08b0255eaea/paper-1.20.1-196.jar",
+      "size": 43230582,
+      "hash": {
+        "algorithm": "sha256",
+        "digest": "234a9b32098100c6fc116664d64e36ccdb58b5b649af0f80bcccb08b0255eaea"
+      },
+      "source_metadata": "https://fill.papermc.io/v3/projects/paper/versions/1.20.1/builds"
+    },
+    "craftengine-paper-26.7.3": {
+      "kind": "server-plugin",
+      "project": "craftengine",
+      "distribution": "paper",
+      "version": "26.7.3",
+      "release_type": "beta",
+      "modrinth_version_id": "Len451or",
+      "loaders": [
+        "folia",
+        "paper",
+        "purpur"
+      ],
+      "minecraft_versions": [
+        "1.20",
+        "1.20.1",
+        "1.20.2",
+        "1.20.3",
+        "1.20.4",
+        "1.20.5",
+        "1.20.6",
+        "1.21",
+        "1.21.1",
+        "1.21.2",
+        "1.21.3",
+        "1.21.4",
+        "1.21.5",
+        "1.21.6",
+        "1.21.7",
+        "1.21.8",
+        "1.21.9",
+        "1.21.10",
+        "1.21.11",
+        "26.1",
+        "26.1.1",
+        "26.1.2",
+        "26.2"
+      ],
+      "filename": "craft-engine-paper-plugin-26.7.3.jar",
+      "url": "https://cdn.modrinth.com/data/tRX6FMfQ/versions/Len451or/craft-engine-paper-plugin-26.7.3.jar",
+      "size": 8907932,
+      "hash": {
+        "algorithm": "sha512",
+        "digest": "e87351417e4f99504cf0a8868bad03a88b12bc9bda5c36f0ee4c7451e3525f08146b2130b61cd34b222ee41c38ca75aa9ced9ada65bc3540c80aa66c3d39d689"
+      },
+      "published_hashes": {
+        "sha1": "467fa7317635cf9f76812bd73a47d984c57cf53f",
+        "sha512": "e87351417e4f99504cf0a8868bad03a88b12bc9bda5c36f0ee4c7451e3525f08146b2130b61cd34b222ee41c38ca75aa9ced9ada65bc3540c80aa66c3d39d689"
+      },
+      "source_metadata": "https://api.modrinth.com/v2/version/Len451or"
+    }
+  }
+}

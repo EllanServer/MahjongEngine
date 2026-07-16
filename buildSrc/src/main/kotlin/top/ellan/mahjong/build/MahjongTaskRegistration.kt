@@ -10,7 +10,9 @@ import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.testing.Test
 import org.gradle.kotlin.dsl.get
 import org.gradle.kotlin.dsl.getByType
+import org.gradle.kotlin.dsl.named
 import org.gradle.kotlin.dsl.register
+import org.gradle.testing.jacoco.tasks.JacocoReport
 import java.io.File
 
 /**
@@ -18,6 +20,44 @@ import java.io.File
  * Called from the root build.gradle.kts to keep it thin.
  */
 object MahjongTaskRegistration {
+    fun registerPerformanceTasks(
+        project: Project,
+        paperApiVersion: String,
+    ) {
+        registerPerfTestTask(project)
+        MahjongJmhConfiguration.configure(project, paperApiVersion)
+    }
+
+    fun configureVerificationTasks(
+        project: Project,
+        javaTargetVersion: Int,
+    ) {
+        val jacocoReport =
+            project.tasks.named<JacocoReport>("jacocoTestReport") {
+                dependsOn(project.tasks.named("test"))
+                reports {
+                    xml.required.set(true)
+                    html.required.set(true)
+                    csv.required.set(false)
+                }
+            }
+        project.tasks.named<Test>("test") {
+            useJUnitPlatform { excludeTags("perf") }
+            jvmArgs("-Dnet.bytebuddy.experimental=true")
+            systemProperty("mahjong.test.expectedClassfileMajor", javaTargetVersion + 44)
+            finalizedBy(jacocoReport)
+        }
+        project.tasks.named("check") {
+            dependsOn(
+                jacocoReport,
+                "verifyMahjongTileResources",
+                "generateCraftEngineBundle",
+                "spotlessCheck",
+                "detekt",
+            )
+        }
+    }
+
     @Suppress("LongMethod")
     fun registerCodegenTasks(
         project: Project,
@@ -225,7 +265,7 @@ object MahjongTaskRegistration {
         return tasks
     }
 
-    fun registerPerfTestTask(project: Project): TaskProvider<Test> {
+    private fun registerPerfTestTask(project: Project): TaskProvider<Test> {
         val sourceSets = project.extensions.getByType<SourceSetContainer>()
         val testSourceSet = sourceSets["test"]
         return project.tasks.register<Test>("perfTest") {

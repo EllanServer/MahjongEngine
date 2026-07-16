@@ -1,33 +1,37 @@
 package top.ellan.mahjong.perf
 
-import top.ellan.mahjong.table.core.TableRuntimeServices
+import org.bukkit.Location
+import org.bukkit.entity.Player
+import org.junit.jupiter.api.Tag
+import org.junit.jupiter.api.Test
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.`when`
 import top.ellan.mahjong.config.PluginSettings
+import top.ellan.mahjong.gb.jni.GbFanEntry
+import top.ellan.mahjong.gb.jni.GbTingCandidate
+import top.ellan.mahjong.gb.jni.GbTingRequest
+import top.ellan.mahjong.gb.jni.GbTingResponse
 import top.ellan.mahjong.gb.runtime.GbNativeRulesGateway
 import top.ellan.mahjong.model.MahjongTile
 import top.ellan.mahjong.model.SeatWind
 import top.ellan.mahjong.render.layout.TableRenderLayout
+import top.ellan.mahjong.render.snapshot.TableRenderSnapshot
+import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot
 import top.ellan.mahjong.riichi.ReactionResponse
 import top.ellan.mahjong.riichi.ReactionType
 import top.ellan.mahjong.riichi.RiichiPlayerState
 import top.ellan.mahjong.riichi.RiichiRoundEngine
-import top.ellan.mahjong.riichi.model.MahjongTile as RiichiTile
 import top.ellan.mahjong.riichi.model.MahjongRule
 import top.ellan.mahjong.riichi.model.ScoringStick
-import top.ellan.mahjong.riichi.model.TileInstance as RiichiTileInstance
 import top.ellan.mahjong.table.core.MahjongTableSession
-import top.ellan.mahjong.render.snapshot.TableRenderSnapshot
-import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot
+import top.ellan.mahjong.table.core.TableRuntimeServices
 import top.ellan.mahjong.table.core.round.GbTableRoundController
-import top.ellan.mahjong.table.render.TableRenderSnapshotFactory
 import top.ellan.mahjong.table.render.TableRegionFingerprintService
-import org.junit.jupiter.api.Tag
-import org.junit.jupiter.api.Test
-import org.mockito.Mockito.`when`
-import org.mockito.Mockito.mock
-import org.bukkit.Location
-import org.bukkit.entity.Player
+import top.ellan.mahjong.table.render.TableRenderSnapshotFactory
 import java.util.EnumMap
 import java.util.UUID
+import top.ellan.mahjong.riichi.model.MahjongTile as RiichiTile
+import top.ellan.mahjong.riichi.model.TileInstance as RiichiTileInstance
 
 @Tag("perf")
 class CorePerformanceBenchmarksTest {
@@ -38,7 +42,7 @@ class CorePerformanceBenchmarksTest {
 
         PerformanceBenchmarkSupport.run(
             name = "render.snapshot.create.started_session",
-            batch = 250
+            batch = 250,
         ) {
             factory.create(session, 1L, 0L)
         }
@@ -50,7 +54,7 @@ class CorePerformanceBenchmarksTest {
 
         PerformanceBenchmarkSupport.run(
             name = "render.layout.precompute.started_snapshot",
-            batch = 400
+            batch = 400,
         ) {
             TableRenderLayout.precompute(snapshot)
         }
@@ -64,7 +68,7 @@ class CorePerformanceBenchmarksTest {
 
         PerformanceBenchmarkSupport.run(
             name = "render.region_fingerprints.precompute.started_snapshot",
-            batch = 300
+            batch = 300,
         ) {
             service.precomputeRegionFingerprints(session, snapshot)
         }
@@ -74,16 +78,17 @@ class CorePerformanceBenchmarksTest {
     fun `benchmark riichi round start`() {
         PerformanceBenchmarkSupport.run(
             name = "riichi.round_engine.start_round",
-            batch = 120
+            batch = 120,
         ) {
             RiichiRoundEngine(
-                players = listOf(
-                    RiichiPlayerState("East", "east"),
-                    RiichiPlayerState("South", "south"),
-                    RiichiPlayerState("West", "west"),
-                    RiichiPlayerState("North", "north")
-                ),
-                rule = MahjongRule()
+                players =
+                    listOf(
+                        RiichiPlayerState("East", "east"),
+                        RiichiPlayerState("South", "south"),
+                        RiichiPlayerState("West", "west"),
+                        RiichiPlayerState("North", "north"),
+                    ),
+                rule = MahjongRule(),
             ).startRound()
         }
     }
@@ -92,7 +97,7 @@ class CorePerformanceBenchmarksTest {
     fun `benchmark riichi discard reaction chain`() {
         PerformanceBenchmarkSupport.run(
             name = "riichi.round_engine.discard_reaction_chain",
-            batch = 80
+            batch = 80,
         ) {
             val engine = riichiReactionChainEngine()
             val east = engine.seats[0]
@@ -111,7 +116,7 @@ class CorePerformanceBenchmarksTest {
     fun `benchmark gb round start`() {
         PerformanceBenchmarkSupport.run(
             name = "gb.round_controller.start_round",
-            batch = 120
+            batch = 120,
         ) {
             gbController().startRound()
         }
@@ -124,7 +129,7 @@ class CorePerformanceBenchmarksTest {
 
         PerformanceBenchmarkSupport.run(
             name = "gb.bot.suggest_discard.duplicate_hand",
-            batch = 300
+            batch = 300,
         ) {
             controller.suggestedBotDiscardIndex(playerId)
         }
@@ -138,6 +143,7 @@ class CorePerformanceBenchmarksTest {
         `when`(settings.craftEngineTableFurnitureId()).thenReturn("mahjongpaper:table_visual")
         `when`(settings.craftEngineSeatFurnitureId()).thenReturn("mahjongpaper:seat_chair")
         `when`(session.plugin()).thenReturn(plugin)
+        `when`(session.settings()).thenReturn(settings)
         return session
     }
 
@@ -183,8 +189,12 @@ class CorePerformanceBenchmarksTest {
             `when`(session.hand(playerId)).thenReturn(List(13) { MahjongTile.M1 })
             `when`(session.discards(playerId)).thenReturn(listOf(MahjongTile.EAST, MahjongTile.SOUTH, MahjongTile.WEST))
             `when`(session.fuuro(playerId)).thenReturn(emptyList())
-            `when`(session.scoringSticks(playerId)).thenReturn(if (wind == SeatWind.EAST) listOf(ScoringStick.P1000) else emptyList())
-            `when`(session.cornerSticks(wind)).thenReturn(if (wind == SeatWind.EAST) listOf(ScoringStick.P100, ScoringStick.P100) else emptyList())
+            `when`(session.scoringSticks(playerId)).thenReturn(
+                if (wind == SeatWind.EAST) listOf(ScoringStick.P1000) else emptyList(),
+            )
+            `when`(session.cornerSticks(wind)).thenReturn(
+                if (wind == SeatWind.EAST) listOf(ScoringStick.P100, ScoringStick.P100) else emptyList(),
+            )
         }
         return session
     }
@@ -201,15 +211,17 @@ class CorePerformanceBenchmarksTest {
     }
 
     private fun riichiReactionChainEngine(): RiichiRoundEngine {
-        val engine = RiichiRoundEngine(
-            players = listOf(
-                RiichiPlayerState("East", "east"),
-                RiichiPlayerState("South", "south"),
-                RiichiPlayerState("West", "west"),
-                RiichiPlayerState("North", "north")
-            ),
-            rule = MahjongRule()
-        )
+        val engine =
+            RiichiRoundEngine(
+                players =
+                    listOf(
+                        RiichiPlayerState("East", "east"),
+                        RiichiPlayerState("South", "south"),
+                        RiichiPlayerState("West", "west"),
+                        RiichiPlayerState("North", "north"),
+                    ),
+                rule = MahjongRule(),
+            )
         engine.startRound()
         val east = engine.seats[0]
         val south = engine.seats[1]
@@ -220,74 +232,77 @@ class CorePerformanceBenchmarksTest {
         west.resetRoundState()
         north.resetRoundState()
 
-        east.hands += riichiTiles(
-            RiichiTile.M2,
-            RiichiTile.P1,
-            RiichiTile.P2,
-            RiichiTile.P3,
-            RiichiTile.S1,
-            RiichiTile.S2,
-            RiichiTile.S3,
-            RiichiTile.EAST,
-            RiichiTile.SOUTH,
-            RiichiTile.WEST,
-            RiichiTile.NORTH,
-            RiichiTile.WHITE_DRAGON,
-            RiichiTile.GREEN_DRAGON,
-            RiichiTile.RED_DRAGON
-        )
-        south.hands += riichiTiles(
-            RiichiTile.M1,
-            RiichiTile.M3,
-            RiichiTile.P4,
-            RiichiTile.P5,
-            RiichiTile.P6,
-            RiichiTile.S4,
-            RiichiTile.S5,
-            RiichiTile.S6,
-            RiichiTile.EAST,
-            RiichiTile.SOUTH,
-            RiichiTile.WEST,
-            RiichiTile.NORTH,
-            RiichiTile.WHITE_DRAGON
-        )
-        west.hands += riichiTiles(
-            RiichiTile.M4,
-            RiichiTile.M5,
-            RiichiTile.M6,
-            RiichiTile.P1,
-            RiichiTile.P4,
-            RiichiTile.P7,
-            RiichiTile.S1,
-            RiichiTile.S4,
-            RiichiTile.S7,
-            RiichiTile.EAST,
-            RiichiTile.SOUTH,
-            RiichiTile.WEST,
-            RiichiTile.NORTH
-        )
-        north.hands += riichiTiles(
-            RiichiTile.M7,
-            RiichiTile.M8,
-            RiichiTile.M9,
-            RiichiTile.P7,
-            RiichiTile.P8,
-            RiichiTile.P9,
-            RiichiTile.S7,
-            RiichiTile.S8,
-            RiichiTile.S9,
-            RiichiTile.EAST,
-            RiichiTile.SOUTH,
-            RiichiTile.WEST,
-            RiichiTile.GREEN_DRAGON
-        )
+        east.hands +=
+            riichiTiles(
+                RiichiTile.M2,
+                RiichiTile.P1,
+                RiichiTile.P2,
+                RiichiTile.P3,
+                RiichiTile.S1,
+                RiichiTile.S2,
+                RiichiTile.S3,
+                RiichiTile.EAST,
+                RiichiTile.SOUTH,
+                RiichiTile.WEST,
+                RiichiTile.NORTH,
+                RiichiTile.WHITE_DRAGON,
+                RiichiTile.GREEN_DRAGON,
+                RiichiTile.RED_DRAGON,
+            )
+        south.hands +=
+            riichiTiles(
+                RiichiTile.M1,
+                RiichiTile.M3,
+                RiichiTile.P4,
+                RiichiTile.P5,
+                RiichiTile.P6,
+                RiichiTile.S4,
+                RiichiTile.S5,
+                RiichiTile.S6,
+                RiichiTile.EAST,
+                RiichiTile.SOUTH,
+                RiichiTile.WEST,
+                RiichiTile.NORTH,
+                RiichiTile.WHITE_DRAGON,
+            )
+        west.hands +=
+            riichiTiles(
+                RiichiTile.M4,
+                RiichiTile.M5,
+                RiichiTile.M6,
+                RiichiTile.P1,
+                RiichiTile.P4,
+                RiichiTile.P7,
+                RiichiTile.S1,
+                RiichiTile.S4,
+                RiichiTile.S7,
+                RiichiTile.EAST,
+                RiichiTile.SOUTH,
+                RiichiTile.WEST,
+                RiichiTile.NORTH,
+            )
+        north.hands +=
+            riichiTiles(
+                RiichiTile.M7,
+                RiichiTile.M8,
+                RiichiTile.M9,
+                RiichiTile.P7,
+                RiichiTile.P8,
+                RiichiTile.P9,
+                RiichiTile.S7,
+                RiichiTile.S8,
+                RiichiTile.S9,
+                RiichiTile.EAST,
+                RiichiTile.SOUTH,
+                RiichiTile.WEST,
+                RiichiTile.GREEN_DRAGON,
+            )
         engine.wall.clear()
         engine.wall += RiichiTileInstance(mahjongTile = RiichiTile.P9)
         return engine
     }
 
-    private fun riichiTiles(vararg tiles: RiichiTile): List<RiichiTileInstance> =
-        tiles.map { RiichiTileInstance(mahjongTile = it) }
+    private fun riichiTiles(vararg tiles: RiichiTile): List<RiichiTileInstance> = tiles.map { RiichiTileInstance(mahjongTile = it) }
 
     private fun gbBotSuggestionController(): GbTableRoundController {
         val seats = EnumMap<SeatWind, UUID>(SeatWind::class.java)
@@ -298,40 +313,43 @@ class CorePerformanceBenchmarksTest {
             names[playerId] = wind.name
         }
         val wall = List(136) { MahjongTile.M1 }
-        val controller = GbTableRoundController(
-            MahjongRule(),
-            seats,
-            names,
-            object : GbNativeRulesGateway() {
-                override fun evaluateTingNative(request: top.ellan.mahjong.gb.jni.GbTingRequest): top.ellan.mahjong.gb.jni.GbTingResponse {
-                    var score = 0
-                    repeat(512) {
-                        request.handTiles.forEachIndexed { index, tile ->
-                            score += tile.hashCode() * (index + 1)
+        val controller =
+            GbTableRoundController(
+                MahjongRule(),
+                seats,
+                names,
+                object : GbNativeRulesGateway() {
+                    override fun evaluateTingNative(request: GbTingRequest): GbTingResponse {
+                        var score = 0
+                        repeat(512) {
+                            request.handTiles.forEachIndexed { index, tile ->
+                                score += tile.hashCode() * (index + 1)
+                            }
+                            request.melds.forEachIndexed { index, meld ->
+                                score += meld.type.hashCode() * (index + 3)
+                                meld.tiles.forEach { tile ->
+                                    score += tile.hashCode()
+                                }
+                            }
                         }
-                        request.melds.forEachIndexed { index, meld ->
-                            score += meld.type.hashCode() * (index + 3)
-                            meld.tiles.forEach { tile -> score += tile.hashCode() }
-                        }
+                        PerformanceBenchmarkSupport.consume(score)
+                        val fan = score.mod(3) + 1
+                        return GbTingResponse(
+                            true,
+                            listOf(
+                                GbTingCandidate(
+                                    "M1",
+                                    fan,
+                                    listOf(GbFanEntry("TEST", fan)),
+                                ),
+                            ),
+                            null,
+                        )
                     }
-                    PerformanceBenchmarkSupport.consume(score)
-                    val fan = score.mod(3) + 1
-                    return top.ellan.mahjong.gb.jni.GbTingResponse(
-                        true,
-                        listOf(
-                            top.ellan.mahjong.gb.jni.GbTingCandidate(
-                                "M1",
-                                fan,
-                                listOf(top.ellan.mahjong.gb.jni.GbFanEntry("TEST", fan))
-                            )
-                        ),
-                        null
-                    )
-                }
-            },
-            { 7 },
-            { wall }
-        )
+                },
+                { 7 },
+                { wall },
+            )
         controller.startRound()
         return controller
     }
@@ -339,34 +357,38 @@ class CorePerformanceBenchmarksTest {
     private fun startedSnapshot(): TableRenderSnapshot {
         val seats = EnumMap<SeatWind, TableSeatRenderSnapshot>(SeatWind::class.java)
         val eastId = UUID.fromString("00000000-0000-0000-0000-000000000001")
-        seats[SeatWind.EAST] = seatSnapshot(
-            wind = SeatWind.EAST,
-            playerId = eastId,
-            hand = List(13) { MahjongTile.M1 },
-            discards = listOf(MahjongTile.EAST, MahjongTile.SOUTH, MahjongTile.WEST, MahjongTile.NORTH),
-            riichi = true,
-            riichiDiscardIndex = 1,
-            scoringSticks = listOf(ScoringStick.P1000),
-            cornerSticks = listOf(ScoringStick.P100, ScoringStick.P100)
-        )
-        seats[SeatWind.SOUTH] = seatSnapshot(
-            SeatWind.SOUTH,
-            UUID.fromString("00000000-0000-0000-0000-000000000002"),
-            hand = List(13) { MahjongTile.P1 },
-            discards = listOf(MahjongTile.M1, MahjongTile.M2, MahjongTile.M3)
-        )
-        seats[SeatWind.WEST] = seatSnapshot(
-            SeatWind.WEST,
-            UUID.fromString("00000000-0000-0000-0000-000000000003"),
-            hand = List(13) { MahjongTile.S1 },
-            discards = listOf(MahjongTile.P1, MahjongTile.P2)
-        )
-        seats[SeatWind.NORTH] = seatSnapshot(
-            SeatWind.NORTH,
-            UUID.fromString("00000000-0000-0000-0000-000000000004"),
-            hand = List(13) { MahjongTile.EAST },
-            discards = listOf(MahjongTile.S1)
-        )
+        seats[SeatWind.EAST] =
+            seatSnapshot(
+                wind = SeatWind.EAST,
+                playerId = eastId,
+                hand = List(13) { MahjongTile.M1 },
+                discards = listOf(MahjongTile.EAST, MahjongTile.SOUTH, MahjongTile.WEST, MahjongTile.NORTH),
+                riichi = true,
+                riichiDiscardIndex = 1,
+                scoringSticks = listOf(ScoringStick.P1000),
+                cornerSticks = listOf(ScoringStick.P100, ScoringStick.P100),
+            )
+        seats[SeatWind.SOUTH] =
+            seatSnapshot(
+                SeatWind.SOUTH,
+                UUID.fromString("00000000-0000-0000-0000-000000000002"),
+                hand = List(13) { MahjongTile.P1 },
+                discards = listOf(MahjongTile.M1, MahjongTile.M2, MahjongTile.M3),
+            )
+        seats[SeatWind.WEST] =
+            seatSnapshot(
+                SeatWind.WEST,
+                UUID.fromString("00000000-0000-0000-0000-000000000003"),
+                hand = List(13) { MahjongTile.S1 },
+                discards = listOf(MahjongTile.P1, MahjongTile.P2),
+            )
+        seats[SeatWind.NORTH] =
+            seatSnapshot(
+                SeatWind.NORTH,
+                UUID.fromString("00000000-0000-0000-0000-000000000004"),
+                hand = List(13) { MahjongTile.EAST },
+                discards = listOf(MahjongTile.S1),
+            )
         return TableRenderSnapshot(
             1L,
             0L,
@@ -392,7 +414,7 @@ class CorePerformanceBenchmarksTest {
             eastId,
             MahjongTile.RED_DRAGON,
             listOf(MahjongTile.M1, MahjongTile.P1, MahjongTile.S1),
-            seats
+            seats,
         )
     }
 
@@ -404,7 +426,7 @@ class CorePerformanceBenchmarksTest {
         riichi: Boolean = false,
         riichiDiscardIndex: Int = -1,
         scoringSticks: List<ScoringStick> = emptyList(),
-        cornerSticks: List<ScoringStick> = emptyList()
+        cornerSticks: List<ScoringStick> = emptyList(),
     ) = TableSeatRenderSnapshot(
         wind,
         playerId,
@@ -425,8 +447,6 @@ class CorePerformanceBenchmarksTest {
         discards,
         emptyList(),
         scoringSticks,
-        cornerSticks
+        cornerSticks,
     )
 }
-
-

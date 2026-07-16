@@ -1,0 +1,398 @@
+name: Performance A/B gate
+
+# This definition is always loaded from the base branch. Candidate Gradle/JMH code runs only
+# after its complete build surface has been byte-compared with the base revision. It receives
+# no secrets, no writable repository permission and no Actions/Gradle cache credentials. The
+# final decision runs on a fresh runner from a newly checked-out base-owned gate.
+on:
+  pull_request_target:
+    branches:
+      - dev
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - labeled
+      - unlabeled
+  workflow_dispatch:
+    inputs:
+      base_sha:
+        description: Exact base commit to benchmark
+        required: true
+        type: string
+      candidate_sha:
+        description: Exact candidate commit to benchmark
+        required: true
+        type: string
+      profile:
+        description: Base-owned benchmark profile
+        required: true
+        default: snapshot
+        type: choice
+        options:
+          - snapshot
+          - gb-bot
+          - ray-proxy
+          - infra
+      forks:
+        description: Trusted CI override for JMH forks (blank uses base config)
+        required: false
+        type: string
+      warmup_iterations:
+        description: Trusted CI override for JMH warmup iterations
+        required: false
+        type: string
+      measurement_iterations:
+        description: Trusted CI override for JMH measurement iterations
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-ab-${{ github.event.pull_request.number || inputs.candidate_sha }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'performance-ab')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      profile: ${{ steps.profile.outputs.name }}
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base_sha }}
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+      PERF_RESULTS_ROOT: /tmp/mahjong-performance-ab-${{ github.run_id }}-${{ github.run_attempt }}
+      CI_FORKS: ${{ inputs.forks }}
+      CI_WARMUPS: ${{ inputs.warmup_iterations }}
+      CI_MEASUREMENTS: ${{ inputs.measurement_iterations }}
+
+    steps:
+      - name: Check out base-owned harness
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: base
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check out candidate
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: candidate
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify immutable revision identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C base rev-parse HEAD)" = "$BASE_SHA"
+          test "$(git -C candidate rev-parse HEAD)" = "$CANDIDATE_SHA"
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25.0.2+10.0.LTS"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Set up Gradle without shared cache
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-disabled: true
+
+      - name: Create an unprivileged candidate benchmark user
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo useradd \
+            --system \
+            --user-group \
+            --no-create-home \
+            --shell /usr/sbin/nologin \
+            mahjong-benchmark
+          getent passwd mahjong-benchmark
+          sudo install -d --owner root --group root --mode 0711 "$PERF_RESULTS_ROOT"
+          sudo install -d \
+            --owner "$(id -u)" \
+            --group "$(id -g)" \
+            --mode 0711 \
+            "$PERF_RESULTS_ROOT/evidence"
+
+      - name: Make wrappers executable
+        shell: bash
+        run: chmod +x base/gradlew candidate/gradlew
+
+      - name: Resolve one benchmark profile
+        id: profile
+        shell: bash
+        env:
+          DISPATCH_PROFILE: ${{ inputs.profile }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            PROFILE="$DISPATCH_PROFILE"
+          else
+            PROFILE="$(python3 - "$GITHUB_EVENT_PATH" <<'PY'
+          import json, sys
+          payload = json.load(open(sys.argv[1], encoding="utf-8"))
+          labels = {entry["name"] for entry in payload["pull_request"]["labels"]}
+          choices = {
+              "performance-snapshot": "snapshot",
+              "performance-gb-bot": "gb-bot",
+              "performance-ray-proxy": "ray-proxy",
+          }
+          selected = [profile for label, profile in choices.items() if label in labels]
+          if len(selected) != 1:
+              raise SystemExit("performance-ab requires exactly one performance-* profile label")
+          print(selected[0])
+          PY
+          )"
+          fi
+          echo "name=$PROFILE" >> "$GITHUB_OUTPUT"
+
+      - name: Verify candidate cannot alter benchmark, thresholds or Gradle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 base/perf/ab/verify_protected.py \
+            --base-dir base \
+            --candidate-dir candidate \
+            --config base/perf/ab/gate-config.json \
+            --report "$PERF_RESULTS_ROOT/evidence/protected-paths.json"
+
+      - name: Test base-owned statistics
+        shell: bash
+        run: python3 -m unittest discover -s base/perf/ab/tests -v
+
+      - name: Build base JMH jar
+        shell: bash
+        env:
+          # The cache is local to this disposable runner and never restored/saved. Sharing it
+          # makes mutable upstream SNAPSHOT resolution identical for both compilations.
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-build
+        run: >-
+          base/gradlew -p base jmhJar --console plain --no-daemon
+          -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
+          "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT"
+          "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=17"
+
+      - name: Build candidate JMH jar without privileged runtime credentials
+        shell: bash
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-build
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+          ACTIONS_CACHE_URL: ""
+          ACTIONS_RESULTS_URL: ""
+          ACTIONS_RUNTIME_TOKEN: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+        run: >-
+          candidate/gradlew -p candidate jmhJar --console plain --no-daemon
+          -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
+          "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT"
+          "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=17"
+
+      - name: Locate benchmark jars
+        id: jars
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_JAR="$(find base/build/libs -maxdepth 1 -name '*-jmh.jar' -print -quit)"
+          CANDIDATE_JAR="$(find candidate/build/libs -maxdepth 1 -name '*-jmh.jar' -print -quit)"
+          test -n "$BASE_JAR"
+          test -n "$CANDIDATE_JAR"
+          cp base/perf/ab/gate-config.json "$PERF_RESULTS_ROOT/evidence/gate-config.json"
+          mkdir -p "$PERF_RESULTS_ROOT/evidence/jars"
+          cp "$BASE_JAR" "$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar"
+          cp "$CANDIDATE_JAR" "$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar"
+          chmod 0444 \
+            "$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar" \
+            "$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar"
+          echo "base=$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar" >> "$GITHUB_OUTPUT"
+          echo "candidate=$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar" >> "$GITHUB_OUTPUT"
+          sudo -H -u mahjong-benchmark -- test -r "$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar"
+          sudo -H -u mahjong-benchmark -- test -r "$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar"
+          sudo -H -u mahjong-benchmark -- test ! -w "$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar"
+          sudo -H -u mahjong-benchmark -- test ! -w "$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar"
+          sudo -H -u mahjong-benchmark -- test ! -w "$PERF_RESULTS_ROOT/evidence"
+
+      - name: Run A/A drift control
+        shell: bash
+        env:
+          BASE_JAR: ${{ steps.jars.outputs.base }}
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+          ACTIONS_CACHE_URL: ""
+          ACTIONS_RESULTS_URL: ""
+          ACTIONS_RUNTIME_TOKEN: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+        run: |
+          set -euo pipefail
+          OVERRIDES=()
+          [[ -z "$CI_FORKS" ]] || OVERRIDES+=(--forks "$CI_FORKS")
+          [[ -z "$CI_WARMUPS" ]] || OVERRIDES+=(--warmup-iterations "$CI_WARMUPS")
+          [[ -z "$CI_MEASUREMENTS" ]] || OVERRIDES+=(--measurement-iterations "$CI_MEASUREMENTS")
+          python3 base/perf/ab/run_matrix.py \
+            --phase aa \
+            --profile "${{ steps.profile.outputs.name }}" \
+            --base-jar "$BASE_JAR" \
+            --candidate-jar "$BASE_JAR" \
+            --base-sha "$BASE_SHA" \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --config base/perf/ab/gate-config.json \
+            --output-dir "$PERF_RESULTS_ROOT/evidence/aa" \
+            --java "$JAVA_HOME/bin/java" \
+            --candidate-command-prefix-json '["sudo","-H","-u","mahjong-benchmark","--"]' \
+            --candidate-file-user mahjong-benchmark \
+            "${OVERRIDES[@]}"
+
+      - name: Run four interleaved AB and four BA pairs
+        shell: bash
+        env:
+          BASE_JAR: ${{ steps.jars.outputs.base }}
+          CANDIDATE_JAR: ${{ steps.jars.outputs.candidate }}
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+          ACTIONS_CACHE_URL: ""
+          ACTIONS_RESULTS_URL: ""
+          ACTIONS_RUNTIME_TOKEN: ""
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
+          ACTIONS_ID_TOKEN_REQUEST_URL: ""
+        run: |
+          set -euo pipefail
+          OVERRIDES=()
+          [[ -z "$CI_FORKS" ]] || OVERRIDES+=(--forks "$CI_FORKS")
+          [[ -z "$CI_WARMUPS" ]] || OVERRIDES+=(--warmup-iterations "$CI_WARMUPS")
+          [[ -z "$CI_MEASUREMENTS" ]] || OVERRIDES+=(--measurement-iterations "$CI_MEASUREMENTS")
+          python3 base/perf/ab/run_matrix.py \
+            --phase ab \
+            --profile "${{ steps.profile.outputs.name }}" \
+            --base-jar "$BASE_JAR" \
+            --candidate-jar "$CANDIDATE_JAR" \
+            --base-sha "$BASE_SHA" \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --config base/perf/ab/gate-config.json \
+            --output-dir "$PERF_RESULTS_ROOT/evidence/ab" \
+            --java "$JAVA_HOME/bin/java" \
+            --candidate-command-prefix-json '["sudo","-H","-u","mahjong-benchmark","--"]' \
+            --candidate-file-user mahjong-benchmark \
+            "${OVERRIDES[@]}"
+
+      - name: Upload isolated raw evidence for the trusted decision job
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: performance-ab-raw-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.PERF_RESULTS_ROOT }}/evidence/**
+          if-no-files-found: error
+          retention-days: 1
+
+  decide:
+    needs: benchmark
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base_sha }}
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+      PROFILE: ${{ needs.benchmark.outputs.profile }}
+
+    steps:
+      - name: Check out a fresh base-owned decision gate
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: base
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check out candidate only for a fresh protected-path comparison
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: candidate
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Download raw benchmark evidence
+        uses: actions/download-artifact@v8
+        with:
+          name: performance-ab-raw-${{ github.run_id }}-${{ github.run_attempt }}
+          path: perf-results
+
+      - name: Re-verify revisions and the protected decision surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C base rev-parse HEAD)" = "$BASE_SHA"
+          test "$(git -C candidate rev-parse HEAD)" = "$CANDIDATE_SHA"
+          python3 base/perf/ab/verify_protected.py \
+            --base-dir base \
+            --candidate-dir candidate \
+            --config base/perf/ab/gate-config.json \
+            --report perf-results/protected-paths.json
+          python3 -m unittest discover -s base/perf/ab/tests -v
+
+      - name: Decide from fresh base-owned thresholds
+        id: decision
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 base/perf/ab/gate.py \
+            --config base/perf/ab/gate-config.json \
+            --profile "$PROFILE" \
+            --aa-manifest perf-results/aa/run-manifest.json \
+            --ab-manifest perf-results/ab/run-manifest.json \
+            --output-dir perf-results
+          cat perf-results/decision.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Write artifact manifest
+        if: always()
+        shell: bash
+        run: |
+          python3 base/perf/ab/artifact_manifest.py \
+            --root perf-results \
+            --output perf-results/artifact-manifest.json \
+            --base-sha "$BASE_SHA" \
+            --candidate-sha "$CANDIDATE_SHA"
+
+      - name: Upload raw and analyzed evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: performance-ab-${{ env.PROFILE }}-${{ env.BASE_SHA }}-${{ env.CANDIDATE_SHA }}
+          path: perf-results/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce three-state decision
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.decision.outcome }}" = "success"
+          STATE="$(python3 -c 'import json; print(json.load(open("perf-results/decision.json", encoding="utf-8"))["state"])')"
+          if [[ "$STATE" != "PASS_OPTIMIZED" ]]; then
+            echo "Performance gate did not pass: $STATE"
+            exit 1
+          fi
