@@ -13,6 +13,7 @@ AB_DIR = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AB_DIR))
 
 import gate  # noqa: E402
+import merge_manifests  # noqa: E402
 import run_matrix  # noqa: E402
 import verify_protected  # noqa: E402
 
@@ -306,6 +307,41 @@ class MatrixScheduleTest(unittest.TestCase):
         orders = [schedule[index]["order"] for index in range(0, len(schedule), 2)]
         self.assertEqual(["A1A2", "A2A1"] * 4, orders)
 
+    def test_consecutive_pair_shards_preserve_complete_global_pairs(self) -> None:
+        full = run_matrix.build_schedule("ab", 4)
+        shards = [run_matrix.select_pair_range(full, start, 1) for start in range(8)]
+        self.assertEqual(full, [entry for shard in shards for entry in shard])
+        for shard_index, shard in enumerate(shards):
+            self.assertEqual(
+                [shard_index],
+                sorted({entry["pair_index"] for entry in shard}),
+            )
+            self.assertEqual("AB" if shard_index % 2 == 0 else "BA", shard[0]["order"])
+
+    def test_pair_range_defaults_to_every_remaining_complete_pair(self) -> None:
+        full = run_matrix.build_schedule("ab", 4)
+        self.assertEqual(full, run_matrix.select_pair_range(full))
+        tail = run_matrix.select_pair_range(full, 6)
+        self.assertEqual([6, 7], sorted({entry["pair_index"] for entry in tail}))
+
+    def test_pair_range_rejects_empty_negative_or_overflowing_slices(self) -> None:
+        full = run_matrix.build_schedule("ab", 4)
+        for start, count in ((-1, 2), (0, 0), (7, 2), (8, 1)):
+            with self.subTest(start=start, count=count):
+                with self.assertRaises(ValueError):
+                    run_matrix.select_pair_range(full, start, count)
+
+    def test_partial_shard_requires_a_safe_runner_session_id(self) -> None:
+        with self.assertRaisesRegex(ValueError, "required for a partial pair shard"):
+            run_matrix.validate_runner_session_id(None, True)
+        self.assertEqual(
+            "run-42.shard-1",
+            run_matrix.validate_runner_session_id("run-42.shard-1", True),
+        )
+        self.assertIsNone(run_matrix.validate_runner_session_id(None, False))
+        with self.assertRaisesRegex(ValueError, "unsupported characters"):
+            run_matrix.validate_runner_session_id("bad session", True)
+
     def test_pending_ray_profile_is_rejected_without_production_classes(self) -> None:
         config = json.loads((AB_DIR / "gate-config.json").read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as temporary:
@@ -407,6 +443,220 @@ class MatrixScheduleTest(unittest.TestCase):
             run_matrix.verify_fork_jvm_args(log, ["-Xms1g", "-Xmx1g", "-XX:+AlwaysPreTouch"])
             with self.assertRaises(ValueError):
                 run_matrix.verify_fork_jvm_args(log, ["-Xms1g", "-Dfile.encoding=UTF-8"])
+
+
+class ManifestMergeTest(unittest.TestCase):
+    @staticmethod
+    def write_shard(
+        root: pathlib.Path,
+        phase: str,
+        pair_start: int,
+        pair_count: int,
+        runner_session_id: str,
+        *,
+        total_pairs: int = 8,
+        candidate_sha: str = "candidate",
+        directory_name: str | None = None,
+    ) -> pathlib.Path:
+        directory = root / (directory_name or f"{phase}-{pair_start}")
+        raw = directory / "raw"
+        logs = directory / "logs"
+        raw.mkdir(parents=True)
+        logs.mkdir()
+        full_schedule = run_matrix.build_schedule(phase, total_pairs // 2)
+        schedule = run_matrix.select_pair_range(full_schedule, pair_start, pair_count)
+        executions = []
+        for local_index, scheduled in enumerate(schedule):
+            role = scheduled["role"]
+            stem = (
+                f"{phase}-pair-{scheduled['pair_index'] + 1:02d}-"
+                f"pos-{scheduled['position'] + 1}-{role}"
+            )
+            result = raw / f"{stem}.json"
+            result.write_text("[]\n", encoding="utf-8")
+            log = logs / f"{stem}.log"
+            log.write_text("# VM options: -Xms1g -Xmx1g\n", encoding="utf-8")
+            is_candidate = role == "candidate"
+            executions.append(
+                {
+                    **scheduled,
+                    "execution_index": local_index,
+                    "revision_sha": candidate_sha if is_candidate else "base",
+                    "jar_sha256": "candidate-jar" if is_candidate else "base-jar",
+                    "fork_jvm_args_verified": True,
+                    "validation_error": None,
+                    "isolated_candidate": is_candidate,
+                    "result_mode_after_lock": 0o444,
+                    "log_mode_after_lock": 0o444,
+                    "started_at": "2026-01-01T00:00:00Z",
+                    "completed_at": "2026-01-01T00:00:01Z",
+                    "elapsed_seconds": 1.0,
+                    "exit_code": 0,
+                    "result_file": result.relative_to(directory).as_posix(),
+                    "result_sha256": run_matrix.sha256_file(result),
+                    "log_file": log.relative_to(directory).as_posix(),
+                    "log_sha256": run_matrix.sha256_file(log),
+                    "runtime_temp_dir": f"/tmp/{runner_session_id}/{stem}",
+                    "command": ["java", f"-Djava.io.tmpdir=/tmp/{runner_session_id}/{stem}"],
+                }
+            )
+        manifest = {
+            "schema_version": 1,
+            "phase": phase,
+            "profile": "infra",
+            "created_at": "2026-01-01T00:00:00Z",
+            "completed_at": "2026-01-01T00:01:00Z",
+            "base_sha": "base",
+            "candidate_sha": candidate_sha,
+            "config_path": "/base/perf/ab/gate-config.json",
+            "config_sha256": "base-config",
+            "base_jar_sha256": "base-jar",
+            "candidate_jar_sha256": "base-jar" if phase == "aa" else "candidate-jar",
+            "environment": {"runner": runner_session_id},
+            "jmh": {"mode": "avgt", "jvm_args": ["-Xms1g", "-Xmx1g"]},
+            "ci_overrides": {},
+            "candidate_isolation": {
+                "enabled": True,
+                "command_prefix": ["sudo", "-u", "candidate", "--"],
+                "file_user": "candidate",
+            },
+            "runner_session_id": runner_session_id,
+            "pair_range": {
+                "start": pair_start,
+                "count": pair_count,
+                "end_exclusive": pair_start + pair_count,
+                "total_pairs": total_pairs,
+            },
+            "schedule": schedule,
+            "executions": executions,
+        }
+        manifest_path = directory / "run-manifest.json"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        return manifest_path
+
+    @classmethod
+    def write_matrix_shards(
+        cls,
+        root: pathlib.Path,
+        phase: str,
+        *,
+        prefix: str = "",
+        sessions: list[str] | None = None,
+        omit: set[int] | None = None,
+        candidate_sha_overrides: dict[int, str] | None = None,
+    ) -> list[pathlib.Path]:
+        runner_sessions = sessions or [f"runner-{index}" for index in range(8)]
+        if len(runner_sessions) != 8:
+            raise ValueError("tests require one runner session for each of eight pairs")
+        omitted = omit or set()
+        overrides = candidate_sha_overrides or {}
+        return [
+            cls.write_shard(
+                root,
+                phase,
+                pair_index,
+                1,
+                runner_sessions[pair_index],
+                candidate_sha=overrides.get(pair_index, "candidate"),
+                directory_name=f"{prefix}{phase}-{pair_index}",
+            )
+            for pair_index in range(8)
+            if pair_index not in omitted
+        ]
+
+    def test_merges_consecutive_shards_into_one_gate_compatible_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            manifests = self.write_matrix_shards(root, "ab")
+            output = root / "merged-ab"
+            merged_path = merge_manifests.merge(manifests, output)
+            merged = json.loads(merged_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(
+                {"start": 0, "count": 8, "end_exclusive": 8, "total_pairs": 8},
+                merged["pair_range"],
+            )
+            self.assertEqual(
+                [f"runner-{index}" for index in range(8)],
+                merged["runner_session_ids"],
+            )
+            self.assertEqual(list(range(16)), [entry["execution_index"] for entry in merged["executions"]])
+            self.assertEqual(
+                [pair_index for pair_index in range(8) for _ in range(2)],
+                [entry["pair_index"] for entry in merged["executions"]],
+            )
+            self.assertEqual(16, len(list((output / "raw").glob("*.json"))))
+            self.assertEqual(16, len(list((output / "logs").glob("*.log"))))
+
+    def test_rejects_duplicate_or_missing_pair_ranges(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            duplicate = [
+                self.write_shard(root, "ab", 0, 1, "runner-0", directory_name="first"),
+                self.write_shard(root, "ab", 0, 1, "runner-1", directory_name="duplicate"),
+            ]
+            with self.assertRaisesRegex(ValueError, "overlaps"):
+                merge_manifests.merge(duplicate, root / "duplicate-output")
+
+            missing = self.write_matrix_shards(root, "ab", prefix="missing-", omit={2})
+            with self.assertRaisesRegex(ValueError, "missing pair range starting at 2"):
+                merge_manifests.merge(missing, root / "missing-output")
+
+    def test_rejects_cross_shard_identity_changes_and_reused_runner_sessions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            changed_identity = self.write_matrix_shards(
+                root,
+                "ab",
+                prefix="identity-",
+                candidate_sha_overrides={7: "different-candidate"},
+            )
+            with self.assertRaisesRegex(ValueError, "candidate_sha"):
+                merge_manifests.merge(changed_identity, root / "identity-output")
+
+            reused_session = self.write_matrix_shards(
+                root,
+                "ab",
+                prefix="session-",
+                sessions=["same-runner", "same-runner", *[f"runner-{index}" for index in range(2, 8)]],
+            )
+            with self.assertRaisesRegex(ValueError, "reused across shards"):
+                merge_manifests.merge(reused_session, root / "session-output")
+
+    def test_cross_phase_validation_requires_the_same_session_for_each_pair_range(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            aa = merge_manifests.merge(
+                self.write_matrix_shards(root, "aa", prefix="good-"),
+                root / "merged-aa",
+            )
+            ab = merge_manifests.merge(
+                self.write_matrix_shards(root, "ab", prefix="good-"),
+                root / "merged-ab",
+                aa,
+            )
+            merge_manifests.validate_cross_phase_sessions(
+                json.loads(aa.read_text(encoding="utf-8")),
+                json.loads(ab.read_text(encoding="utf-8")),
+            )
+
+            mismatched = self.write_matrix_shards(
+                root,
+                "ab",
+                prefix="bad-",
+                sessions=[*[f"runner-{index}" for index in range(7)], "other-runner"],
+            )
+            with self.assertRaisesRegex(ValueError, "runner sessions differ"):
+                merge_manifests.merge(mismatched, root / "bad-merged-ab", aa)
+
+    def test_rejects_tampered_raw_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            manifests = self.write_matrix_shards(root, "ab")
+            raw_file = next((manifests[0].parent / "raw").glob("*.json"))
+            raw_file.write_text("tampered\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "digest mismatch"):
+                merge_manifests.merge(manifests, root / "tampered-output")
 
 
 class ProtectedPathTest(unittest.TestCase):

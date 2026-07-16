@@ -62,7 +62,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  benchmark:
+  prepare:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.pull_request.labels.*.name, 'performance-ab')
@@ -73,12 +73,22 @@ jobs:
     env:
       BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base_sha }}
       CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
-      PERF_RESULTS_ROOT: /tmp/mahjong-performance-ab-${{ github.run_id }}-${{ github.run_attempt }}
-      CI_FORKS: ${{ inputs.forks }}
-      CI_WARMUPS: ${{ inputs.warmup_iterations }}
-      CI_MEASUREMENTS: ${{ inputs.measurement_iterations }}
+      PREPARED_ROOT: /tmp/mahjong-performance-prepared-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
+      - name: Require a same-repository optimization branch
+        if: github.event_name != 'workflow_dispatch'
+        shell: bash
+        env:
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ "$HEAD_REPOSITORY" != "$TARGET_REPOSITORY" ]]; then
+            echo "::error::The trusted performance gate cannot execute candidate code from a fork"
+            exit 1
+          fi
+
       - name: Check out base-owned harness
         uses: actions/checkout@v7
         with:
@@ -118,29 +128,6 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-disabled: true
-
-      - name: Create an unprivileged candidate benchmark user
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo useradd \
-            --system \
-            --user-group \
-            --no-create-home \
-            --shell /usr/sbin/nologin \
-            mahjong-benchmark
-          getent passwd mahjong-benchmark
-          sudo install -d --owner root --group root --mode 0711 "$PERF_RESULTS_ROOT"
-          sudo install -d \
-            --owner "$(id -u)" \
-            --group "$(id -g)" \
-            --mode 0711 \
-            "$PERF_RESULTS_ROOT/evidence"
-          sudo install -d \
-            --owner "$(id -u)" \
-            --group "$(id -g)" \
-            --mode 0711 \
-            "$PERF_RESULTS_ROOT/runtime-tmp"
 
       - name: Make wrappers executable
         shell: bash
@@ -188,7 +175,7 @@ jobs:
             --base-dir base \
             --candidate-dir candidate \
             --config base/perf/ab/gate-config.json \
-            --report "$PERF_RESULTS_ROOT/evidence/protected-paths.json"
+            --report "$PREPARED_ROOT/protected-paths-prepare.json"
 
       - name: Test base-owned statistics
         shell: bash
@@ -223,8 +210,7 @@ jobs:
           "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT"
           "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=17"
 
-      - name: Locate benchmark jars
-        id: jars
+      - name: Stage immutable benchmark inputs
         shell: bash
         run: |
           set -euo pipefail
@@ -232,26 +218,176 @@ jobs:
           CANDIDATE_JAR="$(find candidate/build/libs -maxdepth 1 -name '*-jmh.jar' -print -quit)"
           test -n "$BASE_JAR"
           test -n "$CANDIDATE_JAR"
-          cp base/perf/ab/gate-config.json "$PERF_RESULTS_ROOT/evidence/gate-config.json"
-          mkdir -p "$PERF_RESULTS_ROOT/evidence/jars"
-          cp "$BASE_JAR" "$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar"
-          cp "$CANDIDATE_JAR" "$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar"
+          mkdir -p "$PREPARED_ROOT/jars"
+          cp base/perf/ab/gate-config.json "$PREPARED_ROOT/gate-config.json"
+          cp "$BASE_JAR" "$PREPARED_ROOT/jars/base-jmh.jar"
+          cp "$CANDIDATE_JAR" "$PREPARED_ROOT/jars/candidate-jmh.jar"
           chmod 0444 \
-            "$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar" \
-            "$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar"
-          echo "base=$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar" >> "$GITHUB_OUTPUT"
-          echo "candidate=$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar" >> "$GITHUB_OUTPUT"
-          sudo -H -u mahjong-benchmark -- test -r "$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar"
-          sudo -H -u mahjong-benchmark -- test -r "$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar"
-          sudo -H -u mahjong-benchmark -- test ! -w "$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar"
-          sudo -H -u mahjong-benchmark -- test ! -w "$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar"
+            "$PREPARED_ROOT/gate-config.json" \
+            "$PREPARED_ROOT/jars/base-jmh.jar" \
+            "$PREPARED_ROOT/jars/candidate-jmh.jar"
+          (
+            cd "$PREPARED_ROOT"
+            sha256sum gate-config.json jars/base-jmh.jar jars/candidate-jmh.jar > SHA256SUMS
+          )
+
+      - name: Record prepared input provenance
+        shell: bash
+        env:
+          PROFILE: ${{ steps.profile.outputs.name }}
+        run: |
+          set -euo pipefail
+          python3 - "$PREPARED_ROOT" "$BASE_SHA" "$CANDIDATE_SHA" "$PROFILE" <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          files = {}
+          for relative in ("gate-config.json", "jars/base-jmh.jar", "jars/candidate-jmh.jar"):
+              path = root / relative
+              files[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+          manifest = {
+              "schema_version": 1,
+              "github_run_id": os.environ["GITHUB_RUN_ID"],
+              "github_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "base_sha": sys.argv[2],
+              "candidate_sha": sys.argv[3],
+              "profile": sys.argv[4],
+              "files": files,
+          }
+          (root / "prepared-manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload immutable benchmark inputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: performance-ab-prepared-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.PREPARED_ROOT }}/**
+          if-no-files-found: error
+          retention-days: 1
+
+  benchmark:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        pair_index:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base_sha }}
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
+      PROFILE: ${{ needs.prepare.outputs.profile }}
+      PAIR_INDEX: ${{ matrix.pair_index }}
+      PREPARED_ROOT: ${{ runner.temp }}/performance-ab-prepared
+      PERF_RESULTS_ROOT: /tmp/mahjong-performance-ab-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.pair_index }}
+      CI_FORKS: ${{ inputs.forks }}
+      CI_WARMUPS: ${{ inputs.warmup_iterations }}
+      CI_MEASUREMENTS: ${{ inputs.measurement_iterations }}
+
+    steps:
+      - name: Check out base-owned benchmark runner
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: base
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25.0.2+10.0.LTS"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Download immutable benchmark inputs
+        uses: actions/download-artifact@v8
+        with:
+          name: performance-ab-prepared-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.PREPARED_ROOT }}
+
+      - name: Verify prepared inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd "$PREPARED_ROOT"
+            sha256sum --check SHA256SUMS
+          )
+          cmp base/perf/ab/gate-config.json "$PREPARED_ROOT/gate-config.json"
+          python3 - "$PREPARED_ROOT/prepared-manifest.json" \
+            "$BASE_SHA" "$CANDIDATE_SHA" "$PROFILE" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          value = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected = {
+              "base_sha": sys.argv[2],
+              "candidate_sha": sys.argv[3],
+              "profile": sys.argv[4],
+              "github_run_id": sys.argv[5],
+              "github_run_attempt": sys.argv[6],
+          }
+          for key, wanted in expected.items():
+              if str(value.get(key)) != wanted:
+                  raise SystemExit(f"prepared manifest {key} mismatch")
+          PY
+
+      - name: Create isolated runner-local evidence directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo useradd \
+            --system \
+            --user-group \
+            --no-create-home \
+            --shell /usr/sbin/nologin \
+            mahjong-benchmark
+          getent passwd mahjong-benchmark
+          sudo install -d --owner root --group root --mode 0711 "$PERF_RESULTS_ROOT"
+          sudo install -d \
+            --owner "$(id -u)" \
+            --group "$(id -g)" \
+            --mode 0711 \
+            "$PERF_RESULTS_ROOT/evidence"
+          sudo install -d \
+            --owner "$(id -u)" \
+            --group "$(id -g)" \
+            --mode 0711 \
+            "$PERF_RESULTS_ROOT/runtime-tmp"
+          RUNNER_SESSION_ID="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+          echo "RUNNER_SESSION_ID=$RUNNER_SESSION_ID" >> "$GITHUB_ENV"
+          sudo -H -u mahjong-benchmark -- test -r "$PREPARED_ROOT/jars/base-jmh.jar"
+          sudo -H -u mahjong-benchmark -- test -r "$PREPARED_ROOT/jars/candidate-jmh.jar"
+          sudo -H -u mahjong-benchmark -- test ! -w "$PREPARED_ROOT/jars/base-jmh.jar"
+          sudo -H -u mahjong-benchmark -- test ! -w "$PREPARED_ROOT/jars/candidate-jmh.jar"
           sudo -H -u mahjong-benchmark -- test ! -w "$PERF_RESULTS_ROOT/evidence"
           sudo -H -u mahjong-benchmark -- test ! -w "$PERF_RESULTS_ROOT/runtime-tmp"
 
-      - name: Run A/A drift control
+      - name: Run runner-local A/A control pair
         shell: bash
         env:
-          BASE_JAR: ${{ steps.jars.outputs.base }}
           GITHUB_TOKEN: ""
           GH_TOKEN: ""
           ACTIONS_CACHE_URL: ""
@@ -267,24 +403,25 @@ jobs:
           [[ -z "$CI_MEASUREMENTS" ]] || OVERRIDES+=(--measurement-iterations "$CI_MEASUREMENTS")
           python3 base/perf/ab/run_matrix.py \
             --phase aa \
-            --profile "${{ steps.profile.outputs.name }}" \
-            --base-jar "$BASE_JAR" \
-            --candidate-jar "$BASE_JAR" \
+            --profile "$PROFILE" \
+            --base-jar "$PREPARED_ROOT/jars/base-jmh.jar" \
+            --candidate-jar "$PREPARED_ROOT/jars/base-jmh.jar" \
             --base-sha "$BASE_SHA" \
             --candidate-sha "$CANDIDATE_SHA" \
             --config base/perf/ab/gate-config.json \
             --output-dir "$PERF_RESULTS_ROOT/evidence/aa" \
             --runtime-temp-root "$PERF_RESULTS_ROOT/runtime-tmp" \
             --java "$JAVA_HOME/bin/java" \
+            --pair-start "$PAIR_INDEX" \
+            --pair-count 1 \
+            --runner-session-id "$RUNNER_SESSION_ID" \
             --candidate-command-prefix-json '["sudo","-H","-u","mahjong-benchmark","--"]' \
             --candidate-file-user mahjong-benchmark \
             "${OVERRIDES[@]}"
 
-      - name: Run four interleaved AB and four BA pairs
+      - name: Run runner-local A/B pair
         shell: bash
         env:
-          BASE_JAR: ${{ steps.jars.outputs.base }}
-          CANDIDATE_JAR: ${{ steps.jars.outputs.candidate }}
           GITHUB_TOKEN: ""
           GH_TOKEN: ""
           ACTIONS_CACHE_URL: ""
@@ -300,39 +437,71 @@ jobs:
           [[ -z "$CI_MEASUREMENTS" ]] || OVERRIDES+=(--measurement-iterations "$CI_MEASUREMENTS")
           python3 base/perf/ab/run_matrix.py \
             --phase ab \
-            --profile "${{ steps.profile.outputs.name }}" \
-            --base-jar "$BASE_JAR" \
-            --candidate-jar "$CANDIDATE_JAR" \
+            --profile "$PROFILE" \
+            --base-jar "$PREPARED_ROOT/jars/base-jmh.jar" \
+            --candidate-jar "$PREPARED_ROOT/jars/candidate-jmh.jar" \
             --base-sha "$BASE_SHA" \
             --candidate-sha "$CANDIDATE_SHA" \
             --config base/perf/ab/gate-config.json \
             --output-dir "$PERF_RESULTS_ROOT/evidence/ab" \
             --runtime-temp-root "$PERF_RESULTS_ROOT/runtime-tmp" \
             --java "$JAVA_HOME/bin/java" \
+            --pair-start "$PAIR_INDEX" \
+            --pair-count 1 \
+            --runner-session-id "$RUNNER_SESSION_ID" \
             --candidate-command-prefix-json '["sudo","-H","-u","mahjong-benchmark","--"]' \
             --candidate-file-user mahjong-benchmark \
             "${OVERRIDES[@]}"
 
-      - name: Upload isolated raw evidence for the trusted decision job
+      - name: Upload runner-local evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: performance-ab-raw-${{ github.run_id }}-${{ github.run_attempt }}
+          name: performance-ab-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.pair_index }}
           path: ${{ env.PERF_RESULTS_ROOT }}/evidence/**
           if-no-files-found: error
           retention-days: 1
 
   decide:
-    needs: benchmark
+    needs:
+      - prepare
+      - benchmark
+    if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base_sha }}
       CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
-      PROFILE: ${{ needs.benchmark.outputs.profile }}
+      PROFILE: ${{ needs.prepare.outputs.profile }}
 
     steps:
+      - name: Require a complete eligible performance run
+        shell: bash
+        env:
+          BENCHMARK_RESULT: ${{ needs.benchmark.result }}
+          GATE_REQUESTED: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'performance-ab') }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ "$GATE_REQUESTED" != "true" ]]; then
+            echo "PERFORMANCE_GATE_ENABLED=false" >> "$GITHUB_ENV"
+            echo "Performance A/B was not requested for this pull request."
+            exit 0
+          fi
+          if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" && "$HEAD_REPOSITORY" != "$TARGET_REPOSITORY" ]]; then
+            echo "::error::The trusted performance gate cannot execute candidate code from a fork"
+            exit 1
+          fi
+          if [[ "$PREPARE_RESULT" != "success" || "$BENCHMARK_RESULT" != "success" ]]; then
+            echo "::error::Performance preparation or one of the eight measurement shards failed"
+            exit 1
+          fi
+          echo "PERFORMANCE_GATE_ENABLED=true" >> "$GITHUB_ENV"
+
       - name: Check out a fresh base-owned decision gate
+        if: env.PERFORMANCE_GATE_ENABLED == 'true'
         uses: actions/checkout@v7
         with:
           ref: ${{ env.BASE_SHA }}
@@ -341,6 +510,7 @@ jobs:
           persist-credentials: false
 
       - name: Check out candidate only for a fresh protected-path comparison
+        if: env.PERFORMANCE_GATE_ENABLED == 'true'
         uses: actions/checkout@v7
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
@@ -350,17 +520,28 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
+        if: env.PERFORMANCE_GATE_ENABLED == 'true'
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
-      - name: Download raw benchmark evidence
+      - name: Download immutable benchmark inputs
+        if: env.PERFORMANCE_GATE_ENABLED == 'true'
         uses: actions/download-artifact@v8
         with:
-          name: performance-ab-raw-${{ github.run_id }}-${{ github.run_attempt }}
+          name: performance-ab-prepared-${{ github.run_id }}-${{ github.run_attempt }}
           path: perf-results
 
+      - name: Download isolated runner-local evidence
+        if: env.PERFORMANCE_GATE_ENABLED == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: performance-ab-shard-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: perf-shards
+          merge-multiple: false
+
       - name: Re-verify revisions and the protected decision surface
+        if: env.PERFORMANCE_GATE_ENABLED == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -373,7 +554,51 @@ jobs:
             --report perf-results/protected-paths.json
           python3 -m unittest discover -s base/perf/ab/tests -v
 
+      - name: Merge and verify the complete shard set
+        if: env.PERFORMANCE_GATE_ENABLED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t AA_MANIFESTS < <(
+            find perf-shards -path '*/aa/run-manifest.json' -type f | sort
+          )
+          mapfile -t AB_MANIFESTS < <(
+            find perf-shards -path '*/ab/run-manifest.json' -type f | sort
+          )
+          if [[ "${#AA_MANIFESTS[@]}" -ne 8 || "${#AB_MANIFESTS[@]}" -ne 8 ]]; then
+            echo "::error::Expected exactly 8 A/A and 8 A/B shard manifests"
+            exit 1
+          fi
+
+          AA_ARGS=()
+          for manifest in "${AA_MANIFESTS[@]}"; do
+            AA_ARGS+=(--manifest "$manifest")
+          done
+          python3 base/perf/ab/merge_manifests.py \
+            "${AA_ARGS[@]}" \
+            --output-dir perf-results/aa
+
+          AB_ARGS=()
+          for manifest in "${AB_MANIFESTS[@]}"; do
+            AB_ARGS+=(--manifest "$manifest")
+          done
+          python3 base/perf/ab/merge_manifests.py \
+            "${AB_ARGS[@]}" \
+            --output-dir perf-results/ab \
+            --peer-manifest perf-results/aa/run-manifest.json
+
+          mkdir -p perf-results/shards
+          for index in "${!AA_MANIFESTS[@]}"; do
+            printf -v shard '%02d' "$index"
+            cp "${AA_MANIFESTS[$index]}" "perf-results/shards/aa-$shard-run-manifest.json"
+            cp "${AB_MANIFESTS[$index]}" "perf-results/shards/ab-$shard-run-manifest.json"
+            chmod 0444 \
+              "perf-results/shards/aa-$shard-run-manifest.json" \
+              "perf-results/shards/ab-$shard-run-manifest.json"
+          done
+
       - name: Decide from fresh base-owned thresholds
+        if: env.PERFORMANCE_GATE_ENABLED == 'true'
         id: decision
         shell: bash
         run: |
@@ -387,7 +612,7 @@ jobs:
           cat perf-results/decision.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Write artifact manifest
-        if: always()
+        if: always() && env.PERFORMANCE_GATE_ENABLED == 'true'
         shell: bash
         run: |
           python3 base/perf/ab/artifact_manifest.py \
@@ -397,7 +622,7 @@ jobs:
             --candidate-sha "$CANDIDATE_SHA"
 
       - name: Upload raw and analyzed evidence
-        if: always()
+        if: always() && env.PERFORMANCE_GATE_ENABLED == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: performance-ab-${{ env.PROFILE }}-${{ env.BASE_SHA }}-${{ env.CANDIDATE_SHA }}
@@ -406,7 +631,7 @@ jobs:
           retention-days: 30
 
       - name: Enforce three-state decision
-        if: always()
+        if: always() && env.PERFORMANCE_GATE_ENABLED == 'true'
         shell: bash
         run: |
           set -euo pipefail

@@ -23,6 +23,7 @@ from typing import Any
 SCHEMA_VERSION = 1
 TIME_PATTERN = re.compile(r"^[1-9][0-9]*(?:ns|us|ms|s)$")
 USER_PATTERN = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+RUNNER_SESSION_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
 def sha256_file(path: pathlib.Path) -> str:
@@ -70,6 +71,48 @@ def build_schedule(phase: str, repetitions_per_order: int) -> list[dict[str, Any
                 }
             )
     return schedule
+
+
+def select_pair_range(
+    schedule: list[dict[str, Any]],
+    pair_start: int = 0,
+    pair_count: int | None = None,
+) -> list[dict[str, Any]]:
+    """Select a consecutive range of complete pairs from a full matrix schedule."""
+    pair_indices = sorted({int(entry["pair_index"]) for entry in schedule})
+    if pair_indices != list(range(len(pair_indices))):
+        raise ValueError("schedule pair indices must be sequential from zero")
+    total_pairs = len(pair_indices)
+    if pair_start < 0 or pair_start >= total_pairs:
+        raise ValueError(f"pair_start must be between 0 and {total_pairs - 1}")
+    effective_count = total_pairs - pair_start if pair_count is None else pair_count
+    if effective_count <= 0:
+        raise ValueError("pair_count must be positive")
+    pair_end = pair_start + effective_count
+    if pair_end > total_pairs:
+        raise ValueError(
+            f"pair range [{pair_start}, {pair_end}) exceeds the {total_pairs}-pair schedule"
+        )
+    selected = [
+        entry
+        for entry in schedule
+        if pair_start <= int(entry["pair_index"]) < pair_end
+    ]
+    expected_entries = effective_count * 2
+    if len(selected) != expected_entries:
+        raise ValueError(
+            f"pair range [{pair_start}, {pair_end}) contains {len(selected)} entries, "
+            f"expected {expected_entries}"
+        )
+    return selected
+
+
+def validate_runner_session_id(runner_session_id: str | None, sharded: bool) -> str | None:
+    if sharded and not runner_session_id:
+        raise ValueError("runner_session_id is required for a partial pair shard")
+    if runner_session_id is not None and not RUNNER_SESSION_PATTERN.fullmatch(runner_session_id):
+        raise ValueError("runner_session_id contains unsupported characters or length")
+    return runner_session_id
 
 
 def java_version(java: str) -> str:
@@ -346,7 +389,14 @@ def run(args: argparse.Namespace) -> int:
     log_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = output_dir / "run-manifest.json"
     repetitions = config["matrix"]["repetitions_per_order"]
-    schedule = build_schedule(args.phase, repetitions)
+    full_schedule = build_schedule(args.phase, repetitions)
+    schedule = select_pair_range(full_schedule, args.pair_start, args.pair_count)
+    total_pairs = repetitions * 2
+    selected_pair_indices = sorted({int(entry["pair_index"]) for entry in schedule})
+    selected_pair_start = selected_pair_indices[0]
+    selected_pair_count = len(selected_pair_indices)
+    sharded = selected_pair_start != 0 or selected_pair_count != total_pairs
+    runner_session_id = validate_runner_session_id(args.runner_session_id, sharded)
     jar_by_role = {
         "base": base_jar,
         "candidate": candidate_jar,
@@ -390,6 +440,13 @@ def run(args: argparse.Namespace) -> int:
             "enabled": bool(candidate_prefix),
             "command_prefix": candidate_prefix,
             "file_user": candidate_file_user,
+        },
+        "runner_session_id": runner_session_id,
+        "pair_range": {
+            "start": selected_pair_start,
+            "count": selected_pair_count,
+            "end_exclusive": selected_pair_start + selected_pair_count,
+            "total_pairs": total_pairs,
         },
         "schedule": schedule,
         "executions": [],
@@ -514,6 +571,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--measurement-iterations", type=int)
     parser.add_argument("--warmup-time")
     parser.add_argument("--measurement-time")
+    parser.add_argument(
+        "--pair-start",
+        type=int,
+        default=0,
+        help="zero-based first pair to execute (default: first pair)",
+    )
+    parser.add_argument(
+        "--pair-count",
+        type=int,
+        help="number of consecutive complete pairs to execute (default: all remaining pairs)",
+    )
+    parser.add_argument(
+        "--runner-session-id",
+        help="runner identity shared by this shard's A/A and A/B phases (required for partial shards)",
+    )
     parser.add_argument("--candidate-command-prefix-json")
     parser.add_argument("--candidate-file-user")
     return parser.parse_args()
