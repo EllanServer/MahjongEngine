@@ -365,6 +365,20 @@ jobs:
 
           grep -Eq '\[MahjongPaper\].*Enabling MahjongPaper v' server.log
           grep -Eq '\[CraftEngine\].*Enabling CraftEngine v26\.7\.3' server.log
+          if grep -Eiq \
+            'Failed to enable CraftEngine|Error initializing CraftEngine|Cannot find proxied class|CraftEngine.*shutting down server' \
+            server.log; then
+            echo '::error::The latest CraftEngine Paper artifact failed to enable on this declared-compatible Paper version'
+            grep -Ein \
+              'Failed to enable CraftEngine|Error initializing CraftEngine|Cannot find proxied class|CraftEngine.*shutting down server' \
+              server.log || true
+            exit 1
+          fi
+          if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+            echo '::error::Paper exited after plugin enablement'
+            cat server.log
+            exit 1
+          fi
 
           COMMAND_START=$(wc -l < server.log)
           printf 'mahjong help\n' >&3
@@ -375,7 +389,11 @@ jobs:
             cat command.log
             exit 1
           fi
-          grep -Fq 'MahjongPaper' command.log
+          if ! grep -Eq 'Only players can use this command|只有玩家可以使用' command.log; then
+            echo '::error::The console command was not dispatched to MahjongPaper'
+            cat command.log
+            exit 1
+          fi
 
           verify_library() {
             local filename="$1"
