@@ -294,7 +294,7 @@ jobs:
       CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || inputs.candidate_sha }}
       PROFILE: ${{ needs.prepare.outputs.profile }}
       PAIR_INDEX: ${{ matrix.pair_index }}
-      PREPARED_ROOT: ${{ runner.temp }}/performance-ab-prepared
+      PREPARED_ROOT: /tmp/mahjong-performance-prepared-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.pair_index }}
       PERF_RESULTS_ROOT: /tmp/mahjong-performance-ab-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.pair_index }}
       CI_FORKS: ${{ inputs.forks }}
       CI_WARMUPS: ${{ inputs.warmup_iterations }}
