@@ -16,7 +16,7 @@ plugins {
 }
 
 group = "top.ellan"
-version = "1.4.1"
+version = "1.5.0"
 val minimumPaperDevBundleVersion = "1.20.1-R0.1-SNAPSHOT"
 val paperDevBundleVersion =
     providers
