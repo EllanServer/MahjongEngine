@@ -2,6 +2,10 @@ package top.ellan.mahjong.perf
 
 import top.ellan.mahjong.table.core.TableRuntimeServices
 import top.ellan.mahjong.config.PluginSettings
+import top.ellan.mahjong.gb.jni.GbFanEntry
+import top.ellan.mahjong.gb.jni.GbTingCandidate
+import top.ellan.mahjong.gb.jni.GbTingRequest
+import top.ellan.mahjong.gb.jni.GbTingResponse
 import top.ellan.mahjong.gb.runtime.GbNativeRulesGateway
 import top.ellan.mahjong.model.MahjongTile
 import top.ellan.mahjong.model.SeatWind
@@ -309,8 +313,8 @@ class CorePerformanceBenchmarksTest {
             names,
             object : GbNativeRulesGateway() {
                 override fun evaluateTingNative(
-                    request: top.ellan.mahjong.gb.jni.GbTingRequest,
-                ): top.ellan.mahjong.gb.jni.GbTingResponse {
+                    request: GbTingRequest,
+                ): GbTingResponse {
                     var score = 0
                     repeat(512) {
                         request.handTiles.forEachIndexed { index, tile ->
@@ -325,13 +329,13 @@ class CorePerformanceBenchmarksTest {
                     }
                     PerformanceBenchmarkSupport.consume(score)
                     val fan = score.mod(3) + 1
-                    return top.ellan.mahjong.gb.jni.GbTingResponse(
+                    return GbTingResponse(
                         true,
                         listOf(
-                            top.ellan.mahjong.gb.jni.GbTingCandidate(
+                            GbTingCandidate(
                                 "M1",
                                 fan,
-                                listOf(top.ellan.mahjong.gb.jni.GbFanEntry("TEST", fan))
+                                listOf(GbFanEntry("TEST", fan))
                             )
                         ),
                         null
