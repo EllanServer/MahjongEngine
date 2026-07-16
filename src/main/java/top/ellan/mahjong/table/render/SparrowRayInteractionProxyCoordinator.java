@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -75,12 +76,12 @@ final class SparrowRayInteractionProxyCoordinator {
                 if (viewer == null || !viewer.isOnline()) {
                     continue;
                 }
-                List<InteractionGeometry> geometry = interactionGeometry(interactions);
                 ActiveProxies current = previous.get(viewerId);
-                if (this.canReuse(viewerId, viewer, current, geometry)) {
+                if (this.canReuse(viewerId, viewer, current, interactions)) {
                     next.put(viewerId, current);
                     continue;
                 }
+                List<InteractionGeometry> geometry = interactionGeometry(interactions);
                 List<ClientProxy> proxies = this.backend.create(viewer, interactions);
                 if (!proxies.isEmpty()) {
                     ActiveProxies created = new ActiveProxies(
@@ -135,11 +136,11 @@ final class SparrowRayInteractionProxyCoordinator {
         UUID viewerId,
         Player viewer,
         ActiveProxies active,
-        List<InteractionGeometry> geometry
+        List<DisplayInteractionRayRegistry.RayInteraction> interactions
     ) {
         if (active == null
             || active.viewer() != viewer
-            || !active.geometry().equals(geometry)
+            || !sameGeometry(active.geometry(), interactions)
             || active.proxies().isEmpty()) {
             return false;
         }
@@ -147,6 +148,21 @@ final class SparrowRayInteractionProxyCoordinator {
             if (!this.session.id().equals(
                 ClientInteractionProxyRegistry.tableIdFor(proxy.entityId(), viewerId)
             )) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameGeometry(
+        List<InteractionGeometry> geometry,
+        List<DisplayInteractionRayRegistry.RayInteraction> interactions
+    ) {
+        if (geometry.size() != interactions.size()) {
+            return false;
+        }
+        for (int index = 0; index < geometry.size(); index++) {
+            if (!geometry.get(index).matches(interactions.get(index))) {
                 return false;
             }
         }
@@ -355,6 +371,17 @@ final class SparrowRayInteractionProxyCoordinator {
         float height,
         float depth
     ) {
+        private boolean matches(DisplayInteractionRayRegistry.RayInteraction interaction) {
+            return Objects.equals(this.worldId, interaction.worldId())
+                && Double.compare(this.centerX, interaction.centerX()) == 0
+                && Double.compare(this.centerY, interaction.centerY()) == 0
+                && Double.compare(this.centerZ, interaction.centerZ()) == 0
+                && Double.compare(this.acrossX, interaction.acrossX()) == 0
+                && Double.compare(this.acrossZ, interaction.acrossZ()) == 0
+                && Float.compare(this.width, interaction.width()) == 0
+                && Float.compare(this.height, interaction.height()) == 0
+                && Float.compare(this.depth, interaction.depth()) == 0;
+        }
     }
 
     private static final class SparrowBackend implements Backend {
