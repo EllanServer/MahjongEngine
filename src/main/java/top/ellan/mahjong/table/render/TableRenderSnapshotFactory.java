@@ -4,6 +4,7 @@ import top.ellan.mahjong.model.SeatWind;
 import top.ellan.mahjong.render.TableRenderSubject;
 import top.ellan.mahjong.render.snapshot.TableRenderSnapshot;
 import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -12,7 +13,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.Comparator;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
@@ -20,16 +20,24 @@ public final class TableRenderSnapshotFactory {
     public TableRenderSnapshot create(TableRenderSubject session, long version, long cancellationNonce) {
         Location tableCenter = session.center();
         boolean started = session.isStarted();
-        List<UUID> onlineViewerIds = session.viewers().stream()
+        List<SerializedViewerId> serializedOnlineViewerIds = session.viewers().stream()
             .map(Player::getUniqueId)
             .distinct()
-            .sorted(Comparator.comparing(UUID::toString))
+            .map(viewerId -> new SerializedViewerId(viewerId, viewerId.toString()))
+            .sorted(Comparator.comparing(SerializedViewerId::serializedId))
+            .toList();
+        List<UUID> onlineViewerIds = serializedOnlineViewerIds.stream()
+            .map(SerializedViewerId::id)
             .toList();
         Set<UUID> onlineViewerIdSet = new HashSet<>(onlineViewerIds);
         Map<UUID, String> viewerMembershipSignatures = new HashMap<>();
         Map<UUID, List<UUID>> viewerIdsExcluding = new HashMap<>();
-        for (UUID viewerId : onlineViewerIds) {
-            viewerMembershipSignatures.put(viewerId, this.viewerMembershipSignature(onlineViewerIds, viewerId));
+        for (SerializedViewerId viewer : serializedOnlineViewerIds) {
+            UUID viewerId = viewer.id();
+            viewerMembershipSignatures.put(
+                viewerId,
+                this.viewerMembershipSignature(serializedOnlineViewerIds, viewerId)
+            );
             viewerIdsExcluding.put(viewerId, this.viewerIdsExcluding(onlineViewerIds, viewerId));
         }
         EnumMap<SeatWind, TableSeatRenderSnapshot> seats = new EnumMap<>(SeatWind.class);
@@ -130,11 +138,11 @@ public final class TableRenderSnapshotFactory {
         );
     }
 
-    private String viewerMembershipSignature(List<UUID> onlineViewerIds, UUID excludedPlayerId) {
+    private String viewerMembershipSignature(List<SerializedViewerId> onlineViewerIds, UUID excludedPlayerId) {
         StringBuilder builder = new StringBuilder(onlineViewerIds.size() * 36);
-        for (UUID viewerId : onlineViewerIds) {
-            if (!viewerId.equals(excludedPlayerId)) {
-                builder.append(viewerId);
+        for (SerializedViewerId viewer : onlineViewerIds) {
+            if (!viewer.id().equals(excludedPlayerId)) {
+                builder.append(viewer.serializedId());
             }
         }
         return builder.toString();
@@ -145,4 +153,6 @@ public final class TableRenderSnapshotFactory {
             .filter(viewerId -> !viewerId.equals(excludedPlayerId))
             .toList();
     }
+
+    private record SerializedViewerId(UUID id, String serializedId) {}
 }

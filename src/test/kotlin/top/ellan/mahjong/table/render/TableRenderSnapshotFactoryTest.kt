@@ -1,8 +1,5 @@
 package top.ellan.mahjong.table.render
 
-import top.ellan.mahjong.model.SeatWind
-import top.ellan.mahjong.render.scene.MeldView
-import top.ellan.mahjong.table.core.MahjongTableSession
 import org.bukkit.Location
 import org.bukkit.entity.Player
 import org.mockito.ArgumentMatchers
@@ -11,6 +8,9 @@ import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import top.ellan.mahjong.model.SeatWind
+import top.ellan.mahjong.render.scene.MeldView
+import top.ellan.mahjong.table.core.MahjongTableSession
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,19 +18,29 @@ import kotlin.test.assertTrue
 
 class TableRenderSnapshotFactoryTest {
     @Test
-    fun `render snapshot reuses precomputed online viewers`() {
+    fun `render snapshot preserves serialized viewer ordering and membership`() {
         val session = mock(MahjongTableSession::class.java)
         val factory = TableRenderSnapshotFactory()
 
         val eastId = UUID.fromString("00000000-0000-0000-0000-000000000011")
-        val southId = UUID.fromString("00000000-0000-0000-0000-000000000012")
+        val southId = UUID.fromString("80000000-0000-0000-0000-000000000012")
+        val westId = UUID.fromString("7fffffff-ffff-ffff-ffff-ffffffffffff")
+        val northId = UUID.fromString("00000000-0000-0000-0000-000000000014")
         val eastViewer = mock(Player::class.java)
+        val duplicateEastViewer = mock(Player::class.java)
         val southViewer = mock(Player::class.java)
+        val westViewer = mock(Player::class.java)
 
+        assertTrue(southId.compareTo(eastId) < 0)
+        assertTrue(southId.toString().compareTo(eastId.toString()) > 0)
         `when`(eastViewer.uniqueId).thenReturn(eastId)
+        `when`(duplicateEastViewer.uniqueId).thenReturn(eastId)
         `when`(southViewer.uniqueId).thenReturn(southId)
+        `when`(westViewer.uniqueId).thenReturn(westId)
         `when`(session.center()).thenReturn(Location(null, 0.0, 64.0, 0.0))
-        `when`(session.viewers()).thenReturn(listOf(eastViewer, southViewer))
+        `when`(session.viewers()).thenReturn(
+            listOf(southViewer, westViewer, duplicateEastViewer, eastViewer),
+        )
         `when`(session.isStarted()).thenReturn(false)
         `when`(session.isRoundFinished()).thenReturn(false)
         `when`(session.remainingWallCount()).thenReturn(0)
@@ -49,8 +59,8 @@ class TableRenderSnapshotFactoryTest {
         `when`(session.doraIndicators()).thenReturn(emptyList())
         `when`(session.playerAt(SeatWind.EAST)).thenReturn(eastId)
         `when`(session.playerAt(SeatWind.SOUTH)).thenReturn(southId)
-        `when`(session.playerAt(SeatWind.WEST)).thenReturn(null)
-        `when`(session.playerAt(SeatWind.NORTH)).thenReturn(null)
+        `when`(session.playerAt(SeatWind.WEST)).thenReturn(westId)
+        `when`(session.playerAt(SeatWind.NORTH)).thenReturn(northId)
 
         doAnswer { invocation ->
             (invocation.arguments[0] as UUID?)?.toString() ?: ""
@@ -61,7 +71,7 @@ class TableRenderSnapshotFactoryTest {
             `when`(session.stickLayoutCount(wind)).thenReturn(0)
             `when`(session.cornerSticks(wind)).thenReturn(emptyList())
         }
-        for (playerId in listOf(eastId, southId)) {
+        for (playerId in listOf(eastId, southId, westId, northId)) {
             `when`(session.points(playerId)).thenReturn(25000)
             `when`(session.isRiichi(playerId)).thenReturn(false)
             `when`(session.isReady(playerId)).thenReturn(false)
@@ -77,13 +87,30 @@ class TableRenderSnapshotFactoryTest {
         val snapshot = factory.create(session, 1L, 0L)
         val eastSeat = snapshot.seat(SeatWind.EAST)
         val southSeat = snapshot.seat(SeatWind.SOUTH)
+        val westSeat = snapshot.seat(SeatWind.WEST)
+        val northSeat = snapshot.seat(SeatWind.NORTH)
 
         assertTrue(eastSeat.online())
         assertTrue(southSeat.online())
-        assertEquals(listOf(southId), eastSeat.viewerIdsExcluding())
-        assertEquals(listOf(eastId), southSeat.viewerIdsExcluding())
-        assertEquals(southId.toString(), eastSeat.viewerMembershipSignature())
-        assertEquals(eastId.toString(), southSeat.viewerMembershipSignature())
+        assertTrue(westSeat.online())
+        assertTrue(!northSeat.online())
+        assertEquals(listOf(westId, southId), eastSeat.viewerIdsExcluding())
+        assertEquals(listOf(eastId, westId), southSeat.viewerIdsExcluding())
+        assertEquals(listOf(eastId, southId), westSeat.viewerIdsExcluding())
+        assertTrue(northSeat.viewerIdsExcluding().isEmpty())
+        assertEquals(
+            "7fffffff-ffff-ffff-ffff-ffffffffffff80000000-0000-0000-0000-000000000012",
+            eastSeat.viewerMembershipSignature(),
+        )
+        assertEquals(
+            "00000000-0000-0000-0000-0000000000117fffffff-ffff-ffff-ffff-ffffffffffff",
+            southSeat.viewerMembershipSignature(),
+        )
+        assertEquals(
+            "00000000-0000-0000-0000-00000000001180000000-0000-0000-0000-000000000012",
+            westSeat.viewerMembershipSignature(),
+        )
+        assertTrue(northSeat.viewerMembershipSignature().isEmpty())
 
         verify(session, never()).onlinePlayer(ArgumentMatchers.any(UUID::class.java))
         verify(session, never()).viewerIdsExcluding(ArgumentMatchers.any(UUID::class.java))
@@ -123,7 +150,12 @@ class TableRenderSnapshotFactoryTest {
         val snapshot = factory.create(session, 1L, 0L)
 
         assertTrue(snapshot.doraIndicators().isEmpty())
+        for (wind in SeatWind.values()) {
+            val seat = snapshot.seat(wind)
+            assertTrue(!seat.online())
+            assertTrue(seat.viewerIdsExcluding().isEmpty())
+            assertTrue(seat.viewerMembershipSignature().isEmpty())
+        }
         verify(session, never()).doraIndicators()
     }
 }
-
