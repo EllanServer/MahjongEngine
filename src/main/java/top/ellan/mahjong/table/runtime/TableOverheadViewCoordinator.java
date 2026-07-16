@@ -19,7 +19,6 @@ import top.ellan.mahjong.compat.SparrowFakeEntityFactory;
 import top.ellan.mahjong.config.PluginSettings;
 import top.ellan.mahjong.model.SeatWind;
 import top.ellan.mahjong.table.core.MahjongTableSession;
-import top.ellan.mahjong.table.core.TableActionDeadlines;
 import top.ellan.mahjong.table.core.TableOverheadViews;
 import top.ellan.mahjong.table.core.TableRuntimeServices;
 
@@ -74,13 +73,7 @@ public final class TableOverheadViewCoordinator implements TableOverheadViews {
         if (playerId == null) {
             return;
         }
-        ActiveView view = this.activeViews.remove(playerId);
-        if (view != null) {
-            // A disconnected player may retain their active seat. Restore the
-            // action clock before unattended handling takes over on the next
-            // table tick instead of leaving an orphaned camera suspension.
-            TableActionDeadlines.resume(view.session(), playerId);
-        }
+        this.activeViews.remove(playerId);
     }
 
     @Override
@@ -96,8 +89,6 @@ public final class TableOverheadViewCoordinator implements TableOverheadViews {
             Player player = Bukkit.getPlayer(entry.getKey());
             if (player != null && player.isOnline()) {
                 this.plugin.scheduler().runEntity(player, () -> this.finishExit(player, view, false, true));
-            } else {
-                TableActionDeadlines.discardSuspension(view.session(), entry.getKey());
             }
         }
     }
@@ -112,8 +103,6 @@ public final class TableOverheadViewCoordinator implements TableOverheadViews {
             Player player = Bukkit.getPlayer(entry.getKey());
             if (player != null && player.isOnline()) {
                 this.plugin.scheduler().runEntity(player, () -> this.finishExit(player, view, false, true));
-            } else {
-                TableActionDeadlines.discardSuspension(view.session(), entry.getKey());
             }
         }
     }
@@ -131,8 +120,6 @@ public final class TableOverheadViewCoordinator implements TableOverheadViews {
                 // perform one direct best-effort restore without touching a
                 // Bukkit world entity.
                 this.finishExit(player, view, false, false);
-            } else {
-                TableActionDeadlines.discardSuspension(view.session(), entry.getKey());
             }
         }
         this.activeViews.clear();
@@ -183,10 +170,8 @@ public final class TableOverheadViewCoordinator implements TableOverheadViews {
                 this.destroyCamera(player, camera);
                 return false;
             }
-            TableActionDeadlines.suspend(session, player.getUniqueId());
             if (!this.cameraBridge.setCamera(player, camera.entityID())) {
                 this.activeViews.remove(player.getUniqueId(), view);
-                TableActionDeadlines.resume(session, player.getUniqueId());
                 this.restoreCameraAndDestroy(player, camera, true, 3, null);
                 this.plugin.messages().send(player, "table.overhead.unavailable");
                 return false;
@@ -197,9 +182,7 @@ public final class TableOverheadViewCoordinator implements TableOverheadViews {
             return true;
         } catch (Throwable throwable) {
             if (view != null) {
-                if (this.activeViews.remove(player.getUniqueId(), view)) {
-                    TableActionDeadlines.resume(view.session(), player.getUniqueId());
-                }
+                this.activeViews.remove(player.getUniqueId(), view);
             }
             ActiveView current = this.activeViews.get(player.getUniqueId());
             if (camera != null && (current == null || current.camera() != camera)) {
@@ -256,15 +239,10 @@ public final class TableOverheadViewCoordinator implements TableOverheadViews {
         Runnable restored = () -> {
             ActiveView current = this.activeViews.get(player.getUniqueId());
             if (current == null) {
-                TableActionDeadlines.resume(view.session(), player.getUniqueId());
                 if (notify) {
                     view.session().flushViewerActionsNow(player.getUniqueId());
                     this.plugin.messages().send(player, "table.overhead.restored");
                 }
-            } else if (current.session() != view.session()) {
-                // A new table may have acquired the player's camera while the
-                // old restore retried. Do not resume the old table's action.
-                TableActionDeadlines.discardSuspension(view.session(), player.getUniqueId());
             }
         };
         this.restoreCameraAndDestroy(player, view.camera(), retry, retry ? 3 : 0, restored);

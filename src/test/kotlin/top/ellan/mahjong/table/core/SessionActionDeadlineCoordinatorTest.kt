@@ -293,7 +293,7 @@ class SessionActionDeadlineCoordinatorTest {
     }
 
     @Test
-    fun `viewing river freezes dingque fallback and shift return resumes exact remaining time`() {
+    fun `viewing river leaves dingque deadline running`() {
         val clock = AtomicLong(3_000L)
         val session = baseSession(MahjongVariant.SICHUAN)
         `when`(session.players()).thenReturn(listOf(east))
@@ -323,17 +323,12 @@ class SessionActionDeadlineCoordinatorTest {
         clock.addAndGet(2_000L)
         assertEquals(6L, coordinator.secondsRemaining(east))
 
-        coordinator.suspend(east)
-        clock.addAndGet(60_000L)
-        coordinator.tick()
-
-        verify(session, never()).chooseSichuanMissingSuit(east, "suo")
-        assertEquals(6L, coordinator.secondsRemaining(east))
-
-        coordinator.resume(east)
+        // Entering the client-only river camera does not alter the action clock.
         clock.addAndGet(5_999L)
         coordinator.tick()
+
         verify(session, never()).chooseSichuanMissingSuit(east, "suo")
+        assertEquals(1L, coordinator.secondsRemaining(east))
 
         clock.addAndGet(1L)
         coordinator.tick()
@@ -341,7 +336,7 @@ class SessionActionDeadlineCoordinatorTest {
     }
 
     @Test
-    fun `river suspension also freezes a new action window until the player returns`() {
+    fun `new action window created while viewing river keeps its normal deadline`() {
         val clock = AtomicLong(3_000L)
         val dingquePending = AtomicBoolean(true)
         val session = turnSession(MahjongVariant.SICHUAN, east)
@@ -351,7 +346,6 @@ class SessionActionDeadlineCoordinatorTest {
         val coordinator = SessionActionDeadlineCoordinator(session, clock::get)
 
         coordinator.tick()
-        coordinator.suspend(east)
 
         // Another seat's action advances the table from dingque to this player's turn
         // while the player is still inspecting the river.
@@ -360,19 +354,18 @@ class SessionActionDeadlineCoordinatorTest {
         coordinator.tick()
         assertEquals(60L, coordinator.secondsRemaining(east))
 
-        clock.addAndGet(120_000L)
+        clock.addAndGet(59_999L)
         coordinator.tick()
         verify(session, never()).discard(east, 13)
-        assertEquals(60L, coordinator.secondsRemaining(east))
+        assertEquals(1L, coordinator.secondsRemaining(east))
 
-        coordinator.resume(east)
-        clock.addAndGet(60_000L)
+        clock.addAndGet(1L)
         coordinator.tick()
         verify(session).discard(east, 13)
     }
 
     @Test
-    fun `river suspension survives begin round and freezes the next hand until return`() {
+    fun `new hand started while viewing river keeps its normal deadline`() {
         val clock = AtomicLong(3_000L)
         val round = AtomicInteger(0)
         val session = turnSession(MahjongVariant.RIICHI, east)
@@ -383,22 +376,16 @@ class SessionActionDeadlineCoordinatorTest {
 
         coordinator.tick()
         clock.addAndGet(2_000L)
-        coordinator.suspend(east)
         assertEquals(58L, coordinator.secondsRemaining(east))
 
         round.incrementAndGet()
         coordinator.beginRound()
         assertEquals(60L, coordinator.secondsRemaining(east))
 
-        clock.addAndGet(120_000L)
-        coordinator.tick()
-        verify(session, never()).discard(east, 13)
-        assertEquals(60L, coordinator.secondsRemaining(east))
-
-        coordinator.resume(east)
         clock.addAndGet(59_999L)
         coordinator.tick()
         verify(session, never()).discard(east, 13)
+        assertEquals(1L, coordinator.secondsRemaining(east))
 
         clock.addAndGet(1L)
         coordinator.tick()
