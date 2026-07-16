@@ -14,7 +14,7 @@ Feature release for table interaction, river viewing, rules accuracy, storage in
 - **三种玩法校正**：GB 模式对齐 144 张牌、花牌、8 个非花番门槛、单和与固定 16 局流程；立直模式修正鸣牌优先级、振听、杠宝牌时机、流局与延长赛边界；四川模式对齐 T/TFMJ 的直接定缺、无换三张、三番封顶、血战到底、杠分转移和查叫流程。
 - **段位与服务器集成**：新增可选 InvSync 2.x 玩家段位存储，并在 InvSync 缺失或不兼容时仅向已启用且健康的 SQL 后端回退。当前自动段位与统计更新仍只适用于四名真人完成的立直对局。
 - **资源与本地化**：加入 GB、立直和四川模式对应的摸牌、出牌、鸣牌、流局与和牌音效；新增完整日语游戏消息、安装文档和三种玩法说明。
-- **性能与稳定性**：减少牌桌区域更新、展示实体复用、观察者集合和 GB Bot 决策热路径中的排序、装箱及临时分配；缓存调度器反射解析，并加入 GitHub Actions 配对 A/B 性能回归门禁。
+- **性能与稳定性**：减少牌桌区域更新、展示实体复用、观察者集合和 GB Bot 决策热路径中的排序、装箱及临时分配；缓存调度器反射解析，并加入由八个 runner 并行采样、可信汇总的 GitHub Actions 配对 A/B 性能回归门禁。
 - **分发说明**：发行 JAR 现在内嵌并重定位 Sparrow Reflection 与 ASM。第三方声明和运行软件分发条款已更新，重新分发时应保留对应许可证与源码义务说明。
 
 English Release Notes:
@@ -27,7 +27,7 @@ English Release Notes:
 - **Rules corrections**: GB now follows the 144-tile flower flow, eight non-flower-fan floor, single-ron priority, and fixed 16-hand profile. Riichi fixes cover reaction priority, furiten, kan-dora timing, draws, and match extensions. Sichuan now follows the documented T/TFMJ direct ding-que, no exchange-three, three-fan cap, Bloody Battle, kong-transfer, and cha-jiao flow.
 - **Rank and server integrations**: Added optional InvSync 2.x player-rank storage, with fallback only to an enabled and healthy SQL backend. Automatic rank and personal-stat updates remain limited to completed four-human Riichi matches.
 - **Assets and localization**: Added mode-specific draw, discard, reaction, draw-result, and win sounds for GB, Riichi, and Sichuan, plus complete Japanese game messages and player documentation.
-- **Performance and reliability**: Reduced sorting, boxing, and temporary allocations in region updates, display reconciliation, viewer membership handling, and GB bot decisions; cached scheduler reflection resolution and added paired GitHub Actions A/B performance gates.
+- **Performance and reliability**: Reduced sorting, boxing, and temporary allocations in region updates, display reconciliation, viewer membership handling, and GB bot decisions; cached scheduler reflection resolution and added a paired GitHub Actions A/B gate with eight parallel measurement runners and trusted aggregation.
 - **Distribution notice**: Release jars now embed and relocate Sparrow Reflection and ASM. Third-party notices and runnable-distribution terms were updated; redistributors must preserve the applicable license and source-obligation notices.
 
 ## 1.4.1 - 2026-06-18

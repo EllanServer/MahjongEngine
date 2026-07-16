@@ -73,8 +73,10 @@ time and normalized allocation remain focused on production code. The infrastruc
 fingerprint profile applies the same rule to its exact delimited string and now treats
 normalized allocation as a secondary guardrail.
 
-The workflow is loaded through `pull_request_target`, uses only `contents: read`, persists no
-checkout credentials, disables Gradle's shared cache, and clears GitHub/Actions runtime
+The workflow is loaded through `pull_request_target` and executes candidate bytecode only for
+same-repository optimization branches; forked PRs are not eligible for this trusted gate. It
+uses only `contents: read`, persists no checkout credentials, disables Gradle's shared cache,
+and clears GitHub/Actions runtime
 credentials from every shell step that executes candidate bytecode. Candidate JMH runs use a
 dedicated no-login UID: only the current candidate JSON path receives candidate ownership,
 while stdout is confined to the current runner-opened log and the jars, parent directories,
@@ -100,21 +102,26 @@ classes, `performance-ray-proxy` fails preflight instead of benchmarking the fal
 Once present, the same protected benchmark automatically invokes the real package-private
 coordinator and verifies that an unchanged second replace emits no additional logical spawns.
 
-The workflow uses two fresh GitHub-hosted runners:
+The workflow builds once, fans out to eight independent measurement runners, and finishes on
+a fresh trusted decision runner:
 
-1. Check out the PR base and candidate commits side by side.
+1. In the prepare job, check out the PR base and candidate commits side by side.
 2. Byte-compare all `protected_paths` from the base config. The candidate cannot change the
    benchmark source, Gradle harness, wrapper, decision scripts, workflow or thresholds.
-3. Build one JMH jar from each revision with identical Java/Paper settings.
-4. Run an order-balanced A/A control: four `A1,A2` pairs and four `A2,A1` pairs,
-   interleaved in ABBA execution order.
-5. Run exactly four `base,candidate` and four `candidate,base` pairs in the same interleaved
-   ABBA order, with candidate bytecode confined to the unprivileged UID.
-6. Upload the raw evidence and end the runner that executed candidate code.
-7. On a fresh runner, check out the base and candidate again and repeat the protected-path
+3. Build one JMH jar from each revision with identical Java/Paper settings and upload those
+   immutable inputs once.
+4. Start eight matrix shards in parallel. Each shard owns exactly one pair index and runs both
+   its A/A control pair and its A/B pair on the same runner under one recorded runner session.
+5. Even pair indices run `A1,A2` then `base,candidate`; odd indices run `A2,A1` then
+   `candidate,base`. Candidate bytecode remains confined to the unprivileged UID. Matrix
+   completion order is irrelevant; the trusted merger restores deterministic pair-index order.
+6. Upload each runner's isolated raw evidence separately and end every runner that executed
+   candidate code.
+7. On a fresh decision runner, check out the base and candidate again, repeat the protected-path
    comparison.
-8. Analyze with the fresh base-owned gate, then upload every raw result, log, run manifest,
-   digest and decision for review.
+8. Reject missing, duplicate, overlapping, cross-session or digest-invalid shards; merge the
+   complete 0..7 set and analyze it with the fresh base-owned gate.
+9. Upload every raw result, log, shard/merged manifest, digest and decision for review.
 
 If a new benchmark or threshold is needed, merge that harness change first. The subsequent
 optimization PR must not contain benchmark-infrastructure changes. This split prevents a
@@ -170,6 +177,7 @@ gate-config.json             exact base-owned policy snapshot
 protected-paths.json         byte-comparison result
 jars/base-jmh.jar            exact retained base benchmark bytecode
 jars/candidate-jmh.jar       exact retained candidate benchmark bytecode
+shards/*-run-manifest.json   original runner-local manifests and digests
 aa/run-manifest.json         A/A schedule, environment, commands and hashes
 aa/raw/*.json                raw JMH output for every control execution
 aa/logs/*.log                complete JMH logs
