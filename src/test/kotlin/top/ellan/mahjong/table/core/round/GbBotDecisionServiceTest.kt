@@ -124,6 +124,27 @@ class GbBotDecisionServiceTest {
     }
 
     @Test
+    fun `discard suggestion keeps ordinal memo entries isolated across suits`() {
+        val service = GbBotDecisionService(8)
+        val hand = listOf(MahjongTile.M1, MahjongTile.P1, MahjongTile.M1, MahjongTile.P1)
+        val ready = GbTingResponse(true, listOf(GbTingCandidate("W1", 8)), null)
+        var evaluations = 0
+
+        val suggestedIndex =
+            service.suggestedDiscardIndex(hand, emptyList()) { remaining, _ ->
+                evaluations++
+                if (remaining.count { it == MahjongTile.P1 } == 2) {
+                    ready
+                } else {
+                    GbTingResponse(true, emptyList(), null)
+                }
+            }
+
+        assertEquals(0, suggestedIndex)
+        assertEquals(2, evaluations)
+    }
+
+    @Test
     fun `discard suggestion keeps the earliest index for equal duplicate candidates`() {
         val service = GbBotDecisionService(8)
         val hand = listOf(MahjongTile.M1, MahjongTile.M1, MahjongTile.M1)
