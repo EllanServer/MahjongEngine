@@ -39,12 +39,13 @@ public class ServerSchedulerReflectionBenchmark {
 
     private Harness folia;
     private Harness paper;
+    private World world;
     private Location location;
 
     @Setup(Level.Trial)
     public void setUp() {
-        World world = proxy(World.class, ServerSchedulerReflectionBenchmark::unsupported);
-        this.location = new Location(world, 8.0, 64.0, -8.0);
+        this.world = proxy(World.class, ServerSchedulerReflectionBenchmark::unsupported);
+        this.location = new Location(this.world, 8.0, 64.0, -8.0);
         this.folia = createFoliaHarness();
         this.paper = createPaperHarness();
         this.verifyContract();
