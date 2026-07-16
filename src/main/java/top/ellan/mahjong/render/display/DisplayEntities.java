@@ -575,7 +575,7 @@ public final class DisplayEntities {
         display.setLineWidth(160);
         display.setViewRange(LABEL_VIEW_RANGE);
         display.setBrightness(new Display.Brightness(15, 15));
-        display.setBackgroundColor(color);
+        TextDisplayBackgrounds.set(display, color);
         if (privateViewers != null && !privateViewers.isEmpty()) {
             DisplayVisibilityRegistry.registerPrivate(display.getEntityId(), privateViewers);
             syncPrivateVisibility(runtime, display, privateViewers);
@@ -747,7 +747,7 @@ public final class DisplayEntities {
         display.setLineWidth(160);
         display.setViewRange(LABEL_VIEW_RANGE);
         display.setBrightness(new Display.Brightness(15, 15));
-        display.setBackgroundColor(spec.color());
+        TextDisplayBackgrounds.set(display, spec.color());
         applyPrivateVisibility(runtime, display, spec.privateViewers(), true);
     }
 

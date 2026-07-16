@@ -1,6 +1,7 @@
 package top.ellan.mahjong.table.presentation;
 
 import top.ellan.mahjong.compat.PaperCompatibility;
+import top.ellan.mahjong.render.display.TextDisplayBackgrounds;
 import top.ellan.mahjong.runtime.PluginTask;
 import top.ellan.mahjong.table.core.TableSessionContext;
 import top.ellan.mahjong.riichi.model.OpeningDiceRoll;
@@ -181,7 +182,7 @@ public final class TableDiceAnimationCoordinator {
         spawned.setLineWidth(180);
         spawned.setViewRange(32.0F);
         spawned.setBrightness(new Display.Brightness(15, 15));
-        spawned.setBackgroundColor(RESULT_LABEL_BACKGROUND);
+        TextDisplayBackgrounds.set(spawned, RESULT_LABEL_BACKGROUND);
         return spawned;
     }
 

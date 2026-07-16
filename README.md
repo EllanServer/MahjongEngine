@@ -17,6 +17,8 @@ Contributor notes: [CONTRIBUTING.md](./CONTRIBUTING.md)
 
 ## Current Scope
 
+MahjongPaper requires a Java 21 or newer server runtime and build JDK.
+
 The current branch already supports playable Riichi Mahjong, GB Mahjong, and Sichuan Mahjong flows on Paper/Folia:
 
 - lobby-style tables that can persist across restart

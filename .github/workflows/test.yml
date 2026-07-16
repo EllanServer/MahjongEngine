@@ -79,7 +79,7 @@ jobs:
         # Pin to the lowest supported Paper baseline so the released jar stays
         # runtime-compatible with Paper/Folia 1.20.1 -> 26.2. Skip native tasks
         # on non-Linux runners where the CMake toolchain may not be configured.
-        run: ${{ matrix.gradle }} ${{ matrix.test_task }} "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=17" -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
+        run: ${{ matrix.gradle }} ${{ matrix.test_task }} "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=21" -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
 
       - name: Upload test reports
         if: always()

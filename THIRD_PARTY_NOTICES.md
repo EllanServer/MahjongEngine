@@ -21,7 +21,14 @@ The Amitaro recordings may be redistributed only as part of a work such as this 
 
 ## Separate platforms and runtime libraries
 
-Paper, Folia, and CraftEngine are separate server components supplied by the server operator. Paper's plugin loader resolves mahjong-utils, MariaDB Connector/J, MySQL Connector/J, H2, HikariCP, Caffeine, Kotlin, and kotlinx.serialization as separate libraries under their respective upstream licenses. See the README and build files for links, versions, and license identifiers.
+Paper, Folia, and CraftEngine are separate server components supplied by the server operator. Paper's plugin loader resolves mahjong-utils, MariaDB Connector/J, MySQL Connector/J, H2, HikariCP, Caffeine, Kotlin, kotlinx.serialization, and the Sparrow libraries below as separate libraries under their respective upstream licenses. See the README and build files for links, versions, and license identifiers.
+
+The distribution also uses the following Xiao-MoMi ecosystem libraries:
+
+- **sparrow-heart 0.72**, Copyright (c) 2024 XiaoMoMi, under the MIT License, is resolved by Paper's plugin loader: <https://github.com/Xiao-MoMi/sparrow-heart>.
+- **sparrow-reflection 0.33** under the GNU General Public License v3.0 is resolved by Paper's plugin loader: <https://github.com/Xiao-MoMi/sparrow-reflection>.
+- **Mapping-IO 0.8.0** by FabricMC under the Apache License 2.0 is bundled by the upstream Sparrow Reflection artifact: <https://github.com/FabricMC/mapping-io>.
+- **ASM 9.9.1** under the BSD 3-Clause License is resolved by Paper's plugin loader: <https://gitlab.ow2.org/asm/asm>.
 
 ## Trademark and affiliation notice
 

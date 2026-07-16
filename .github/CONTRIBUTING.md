@@ -11,7 +11,7 @@ Thanks for helping improve MahjongEngine.
 ## Local Setup
 
 1. Fork and clone the repository.
-2. Use JDK 21+ for the default build. The released jar is built with Java 17 bytecode and `api-version: 1.20`, so a single jar runs on Paper/Folia 1.20.1 through 26.2.
+2. Use JDK 21+ for the default build. The released jar uses Java 21 bytecode and `api-version: 1.20`, so its server runtime must also provide Java 21 or newer.
 3. Build the project:
 
 ```powershell

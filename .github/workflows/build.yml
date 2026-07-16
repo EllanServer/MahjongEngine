@@ -46,7 +46,7 @@ jobs:
         # Gate the build on tests so a native-platform build never ships a jar
         # with broken Java/Kotlin. Native tasks are skipped here; they are
         # exercised in the build-platform matrix below.
-        run: ./gradlew test "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=17" -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
+        run: ./gradlew test "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=21" -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
 
   build-platform:
     needs: test-gate
@@ -126,7 +126,7 @@ jobs:
         # Pin to the lowest supported Paper baseline so the released jar stays runtime-compatible
         # with Paper/Folia 1.20.1 -> 26.2. PaperCompatibility handles newer APIs at runtime.
         # Quote each -P argument because PowerShell on Windows runners mis-parses `1.20.1-R0.1-SNAPSHOT`.
-        run: ${{ matrix.gradle }} build -x test "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaTarget=17" "-PmahjongJavaToolchain=25"
+        run: ${{ matrix.gradle }} build -x test "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaTarget=21" "-PmahjongJavaToolchain=25"
 
       - name: Verify artifact compatibility (Linux only)
         if: runner.os == 'Linux'
@@ -147,7 +147,7 @@ jobs:
           python3 - "$JAR" <<'PY'
           import sys, zipfile, struct
           jar = sys.argv[1]
-          allowed_max = 61  # Java 17
+          allowed_max = 65  # Java 21
           bad = []
           with zipfile.ZipFile(jar) as z:
               for n in z.namelist():
@@ -161,11 +161,11 @@ jobs:
                   if major > allowed_max:
                       bad.append((n, major))
           if bad:
-              print(f'::error::Found {len(bad)} class files compiled above Java 17:')
+              print(f'::error::Found {len(bad)} class files compiled above Java 21:')
               for n, m in bad[:20]:
                   print(f'  {n}: major={m} (Java {m-44})')
               sys.exit(1)
-          print('All classes compiled to Java 17 or lower.')
+          print('All classes compiled to Java 21 or lower.')
           PY
 
       - name: Upload platform jar
@@ -237,3 +237,181 @@ jobs:
         with:
           name: mahjong-paper-jars
           path: build/universal/*.jar
+
+  compatibility-smoke:
+    name: Standard Paper ${{ matrix.minecraft }} + latest CraftEngine Paper
+    needs: build-platform
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - minecraft: "1.20.1"
+            java: "21"
+            paper_file: paper-1.20.1-196.jar
+            paper_url: https://fill-data.papermc.io/v1/objects/234a9b32098100c6fc116664d64e36ccdb58b5b649af0f80bcccb08b0255eaea/paper-1.20.1-196.jar
+            paper_sha256: 234a9b32098100c6fc116664d64e36ccdb58b5b649af0f80bcccb08b0255eaea
+          - minecraft: "1.20.4"
+            java: "21"
+            paper_file: paper-1.20.4-499.jar
+            paper_url: https://fill-data.papermc.io/v1/objects/cabed3ae77cf55deba7c7d8722bc9cfd5e991201c211665f9265616d9fe5c77b/paper-1.20.4-499.jar
+            paper_sha256: cabed3ae77cf55deba7c7d8722bc9cfd5e991201c211665f9265616d9fe5c77b
+          - minecraft: "1.21.1"
+            java: "21"
+            paper_file: paper-1.21.1-133.jar
+            paper_url: https://fill-data.papermc.io/v1/objects/39bd8c00b9e18de91dcabd3cc3dcfa5328685a53b7187a2f63280c22e2d287b9/paper-1.21.1-133.jar
+            paper_sha256: 39bd8c00b9e18de91dcabd3cc3dcfa5328685a53b7187a2f63280c22e2d287b9
+          - minecraft: "26.1.2"
+            java: "25"
+            paper_file: paper-26.1.2-74.jar
+            paper_url: https://fill-data.papermc.io/v1/objects/1d70b1dab9cf4a6de615209a536f3a45a2186240253c428213ce2188ab95e5f7/paper-26.1.2-74.jar
+            paper_sha256: 1d70b1dab9cf4a6de615209a536f3a45a2186240253c428213ce2188ab95e5f7
+
+    steps:
+      - name: Set up server JDK ${{ matrix.java }}
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - name: Download Linux plugin artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: mahjong-paper-jar-linux
+          path: artifacts/linux
+
+      - name: Prepare checksum-locked standard server.jar stack
+        shell: bash
+        env:
+          PAPER_URL: ${{ matrix.paper_url }}
+          PAPER_FILE: ${{ matrix.paper_file }}
+          PAPER_SHA256: ${{ matrix.paper_sha256 }}
+          CRAFTENGINE_URL: https://cdn.modrinth.com/data/tRX6FMfQ/versions/Len451or/craft-engine-paper-plugin-26.7.3.jar
+          CRAFTENGINE_SHA512: e87351417e4f99504cf0a8868bad03a88b12bc9bda5c36f0ee4c7451e3525f08146b2130b61cd34b222ee41c38ca75aa9ced9ada65bc3540c80aa66c3d39d689
+        run: |
+          set -euo pipefail
+          mkdir -p smoke/plugins
+          curl --fail --location --retry 3 --output "smoke/$PAPER_FILE" "$PAPER_URL"
+          printf '%s  %s\n' "$PAPER_SHA256" "smoke/$PAPER_FILE" | sha256sum --check --strict
+          cp "smoke/$PAPER_FILE" smoke/server.jar
+
+          curl --fail --location --retry 3 \
+            --output smoke/plugins/craft-engine-paper-plugin-26.7.3.jar \
+            "$CRAFTENGINE_URL"
+          printf '%s  %s\n' \
+            "$CRAFTENGINE_SHA512" \
+            smoke/plugins/craft-engine-paper-plugin-26.7.3.jar \
+            | sha512sum --check --strict
+
+          PLUGIN_JAR="$(find artifacts/linux -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' | sort | head -n 1)"
+          test -n "$PLUGIN_JAR"
+          cp "$PLUGIN_JAR" smoke/plugins/mahjong-paper.jar
+          printf 'eula=true\n' > smoke/eula.txt
+          cat > smoke/server.properties <<'EOF'
+          online-mode=false
+          server-ip=127.0.0.1
+          server-port=25565
+          max-players=1
+          view-distance=3
+          simulation-distance=3
+          spawn-protection=0
+          allow-nether=false
+          generate-structures=false
+          enable-query=false
+          enable-rcon=false
+          EOF
+
+      - name: Cold-start, execute /mahjong help, and stop cleanly
+        shell: bash
+        working-directory: smoke
+        run: |
+          set -euo pipefail
+          mkfifo console.pipe
+          exec 3<>console.pipe
+          java -Xms512m -Xmx1g -jar server.jar --nogui <&3 >server.log 2>&1 &
+          SERVER_PID=$!
+
+          cleanup() {
+            if kill -0 "$SERVER_PID" 2>/dev/null; then
+              printf 'stop\n' >&3 || true
+              for _ in $(seq 1 30); do
+                kill -0 "$SERVER_PID" 2>/dev/null || break
+                sleep 1
+              done
+              kill "$SERVER_PID" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          READY=false
+          for _ in $(seq 1 240); do
+            if grep -Eq 'Done \([^)]+\)! For help' server.log; then
+              READY=true
+              break
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo '::error::Paper exited before reaching the ready state'
+              cat server.log
+              exit 1
+            fi
+            sleep 1
+          done
+          if [[ "$READY" != true ]]; then
+            echo '::error::Paper did not become ready within 240 seconds'
+            cat server.log
+            exit 1
+          fi
+
+          grep -Eq '\[MahjongPaper\].*Enabling MahjongPaper v' server.log
+          grep -Eq '\[CraftEngine\].*Enabling CraftEngine v26\.7\.3' server.log
+
+          COMMAND_START=$(wc -l < server.log)
+          printf 'mahjong help\n' >&3
+          sleep 5
+          tail -n "+$((COMMAND_START + 1))" server.log > command.log
+          if grep -Eiq 'unknown command|unknown or incomplete command|command exception' command.log; then
+            echo '::error::The /mahjong command was not executable'
+            cat command.log
+            exit 1
+          fi
+          grep -Fq 'MahjongPaper' command.log
+
+          verify_library() {
+            local filename="$1"
+            local expected="$2"
+            local found
+            found="$(find libraries -type f -name "$filename" -print -quit)"
+            if [[ -z "$found" ]]; then
+              echo "::error::Loader did not resolve $filename"
+              exit 1
+            fi
+            printf '%s  %s\n' "$expected" "$found" | sha256sum --check --strict
+          }
+          verify_library sparrow-heart-0.72.jar a539b7b6db55a2369599b643e5b2d20ec12184ad2798eb858f17a64dcde1d7ea
+          verify_library sparrow-reflection-0.33.jar 7c34a0839650be8025634077656a00569cbedbad9999e03af3482391ccd14a93
+          verify_library asm-9.9.1.jar 6f3828a215c920059a5efa2fb55c233d6c54ec5cadca99ce1b1bdd10077c7ddd
+          verify_library caffeine-3.2.4.jar 9d9d2cfd681fd9272ded3d27c9930db12f89f732345975aa113ebc223bbf1224
+
+          printf 'stop\n' >&3
+          for _ in $(seq 1 60); do
+            kill -0 "$SERVER_PID" 2>/dev/null || break
+            sleep 1
+          done
+          if kill -0 "$SERVER_PID" 2>/dev/null; then
+            echo '::error::Paper did not stop cleanly within 60 seconds'
+            exit 1
+          fi
+          wait "$SERVER_PID"
+          trap - EXIT
+
+      - name: Upload compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: compatibility-smoke-${{ matrix.minecraft }}
+          path: |
+            smoke/server.log
+            smoke/command.log
+            smoke/logs/latest.log
+          if-no-files-found: warn

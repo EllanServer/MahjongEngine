@@ -1,4 +1,7 @@
 import dev.detekt.gradle.Detekt
+import org.gradle.api.tasks.testing.Test
+import top.ellan.mahjong.build.MahjongBuildConfiguration
+import top.ellan.mahjong.build.MahjongBuildInputs
 import top.ellan.mahjong.build.MahjongTaskRegistration
 
 plugins {
@@ -21,12 +24,16 @@ val paperDevBundleVersion =
         .orElse(minimumPaperDevBundleVersion)
         .get()
 val paperApiVersion = "1.20"
+val minimumJavaVersion = 21
 val javaTargetVersion =
     providers
         .gradleProperty("mahjongJavaTarget")
         .map(String::toInt)
-        .orElse(17)
+        .orElse(minimumJavaVersion)
         .get()
+require(javaTargetVersion >= minimumJavaVersion) {
+    "mahjongJavaTarget must be Java $minimumJavaVersion or newer (was $javaTargetVersion)"
+}
 val toolchainJavaVersion =
     providers
         .gradleProperty("mahjongJavaToolchain")
@@ -40,18 +47,18 @@ val mysqlVersion = "9.7.0"
 val h2Version = "2.4.240"
 val hikariVersion = "7.1.0"
 val caffeineVersion = "3.2.4"
+val sparrowHeartVersion = "0.72"
+val sparrowReflectionVersion = "0.33"
+val asmVersion = "9.9.1"
 val adventureVersion = "4.14.0"
 val junitVersion = "6.1.1"
+val mockitoVersion = "5.23.0"
 val testcontainersVersion = "1.21.4"
 val generatedResourcesDir = layout.buildDirectory.dir("generated/resources/mahjong")
 val generatedNativeResourcesDir = layout.buildDirectory.dir("generated/resources/native")
+val mockitoAgent = configurations.create("mockitoAgent")
 
-repositories {
-    mavenCentral()
-    maven("https://repo.papermc.io/repository/maven-public/")
-    maven("https://repo.codemc.io/repository/maven-releases/")
-    maven("https://jitpack.io")
-}
+MahjongBuildConfiguration.configureRepositories(project)
 
 val codegenTasks =
     MahjongTaskRegistration.registerCodegenTasks(
@@ -79,15 +86,23 @@ dependencies {
     implementation("com.h2database:h2:$h2Version")
     implementation("com.zaxxer:HikariCP:$hikariVersion")
     implementation("com.github.ben-manes.caffeine:caffeine:$caffeineVersion")
+    compileOnly("net.momirealms:sparrow-heart:$sparrowHeartVersion")
+    compileOnly("net.momirealms:sparrow-reflection:$sparrowReflectionVersion")
+    compileOnly("org.ow2.asm:asm:$asmVersion")
     implementation("org.jetbrains.kotlin:kotlin-stdlib:$kotlinRuntimeVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$kotlinSerializationVersion")
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:$junitVersion")
-    testImplementation("org.mockito:mockito-core:5.23.0")
-    testImplementation("org.mockito:mockito-inline:5.2.0")
+    testImplementation("org.mockito:mockito-core:$mockitoVersion")
+    mockitoAgent("org.mockito:mockito-core:$mockitoVersion") {
+        isTransitive = false
+    }
     testImplementation("org.testcontainers:testcontainers:$testcontainersVersion")
     testImplementation("org.testcontainers:junit-jupiter:$testcontainersVersion")
     testImplementation("org.testcontainers:mariadb:$testcontainersVersion")
+    testImplementation("net.momirealms:sparrow-heart:$sparrowHeartVersion")
+    testImplementation("net.momirealms:sparrow-reflection:$sparrowReflectionVersion")
+    testImplementation("org.ow2.asm:asm:$asmVersion")
     testImplementation("net.kyori:adventure-api")
     testImplementation("net.kyori:adventure-text-minimessage")
     testImplementation("net.kyori:adventure-text-serializer-plain")
@@ -126,57 +141,30 @@ tasks {
         }
     }
 
-    withType<JavaCompile>().configureEach {
-        options.encoding = Charsets.UTF_8.name()
-        options.release.set(javaTargetVersion)
-    }
-
-    processResources {
-        dependsOn(codegenTasks + nativeTasks)
-        filteringCharset = Charsets.UTF_8.name()
-        inputs.property("pluginVersion", project.version.toString())
-        inputs.property("paperApiVersion", paperApiVersion)
-        inputs.property("mahjongUtilsVersion", mahjongUtilsVersion)
-        inputs.property("mariadbVersion", mariadbVersion)
-        inputs.property("h2Version", h2Version)
-        inputs.property("hikariVersion", hikariVersion)
-        inputs.property("kotlinRuntimeVersion", kotlinRuntimeVersion)
-        inputs.property("kotlinSerializationVersion", kotlinSerializationVersion)
-        from(generatedResourcesDir)
-        from(generatedNativeResourcesDir)
-        from(rootProject.file("LICENSE")) {
-            into("META-INF")
-            rename { "LICENSE.txt" }
-        }
-        from(rootProject.file("THIRD_PARTY_NOTICES.md")) {
-            into("META-INF")
-        }
-        from(rootProject.file("resourcepack/ATTRIBUTION.md")) {
-            into("META-INF")
-            rename { "RESOURCEPACK_ATTRIBUTION.md" }
-        }
-        from(rootProject.file("native/gbmahjong/vendor/GB-Mahjong/LICENSE")) {
-            into("META-INF/licenses")
-            rename { "GB-Mahjong-LICENSE.txt" }
-        }
-        from(rootProject.file("native/gbmahjong/WINPTHREADS-COPYING.txt")) {
-            into("META-INF/licenses")
-            rename { "winpthreads-COPYING.txt" }
-        }
-        filesMatching(listOf("plugin.yml", "paper-plugin.yml")) {
-            expand(
-                "version" to project.version,
-                "paperApiVersion" to paperApiVersion,
-                "mahjongUtilsVersion" to mahjongUtilsVersion,
-                "mariadbVersion" to mariadbVersion,
-                "h2Version" to h2Version,
-                "hikariVersion" to hikariVersion,
-                "kotlinRuntimeVersion" to kotlinRuntimeVersion,
-                "kotlinSerializationVersion" to kotlinSerializationVersion,
-            )
-        }
+    withType<Test>().configureEach {
+        jvmArgs("-javaagent:${mockitoAgent.singleFile.absolutePath}")
     }
 }
+
+MahjongBuildConfiguration.configureLifecycle(
+    project,
+    MahjongBuildInputs(
+        generatedResourcesDir,
+        generatedNativeResourcesDir,
+        codegenTasks + nativeTasks,
+        javaTargetVersion,
+        mapOf(
+            "version" to project.version,
+            "paperApiVersion" to paperApiVersion,
+            "mahjongUtilsVersion" to mahjongUtilsVersion,
+            "mariadbVersion" to mariadbVersion,
+            "h2Version" to h2Version,
+            "hikariVersion" to hikariVersion,
+            "kotlinRuntimeVersion" to kotlinRuntimeVersion,
+            "kotlinSerializationVersion" to kotlinSerializationVersion,
+        ),
+    ),
+)
 
 spotless {
     MahjongTaskRegistration.configureGitRatchet(project, "origin/dev") { ratchetFrom(it) }

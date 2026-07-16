@@ -77,7 +77,7 @@ jobs:
         # Pin to the lowest supported Paper baseline so the released jar stays runtime-compatible
         # with Paper/Folia 1.20.1 -> 26.2. PaperCompatibility handles newer APIs at runtime.
         # Quote each -P argument because PowerShell on Windows runners mis-parses `1.20.1-R0.1-SNAPSHOT`.
-        run: ${{ matrix.gradle }} build -x test "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaTarget=17" "-PmahjongJavaToolchain=25"
+        run: ${{ matrix.gradle }} build -x test "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaTarget=21" "-PmahjongJavaToolchain=25"
 
       - name: Verify artifact compatibility (Linux only)
         if: runner.os == 'Linux'
@@ -98,7 +98,7 @@ jobs:
           python3 - "$JAR" <<'PY'
           import sys, zipfile, struct
           jar = sys.argv[1]
-          allowed_max = 61  # Java 17
+          allowed_max = 65  # Java 21
           bad = []
           with zipfile.ZipFile(jar) as z:
               for n in z.namelist():
@@ -112,11 +112,11 @@ jobs:
                   if major > allowed_max:
                       bad.append((n, major))
           if bad:
-              print(f'::error::Found {len(bad)} class files compiled above Java 17:')
+              print(f'::error::Found {len(bad)} class files compiled above Java 21:')
               for n, m in bad[:20]:
                   print(f'  {n}: major={m} (Java {m-44})')
               sys.exit(1)
-          print('All classes compiled to Java 17 or lower.')
+          print('All classes compiled to Java 21 or lower.')
           PY
 
       - name: Upload platform jar
