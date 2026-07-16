@@ -112,7 +112,7 @@ jobs:
             --base-sha "$GITHUB_SHA" \
             --candidate-sha "$GITHUB_SHA" \
             --config perf/ab/gate-config.json \
-            --output-dir build/reports/jmh/lock-regression \
+            --output-dir "$PROBE_ROOT/evidence/lock-regression" \
             --runtime-temp-root "$PROBE_ROOT/runtime-tmp" \
             --java "$JAVA_HOME/bin/java" \
             --candidate-command-prefix-json '["sudo","-H","-u","mahjong-probe","--"]' \
@@ -122,6 +122,8 @@ jobs:
             --measurement-iterations 1 \
             --warmup-time 10ms \
             --measurement-time 10ms
+          mkdir -p build/reports/jmh/lock-regression
+          cp -a "$PROBE_ROOT/evidence/lock-regression/." build/reports/jmh/lock-regression/
 
       - name: Run one smoke iteration for every protected benchmark
         shell: bash
