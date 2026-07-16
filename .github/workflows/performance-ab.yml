@@ -34,6 +34,7 @@ on:
           - snapshot
           - gb-bot
           - region-fingerprint
+          - display-spawn
           - ray-proxy
           - infra
       forks:
@@ -159,6 +160,7 @@ jobs:
               "performance-snapshot": "snapshot",
               "performance-gb-bot": "gb-bot",
               "performance-region-fingerprint": "region-fingerprint",
+              "performance-display-spawn": "display-spawn",
               "performance-ray-proxy": "ray-proxy",
           }
           selected = [profile for label, profile in choices.items() if label in labels]
