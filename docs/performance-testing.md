@@ -57,6 +57,9 @@ and exactly one profile label to a pure performance PR:
   slots;
 - `performance-region-keys` - all 452 dynamic keys requested while planning one complete
   table refresh, with exact text, order, uniqueness and checksum sentinels outside timing;
+- `performance-layout` - complete RIICHI, GB and SICHUAN started-table
+  `TableRenderLayout.precompute` calls covering four occupied seats, hands, discards, melds,
+  sticks, each variant's full wall capacity and RIICHI dora;
 - `performance-scheduler-reflection` - representative global, region and entity scheduling
   bursts through both Folia-style reflective capabilities and standard Paper fallbacks;
 - `performance-ray-proxy` - 1, 4 and 32-viewer coordinator lifecycle and unchanged-geometry

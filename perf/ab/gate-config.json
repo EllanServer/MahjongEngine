@@ -152,6 +152,26 @@
         "top/ellan/mahjong/table/render/TableRegionDisplayCoordinator.class"
       ]
     },
+    "layout": {
+      "include": "^top\\.ellan\\.mahjong\\.perf\\.TableRenderLayoutBenchmark\\.precomputeComplete(?:Riichi|Gb|Sichuan)Table$",
+      "benchmark_ids": [
+        "layout.riichi.time",
+        "layout.riichi.alloc",
+        "layout.gb.time",
+        "layout.gb.alloc",
+        "layout.sichuan.time",
+        "layout.sichuan.alloc"
+      ],
+      "minimum_passes": 3,
+      "must_pass": [
+        "layout.riichi.time",
+        "layout.gb.time",
+        "layout.sichuan.time"
+      ],
+      "required_classes": [
+        "top/ellan/mahjong/render/layout/TableRenderLayout.class"
+      ]
+    },
     "scheduler-reflection": {
       "include": "^top\\.ellan\\.mahjong\\.perf\\.ServerSchedulerReflectionBenchmark\\.schedule(?:Folia|Paper)Burst$",
       "benchmark_ids": [
@@ -331,6 +351,42 @@
     {
       "id": "region.keys.alloc",
       "benchmark": "top.ellan.mahjong.perf.RegionKeyPlanBenchmark.buildRepresentativeRegionKeyPlan",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "layout.riichi.time",
+      "benchmark": "top.ellan.mahjong.perf.TableRenderLayoutBenchmark.precomputeCompleteRiichiTable",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "layout.riichi.alloc",
+      "benchmark": "top.ellan.mahjong.perf.TableRenderLayoutBenchmark.precomputeCompleteRiichiTable",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "layout.gb.time",
+      "benchmark": "top.ellan.mahjong.perf.TableRenderLayoutBenchmark.precomputeCompleteGbTable",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "layout.gb.alloc",
+      "benchmark": "top.ellan.mahjong.perf.TableRenderLayoutBenchmark.precomputeCompleteGbTable",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "layout.sichuan.time",
+      "benchmark": "top.ellan.mahjong.perf.TableRenderLayoutBenchmark.precomputeCompleteSichuanTable",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "layout.sichuan.alloc",
+      "benchmark": "top.ellan.mahjong.perf.TableRenderLayoutBenchmark.precomputeCompleteSichuanTable",
       "metric": "gc.alloc.rate.norm",
       "direction": "lower"
     },
