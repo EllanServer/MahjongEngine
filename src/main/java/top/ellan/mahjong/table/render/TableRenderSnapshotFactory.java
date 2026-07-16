@@ -4,21 +4,19 @@ import top.ellan.mahjong.model.SeatWind;
 import top.ellan.mahjong.render.TableRenderSubject;
 import top.ellan.mahjong.render.snapshot.TableRenderSnapshot;
 import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
 public final class TableRenderSnapshotFactory {
-    private static final Comparator<SerializedViewerId> SERIALIZED_VIEWER_ID_COMPARATOR =
-        Comparator.comparing(SerializedViewerId::serializedId);
-
     public TableRenderSnapshot create(TableRenderSubject session, long version, long cancellationNonce) {
         Location tableCenter = session.center();
         boolean started = session.isStarted();
@@ -26,18 +24,12 @@ public final class TableRenderSnapshotFactory {
             .map(Player::getUniqueId)
             .distinct()
             .map(viewerId -> new SerializedViewerId(viewerId, viewerId.toString()))
-            .sorted(SERIALIZED_VIEWER_ID_COMPARATOR)
+            .sorted(Comparator.comparing(SerializedViewerId::serializedId))
             .toList();
         List<UUID> onlineViewerIds = serializedOnlineViewerIds.stream()
             .map(SerializedViewerId::id)
             .toList();
-        Map<UUID, SerializedViewerId> serializedOnlineViewersById = new HashMap<>(
-            Math.max(16, (int) (serializedOnlineViewerIds.size() / 0.75F) + 1)
-        );
-        for (SerializedViewerId viewer : serializedOnlineViewerIds) {
-            serializedOnlineViewersById.put(viewer.id(), viewer);
-        }
-        StringBuilder viewerMembershipBuffer = this.viewerMembershipBuffer(serializedOnlineViewerIds);
+        Set<UUID> onlineViewerIdSet = new HashSet<>(onlineViewerIds);
         SeatWind[] seatWinds = SeatWind.values();
         EnumMap<SeatWind, UUID> seatPlayerIds = new EnumMap<>(SeatWind.class);
         for (SeatWind wind : seatWinds) {
@@ -46,28 +38,13 @@ public final class TableRenderSnapshotFactory {
         Map<UUID, String> viewerMembershipSignatures = new HashMap<>();
         Map<UUID, List<UUID>> viewerIdsExcluding = new HashMap<>();
         for (UUID playerId : seatPlayerIds.values()) {
-            if (viewerMembershipSignatures.containsKey(playerId)) {
-                continue;
-            }
-            SerializedViewerId excludedViewer = playerId == null
-                ? null
-                : serializedOnlineViewersById.get(playerId);
-            if (playerId != null && excludedViewer == null) {
+            if (viewerMembershipSignatures.containsKey(playerId)
+                || playerId != null && !onlineViewerIdSet.contains(playerId)) {
                 continue;
             }
             viewerMembershipSignatures.put(
                 playerId,
-                excludedViewer == null
-                    ? viewerMembershipBuffer.toString()
-                    : this.viewerMembershipSignature(
-                        viewerMembershipBuffer,
-                        excludedViewer,
-                        Collections.binarySearch(
-                            serializedOnlineViewerIds,
-                            excludedViewer,
-                            SERIALIZED_VIEWER_ID_COMPARATOR
-                        )
-                    )
+                this.viewerMembershipSignature(serializedOnlineViewerIds, playerId)
             );
             viewerIdsExcluding.put(
                 playerId,
@@ -82,7 +59,7 @@ public final class TableRenderSnapshotFactory {
                     session,
                     wind,
                     seatPlayerIds.get(wind),
-                    serializedOnlineViewersById,
+                    onlineViewerIdSet,
                     viewerMembershipSignatures,
                     viewerIdsExcluding
                 )
@@ -154,7 +131,7 @@ public final class TableRenderSnapshotFactory {
         TableRenderSubject session,
         SeatWind wind,
         UUID playerId,
-        Map<UUID, SerializedViewerId> serializedOnlineViewersById,
+        Set<UUID> onlineViewerIdSet,
         Map<UUID, String> viewerMembershipSignatures,
         Map<UUID, List<UUID>> viewerIdsExcluding
     ) {
@@ -168,7 +145,7 @@ public final class TableRenderSnapshotFactory {
             occupied && session.isRiichi(playerId),
             occupied && session.isReady(playerId),
             occupied && session.isQueuedToLeave(playerId),
-            occupied && serializedOnlineViewersById.containsKey(playerId),
+            occupied && onlineViewerIdSet.contains(playerId),
             viewerMembershipSignatures.getOrDefault(playerId, ""),
             occupied ? session.selectedHandTileIndex(playerId) : -1,
             occupied ? session.selectedHandTileIndices(playerId) : List.of(),
@@ -183,25 +160,14 @@ public final class TableRenderSnapshotFactory {
         );
     }
 
-    private StringBuilder viewerMembershipBuffer(List<SerializedViewerId> onlineViewerIds) {
+    private String viewerMembershipSignature(List<SerializedViewerId> onlineViewerIds, UUID excludedPlayerId) {
         StringBuilder builder = new StringBuilder(onlineViewerIds.size() * 36);
         for (SerializedViewerId viewer : onlineViewerIds) {
-            builder.append(viewer.serializedId());
+            if (!viewer.id().equals(excludedPlayerId)) {
+                builder.append(viewer.serializedId());
+            }
         }
-        return builder;
-    }
-
-    private String viewerMembershipSignature(
-        StringBuilder viewerMembershipBuffer,
-        SerializedViewerId excludedViewer,
-        int excludedViewerIndex
-    ) {
-        String serializedId = excludedViewer.serializedId();
-        int start = excludedViewerIndex * serializedId.length();
-        viewerMembershipBuffer.delete(start, start + serializedId.length());
-        String signature = viewerMembershipBuffer.toString();
-        viewerMembershipBuffer.insert(start, serializedId);
-        return signature;
+        return builder.toString();
     }
 
     private List<UUID> viewerIdsExcluding(List<UUID> onlineViewerIds, UUID excludedPlayerId) {
