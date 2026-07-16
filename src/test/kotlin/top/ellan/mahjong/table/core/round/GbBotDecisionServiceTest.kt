@@ -24,7 +24,7 @@ class GbBotDecisionServiceTest {
 
         assertTrue(
             GbBotDecisionService.discardPreference(hand, MahjongTile.P9) >
-                GbBotDecisionService.discardPreference(hand, MahjongTile.M2)
+                GbBotDecisionService.discardPreference(hand, MahjongTile.M2),
         )
     }
 
@@ -33,14 +33,49 @@ class GbBotDecisionServiceTest {
         val service = GbBotDecisionService(8)
         val hand = listOf(MahjongTile.M1, MahjongTile.M2, MahjongTile.M3, MahjongTile.EAST)
 
-        val suggestedIndex = service.suggestedDiscardIndex(hand, emptyList()) { remaining, _ ->
-            if (MahjongTile.EAST !in remaining) {
-                GbTingResponse(true, listOf(GbTingCandidate("W1", 8)), null)
-            } else {
-                GbTingResponse(true, emptyList(), null)
+        val suggestedIndex =
+            service.suggestedDiscardIndex(hand, emptyList()) { remaining, _ ->
+                if (MahjongTile.EAST !in remaining) {
+                    GbTingResponse(true, listOf(GbTingCandidate("W1", 8)), null)
+                } else {
+                    GbTingResponse(true, emptyList(), null)
+                }
             }
-        }
 
         assertEquals(3, suggestedIndex)
+    }
+
+    @Test
+    fun `discard suggestion evaluates the first remaining hand once per duplicated tile`() {
+        val service = GbBotDecisionService(8)
+        val hand = listOf(MahjongTile.M1, MahjongTile.M2, MahjongTile.M1)
+        val evaluatedHands = mutableListOf<List<MahjongTile>>()
+
+        service.suggestedDiscardIndex(hand, emptyList()) { remaining, _ ->
+            evaluatedHands += remaining.toList()
+            GbTingResponse(true, emptyList(), null)
+        }
+
+        assertEquals(
+            listOf(
+                listOf(MahjongTile.M2, MahjongTile.M1),
+                listOf(MahjongTile.M1, MahjongTile.M1),
+            ),
+            evaluatedHands,
+        )
+    }
+
+    @Test
+    fun `discard suggestion preserves null evaluator recomputation`() {
+        val service = GbBotDecisionService(8)
+        val hand = listOf(MahjongTile.M1, MahjongTile.M1, MahjongTile.M1)
+        var evaluations = 0
+
+        service.suggestedDiscardIndex(hand, emptyList()) { _, _ ->
+            evaluations++
+            null
+        }
+
+        assertEquals(hand.size, evaluations)
     }
 }
