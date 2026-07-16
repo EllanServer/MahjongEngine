@@ -8,7 +8,10 @@ import top.ellan.mahjong.runtime.AsyncService;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -24,8 +27,11 @@ final class PersistentTableStore {
     private final Logger logger;
     private final boolean enabled;
     private final AtomicReference<List<TableSnapshot>> pendingSnapshot = new AtomicReference<>();
+    private final AtomicReference<Map<String, DatabaseService.PersistentTableRecord>> deferredRows = new AtomicReference<>(Map.of());
     private final AtomicBoolean asyncSaveScheduled = new AtomicBoolean();
+    private final AtomicBoolean loadCompletedSuccessfully = new AtomicBoolean();
     private final AtomicBoolean missingDatabaseWarningLogged = new AtomicBoolean();
+    private final AtomicBoolean unsafeWriteWarningLogged = new AtomicBoolean();
 
     PersistentTableStore(Supplier<DatabaseService> database, AsyncService async, Logger logger, boolean enabled) {
         this.database = Objects.requireNonNull(database, "database");
@@ -42,6 +48,7 @@ final class PersistentTableStore {
         if (!this.enabled) {
             return List.of();
         }
+        this.loadCompletedSuccessfully.set(false);
         DatabaseService database = this.database();
         if (database == null) {
             this.warnMissingDatabase();
@@ -49,24 +56,33 @@ final class PersistentTableStore {
         }
         try {
             List<LoadedTable> loaded = new ArrayList<>();
+            Map<String, DatabaseService.PersistentTableRecord> unavailableWorldRows = new LinkedHashMap<>();
+            boolean safeToReplace = true;
             for (DatabaseService.PersistentTableRecord row : database.loadPersistentTables()) {
                 if (row.id() == null || row.id().isBlank()) {
                     this.logger.warning("Skipping persisted table row with empty table_id.");
+                    safeToReplace = false;
                     continue;
                 }
                 World world = row.worldName() == null ? null : Bukkit.getWorld(row.worldName());
                 if (world == null) {
-                    this.logger.warning("Skipping persisted table " + row.id() + " because world '" + row.worldName() + "' is unavailable.");
+                    this.logger.warning("Deferring persisted table " + row.id() + " because world '" + row.worldName() + "' is unavailable.");
+                    unavailableWorldRows.put(normalizeId(row.id()), row);
                     continue;
                 }
                 loaded.add(new LoadedTable(
-                    row.id().toUpperCase(),
+                    normalizeId(row.id()),
                     new Location(world, row.x(), row.y(), row.z()),
                     row.ownerId(),
                     row.variant(),
                     copyRule(row.rule()),
                     row.botMatch()
                 ));
+            }
+            this.deferredRows.set(Map.copyOf(unavailableWorldRows));
+            this.loadCompletedSuccessfully.set(safeToReplace);
+            if (!safeToReplace) {
+                this.warnUnsafeWrite();
             }
             return List.copyOf(loaded);
         } catch (SQLException ex) {
@@ -79,12 +95,20 @@ final class PersistentTableStore {
         if (!this.enabled) {
             return;
         }
+        if (!this.loadCompletedSuccessfully.get()) {
+            this.warnUnsafeWrite();
+            return;
+        }
         this.pendingSnapshot.set(this.snapshotTables(sessions));
         this.scheduleAsyncSave();
     }
 
     void flush(Collection<? extends TableIdentityPort> sessions) {
         if (!this.enabled) {
+            return;
+        }
+        if (!this.loadCompletedSuccessfully.get()) {
+            this.warnUnsafeWrite();
             return;
         }
         List<TableSnapshot> snapshot = this.snapshotTables(sessions);
@@ -138,15 +162,20 @@ final class PersistentTableStore {
         return List.copyOf(snapshots);
     }
 
-    private void writeSnapshot(List<TableSnapshot> snapshots) {
+    private synchronized void writeSnapshot(List<TableSnapshot> snapshots) {
+        if (!this.loadCompletedSuccessfully.get()) {
+            this.warnUnsafeWrite();
+            return;
+        }
         DatabaseService database = this.database();
         if (database == null) {
             this.warnMissingDatabase();
             return;
         }
         try {
-            List<DatabaseService.PersistentTableRecord> rows = snapshots.stream()
-                .map(snapshot -> new DatabaseService.PersistentTableRecord(
+            Map<String, DatabaseService.PersistentTableRecord> rowsById = new LinkedHashMap<>(this.deferredRows.get());
+            for (TableSnapshot snapshot : snapshots) {
+                DatabaseService.PersistentTableRecord row = new DatabaseService.PersistentTableRecord(
                     snapshot.id(),
                     snapshot.worldName(),
                     snapshot.x(),
@@ -156,9 +185,17 @@ final class PersistentTableStore {
                     snapshot.variant(),
                     copyRule(snapshot.rule()),
                     snapshot.botMatch()
-                ))
-                .toList();
-            database.replacePersistentTables(rows);
+                );
+                rowsById.put(normalizeId(snapshot.id()), row);
+            }
+            database.replacePersistentTables(List.copyOf(rowsById.values()));
+            if (!snapshots.isEmpty()) {
+                this.deferredRows.updateAndGet(existing -> {
+                    Map<String, DatabaseService.PersistentTableRecord> remaining = new LinkedHashMap<>(existing);
+                    snapshots.forEach(snapshot -> remaining.remove(normalizeId(snapshot.id())));
+                    return Map.copyOf(remaining);
+                });
+            }
         } catch (SQLException ex) {
             this.logger.warning("Failed to save persistent tables to " + database.databaseType() + ": " + ex.getMessage());
         }
@@ -170,8 +207,18 @@ final class PersistentTableStore {
         }
     }
 
+    private void warnUnsafeWrite() {
+        if (this.unsafeWriteWarningLogged.compareAndSet(false, true)) {
+            this.logger.warning("Persistent-table writes are blocked because the startup snapshot was not loaded safely; existing database rows will not be replaced.");
+        }
+    }
+
     private DatabaseService database() {
         return this.database.get();
+    }
+
+    private static String normalizeId(String id) {
+        return id.toUpperCase(Locale.ROOT);
     }
 
     private static MahjongRule copyRule(MahjongRule rule) {

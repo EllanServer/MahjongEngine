@@ -1,19 +1,23 @@
 package top.ellan.mahjong.table.runtime
 
+import org.bukkit.Bukkit
+import org.bukkit.Location
+import org.bukkit.World
+import org.bukkit.block.Block
+import org.bukkit.entity.Player
+import org.bukkit.util.BoundingBox
+import org.mockito.Mockito
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
+import org.mockito.Mockito.times
+import org.mockito.Mockito.verify
+import org.mockito.Mockito.`when`
 import top.ellan.mahjong.compat.CraftEngineService
 import top.ellan.mahjong.model.SeatWind
 import top.ellan.mahjong.runtime.PluginTask
 import top.ellan.mahjong.runtime.ServerScheduler
 import top.ellan.mahjong.table.core.MahjongTableManager
 import top.ellan.mahjong.table.core.MahjongTableSession
-import org.bukkit.Bukkit
-import org.bukkit.entity.Player
-import org.mockito.Mockito
-import org.mockito.Mockito.`when`
-import org.mockito.Mockito.mock
-import org.mockito.Mockito.times
-import org.mockito.Mockito.verify
-import org.mockito.Mockito.never
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -124,6 +128,26 @@ class TableSeatCoordinatorTest {
         verify(scheduler, never()).runRegion(Mockito.any(), Mockito.any(Runnable::class.java))
     }
 
+    @Test
+    fun `seat exit places player feet on the nearby floor collision top`() {
+        val world = mock(World::class.java)
+        val support = mock(Block::class.java)
+        val probe = Location(world, 10.25, 75.0, 20.75)
+
+        `when`(world.minHeight).thenReturn(-64)
+        `when`(world.maxHeight).thenReturn(320)
+        `when`(world.getBlockAt(10, 74, 20)).thenReturn(support)
+        `when`(support.isPassable).thenReturn(false)
+        `when`(support.isLiquid).thenReturn(false)
+        `when`(support.boundingBox).thenReturn(BoundingBox(10.0, 74.0, 20.0, 11.0, 75.0, 21.0))
+
+        val exit = TableSeatCoordinator.groundedSeatExit(probe, 75)
+
+        assertEquals(75.02, exit.y, 0.000001)
+        assertEquals(probe.x, exit.x)
+        assertEquals(probe.z, exit.z)
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun seatWatchdogs(coordinator: TableSeatCoordinator): MutableMap<UUID, Any?> {
         val field = coordinator.javaClass.getDeclaredField("seatWatchdogs")
@@ -137,4 +161,3 @@ class TableSeatCoordinatorTest {
         method.invoke(coordinator)
     }
 }
-

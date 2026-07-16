@@ -150,6 +150,10 @@ public final class TableControlUi {
                     messages.send(player, session.isStarted() ? "command.table_delete_locked" : "command.table_owner_required");
                     yield true;
                 }
+                if (!manager.canBreakTable(player, session)) {
+                    messages.send(player, "command.deletetable_protected");
+                    yield true;
+                }
                 if (!confirmed) {
                     messages.send(player, "command.table_confirm_danger");
                     yield true;

@@ -10,7 +10,6 @@ import top.ellan.mahjong.runtime.PluginTask;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -27,12 +26,11 @@ import java.util.UUID;
  *       so the bot just needs to keep playing aggressively.</li>
  *   <li><b>No chii (不能吃)</b> — the controller already returns empty chii pairs for
  *       Sichuan, so the reaction logic only considers pon, kan, and ron.</li>
- *   <li><b>Forced tsumo at end wall (海底捞月)</b> — when the wall has ≤4 tiles and
- *       the player can tsumo, hand tile selection is disabled; the bot must declare
- *       tsumo instead of trying to discard.</li>
- *   <li><b>Flower-pig penalty (查花猪)</b> — if the game ends in an exhaustive draw
- *       and a player's hand is not missing one suit, they pay a heavy penalty.
- *       The bot must ensure it commits to a missing suit early.</li>
+ *   <li><b>Ordinary final-four play</b> — the default T/TFMJ profile still lets a
+ *       player pass a win, discard, pon, or kan near the end of the wall.</li>
+ *   <li><b>Declared missing suit (定缺)</b> — tiles of the chosen suit must be
+ *       discarded first and cannot remain in a winning hand. A naturally unfinished
+ *       suit at exhaustive draw is handled as not-ready, not as a fixed hua-zhu fine.</li>
  * </ul>
  */
 final class SichuanBotStrategy implements BotStrategy {
@@ -88,7 +86,7 @@ final class SichuanBotStrategy implements BotStrategy {
         }
         // No pending reactions — check if the current player is a bot.
         UUID current = session.playerAt(session.currentSeat());
-        if (current != null && session.isBot(current)) {
+        if (current != null && session.isBot(current) && session.isCurrentPlayer(current)) {
             final PluginTask[] holder = new PluginTask[1];
             holder[0] = session.plugin().scheduler().runRegionDelayed(
                 session.center(),
@@ -220,7 +218,7 @@ final class SichuanBotStrategy implements BotStrategy {
     }
 
     private void handleSichuanTurn(MahjongTableSession session, UUID playerId, int retryAttempts) {
-        if (!session.isStarted() || session.hasPendingReaction() || !Objects.equals(session.playerAt(session.currentSeat()), playerId)) {
+        if (!session.isStarted() || session.hasPendingReaction() || !session.isCurrentPlayer(playerId)) {
             return;
         }
         // 1. Declare tsumo if possible.
@@ -248,7 +246,7 @@ final class SichuanBotStrategy implements BotStrategy {
         if (!session.discard(playerId, discardIndex)
             && session.isStarted()
             && !session.hasPendingReaction()
-            && Objects.equals(session.playerAt(session.currentSeat()), playerId)) {
+            && session.isCurrentPlayer(playerId)) {
             this.scheduleSichuanTurnRetry(session, playerId, retryAttempts, "discard-failed");
         }
     }
@@ -261,8 +259,8 @@ final class SichuanBotStrategy implements BotStrategy {
      *   <li>If the hand already satisfies "missing one suit", use the GB engine's
      *       suggested discard (which evaluates ting and is Sichuan-aware).</li>
      *   <li>If the hand still has all three suits, prioritise discarding from the
-     *       suit with the fewest tiles to quickly commit to a missing suit and
-     *       avoid the flower-pig (花猪) penalty on exhaustive draw.</li>
+     *       suit with the fewest tiles to complete the declared missing-suit
+     *       obligation and preserve a chance to become ready.</li>
      * </ol>
      */
     private int chooseSichuanDiscardIndex(MahjongTableSession session, UUID playerId) {

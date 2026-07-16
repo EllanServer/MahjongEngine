@@ -33,10 +33,8 @@ interface SichuanRulesEngine {
 
     List<GbScoreDelta> exhaustiveDrawDeltas(
         List<SeatWind> activeSeats,
-        Map<SeatWind, List<MahjongTile>> hands,
         Set<SeatWind> readySeats,
-        Map<SeatWind, Integer> readyUnits,
-        int huaZhuUnit
+        Map<SeatWind, Integer> readyUnits
     );
 
     record FanResult(boolean valid, int totalFan, List<GbFanEntry> fans, String error) {

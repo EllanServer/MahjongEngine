@@ -8,6 +8,36 @@ website: top.ellan
 description: Mahjong Soul-style Riichi Mahjong Paper plugin with optional GB rules, display entities, and CraftEngine-managed assets.
 depend:
   - CraftEngine
+softdepend:
+  - InvSync
+  - WorldGuard
+  - Kingdoms
+  - Lands
+  - IridiumSkyblock
+  - CrashClaim
+  - GriefDefender
+  - HuskClaims
+  - BentoBox
+  - HuskTowns
+  - PlotSquared
+  - Residence
+  - SuperiorSkyblock2
+  - Towny
+  - FabledSkyBlock
+  - GriefPrevention
+  - RedProtect
+  - Landlord
+  - uSkyBlock
+  - XClaim
+  - UltimateClaims
+  - UltimateClans
+  - PreciousStones
+  - Dominion
+  - Factions
+  - NoBuildPlus
+  - Protect
+  - SimpleClaimSystem
+  - LandClaimPlugin
 commands:
   mahjong:
     description: Manage MahjongPaper tables and rounds. Use /mahjong help for command explanations.

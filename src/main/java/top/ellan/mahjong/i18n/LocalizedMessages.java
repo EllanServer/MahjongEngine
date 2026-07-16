@@ -155,6 +155,7 @@ public final class LocalizedMessages {
             DEFAULT_LOCALE,
             Map.of(
                 "en", "language/messages.properties",
+                "ja-JP", "language/messages_ja_JP.properties",
                 DEFAULT_LOCALE.toLanguageTag(), "language/messages_zh_CN.properties",
                 "zh-TW", "language/messages_zh_TW.properties",
                 "zh-HK", "language/messages_zh_HK.properties",
@@ -287,4 +288,3 @@ public final class LocalizedMessages {
         }
     }
 }
-

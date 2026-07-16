@@ -140,6 +140,7 @@ class CorePerformanceBenchmarksTest {
         val settings = mock(PluginSettings::class.java)
         val session = mock(MahjongTableSession::class.java)
         `when`(plugin.settings()).thenReturn(settings)
+        `when`(session.settings()).thenReturn(settings)
         `when`(settings.craftEngineTableFurnitureId()).thenReturn("mahjongpaper:table_visual")
         `when`(settings.craftEngineSeatFurnitureId()).thenReturn("mahjongpaper:seat_chair")
         `when`(session.plugin()).thenReturn(plugin)

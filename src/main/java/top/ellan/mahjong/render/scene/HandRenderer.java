@@ -3,6 +3,7 @@ package top.ellan.mahjong.render.scene;
 import top.ellan.mahjong.model.MahjongTile;
 import top.ellan.mahjong.render.display.DisplayClickAction;
 import top.ellan.mahjong.render.display.DisplayEntities;
+import top.ellan.mahjong.render.display.DisplayInteractionRayRegistry;
 import top.ellan.mahjong.render.layout.TableRenderLayout;
 import top.ellan.mahjong.render.TableRenderSubject;
 import top.ellan.mahjong.render.snapshot.TableRenderSnapshot;
@@ -20,87 +21,23 @@ public final class HandRenderer {
     private HandRenderer() {
     }
 
-    public static List<Entity> renderHandPrivate(
-        TableRenderSubject session,
-        TableSeatRenderSnapshot seat,
-        TableRenderLayout.SeatLayoutPlan plan
-    ) {
-        if (seat.playerId() == null) {
-            return List.of();
-        }
-
-        List<UUID> ownerOnly = List.of(seat.playerId());
-        List<Entity> spawned = new ArrayList<>(seat.hand().size() * 2);
-        for (int tileIndex = 0; tileIndex < seat.hand().size(); tileIndex++) {
-            Location tileLocation = TableGeometry.toLocation(session, plan.privateHandPoints().get(tileIndex));
-            spawned.add(DisplayEntities.tileDisplay(
-                tileLocation,
-                plan.yaw(),
-                session.currentVariant(),
-                seat.hand().get(tileIndex),
-                DisplayEntities.TileRenderPose.STANDING
-            )
-                .privateViewers(ownerOnly)
-                .spawn(session.bukkitPlugin()));
-            Entity clickHitbox = DisplayEntities.spawnInteraction(
-                session.bukkitPlugin(),
-                handInteractionLocation(tileLocation),
-                TableRenderConstants.HAND_INTERACTION_WIDTH,
-                TableRenderConstants.HAND_INTERACTION_HEIGHT,
-                DisplayClickAction.handTile(session.id(), seat.playerId(), tileIndex),
-                ownerOnly
-            );
-            if (clickHitbox != null) {
-                spawned.add(clickHitbox);
-            }
-        }
-        return spawned;
-    }
-
-    public static List<Entity> renderHandPrivateTile(
-        TableRenderSubject session,
-        TableSeatRenderSnapshot seat,
-        TableRenderLayout.SeatLayoutPlan plan,
-        int tileIndex
-    ) {
-        if (seat.playerId() == null || tileIndex < 0 || tileIndex >= seat.hand().size()) {
-            return List.of();
-        }
-
-        Location tileLocation = TableGeometry.toLocation(session, plan.privateHandPoints().get(tileIndex));
-        UUID playerId = seat.playerId();
-        List<Entity> spawned = new ArrayList<>(2);
-        spawned.add(DisplayEntities.tileDisplay(
-            tileLocation,
-            plan.yaw(),
-            session.currentVariant(),
-            seat.hand().get(tileIndex),
-            DisplayEntities.TileRenderPose.STANDING
-        )
-            .privateViewers(List.of(playerId))
-            .spawn(session.bukkitPlugin()));
-        Entity clickHitbox = DisplayEntities.spawnInteraction(
-            session.bukkitPlugin(),
-            handInteractionLocation(tileLocation),
-            TableRenderConstants.HAND_INTERACTION_WIDTH,
-            TableRenderConstants.HAND_INTERACTION_HEIGHT,
-            DisplayClickAction.handTile(session.id(), playerId, tileIndex),
-            List.of(playerId)
-        );
-        if (clickHitbox != null) {
-            spawned.add(clickHitbox);
-        }
-        return spawned;
-    }
-
     public static List<DisplayEntities.EntitySpec> renderHandPrivateTileSpecs(
         TableRenderSubject session,
         TableSeatRenderSnapshot seat,
         TableRenderLayout.SeatLayoutPlan plan,
         int tileIndex
     ) {
+        return renderHandPrivateTilePlan(session, seat, plan, tileIndex).entitySpecs();
+    }
+
+    public static HandTileRenderPlan renderHandPrivateTilePlan(
+        TableRenderSubject session,
+        TableSeatRenderSnapshot seat,
+        TableRenderLayout.SeatLayoutPlan plan,
+        int tileIndex
+    ) {
         if (seat.playerId() == null || tileIndex < 0 || tileIndex >= seat.hand().size()) {
-            return List.of();
+            return HandTileRenderPlan.empty();
         }
 
         List<UUID> ownerOnly = List.of(seat.playerId());
@@ -114,16 +51,21 @@ public final class HandRenderer {
         )
             .privateViewers(ownerOnly)
             .spec();
-        return List.of(
-            tileSpec,
-            DisplayEntities.interactionSpec(
-                handInteractionLocation(tileLocation),
-                TableRenderConstants.HAND_INTERACTION_WIDTH,
-                TableRenderConstants.HAND_INTERACTION_HEIGHT,
-                DisplayClickAction.handTile(session.id(), seat.playerId(), tileIndex),
-                ownerOnly
-            )
+        TableGeometry.Offset acrossAxis = TableGeometry.offsetAcrossSeat(seat.wind(), 1.0D);
+        UUID worldId = tileLocation.getWorld() == null ? null : tileLocation.getWorld().getUID();
+        DisplayInteractionRayRegistry.RayInteraction interaction = new DisplayInteractionRayRegistry.RayInteraction(
+            worldId,
+            tileLocation.getX(),
+            tileLocation.getY(),
+            tileLocation.getZ(),
+            acrossAxis.x(),
+            acrossAxis.z(),
+            TableRenderConstants.HAND_INTERACTION_WIDTH,
+            TableRenderConstants.HAND_INTERACTION_HEIGHT,
+            (float) TableRenderConstants.TILE_DEPTH,
+            DisplayClickAction.handTile(session.id(), seat.playerId(), tileIndex)
         );
+        return new HandTileRenderPlan(List.of(tileSpec), List.of(interaction));
     }
 
     public static List<Entity> renderHandPublic(
@@ -137,14 +79,13 @@ public final class HandRenderer {
         }
 
         List<Entity> spawned = new ArrayList<>(seat.hand().size());
-        boolean concealHand = snapshot.started();
         List<UUID> ownerHidden = List.of(seat.playerId());
         for (int i = 0; i < seat.hand().size(); i++) {
             spawned.add(DisplayEntities.tileDisplay(
                 TableGeometry.toLocation(session, plan.publicHandPoints().get(i)),
                 plan.yaw(),
                 session.currentVariant(),
-                concealHand ? MahjongTile.UNKNOWN : seat.hand().get(i),
+                MahjongTile.UNKNOWN,
                 DisplayEntities.TileRenderPose.STANDING
             )
                 .hiddenViewers(ownerHidden)
@@ -164,13 +105,12 @@ public final class HandRenderer {
             return List.of();
         }
 
-        boolean concealHand = snapshot.started();
         List<UUID> ownerHidden = List.of(seat.playerId());
         return List.of(DisplayEntities.tileDisplay(
             TableGeometry.toLocation(session, plan.publicHandPoints().get(tileIndex)),
             plan.yaw(),
             session.currentVariant(),
-            concealHand ? MahjongTile.UNKNOWN : seat.hand().get(tileIndex),
+            MahjongTile.UNKNOWN,
             DisplayEntities.TileRenderPose.STANDING
         )
             .hiddenViewers(ownerHidden)
@@ -188,20 +128,29 @@ public final class HandRenderer {
             return List.of();
         }
 
-        boolean concealHand = snapshot.started();
         List<UUID> ownerHidden = List.of(seat.playerId());
         return List.of(DisplayEntities.tileDisplay(
             TableGeometry.toLocation(session, plan.publicHandPoints().get(tileIndex)),
             plan.yaw(),
             session.currentVariant(),
-            concealHand ? MahjongTile.UNKNOWN : seat.hand().get(tileIndex),
+            MahjongTile.UNKNOWN,
             DisplayEntities.TileRenderPose.STANDING
         )
             .hiddenViewers(ownerHidden)
             .spec());
     }
 
-    private static Location handInteractionLocation(Location tileLocation) {
-        return tileLocation.clone().subtract(0.0D, TableRenderConstants.UPRIGHT_TILE_Y, 0.0D);
+    public record HandTileRenderPlan(
+        List<DisplayEntities.EntitySpec> entitySpecs,
+        List<DisplayInteractionRayRegistry.RayInteraction> rayInteractions
+    ) {
+        public HandTileRenderPlan {
+            entitySpecs = List.copyOf(entitySpecs);
+            rayInteractions = List.copyOf(rayInteractions);
+        }
+
+        static HandTileRenderPlan empty() {
+            return new HandTileRenderPlan(List.of(), List.of());
+        }
     }
 }

@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import net.kyori.adventure.text.Component;
-import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -33,7 +32,6 @@ public final class TableDiceAnimationCoordinator {
     private static final double DIE_Y = 0.68D;
     private static final double DIE_X_OFFSET = 0.16D;
     private static final double RESULT_LABEL_Y = 1.18D;
-    private static final Color RESULT_LABEL_BACKGROUND = Color.fromARGB(104, 20, 20, 24);
     private static final Map<Integer, ItemStack> DICE_ITEM_CACHE = new ConcurrentHashMap<>();
 
     private final TableSessionContext session;
@@ -176,12 +174,11 @@ public final class TableDiceAnimationCoordinator {
         spawned.text(text);
         spawned.setSeeThrough(false);
         spawned.setShadowed(true);
-        spawned.setDefaultBackground(false);
+        spawned.setDefaultBackground(true);
         spawned.setBillboard(Display.Billboard.CENTER);
         spawned.setLineWidth(180);
         spawned.setViewRange(32.0F);
         spawned.setBrightness(new Display.Brightness(15, 15));
-        spawned.setBackgroundColor(RESULT_LABEL_BACKGROUND);
         return spawned;
     }
 

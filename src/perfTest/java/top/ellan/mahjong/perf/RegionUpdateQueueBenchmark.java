@@ -21,16 +21,16 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import top.ellan.mahjong.table.render.TableRegionDisplayCoordinator;
 
-/** Measures the private priority queue used to apply a representative table render. */
+/** Measures the private bucket queue used to apply a representative table render. */
 @State(Scope.Thread)
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
 public class RegionUpdateQueueBenchmark {
-    private static final int PRIORITY_REACTION_PROMPT = 400;
-    private static final int PRIORITY_HAND = 320;
-    private static final int PRIORITY_TURN_STATE = 240;
-    private static final int PRIORITY_BOARD = 160;
-    private static final int PRIORITY_BACKGROUND = 80;
+    private static final int BUCKET_REACTION_PROMPT = 0;
+    private static final int BUCKET_HAND = 1;
+    private static final int BUCKET_TURN_STATE = 2;
+    private static final int BUCKET_BOARD = 3;
+    private static final int BUCKET_BACKGROUND = 4;
     private static final int WALL_TILE_REGIONS = 136;
     private static final int SEATS = 4;
     private static final int HAND_TILES_PER_SEAT = 11;
@@ -40,30 +40,36 @@ public class RegionUpdateQueueBenchmark {
 
     private TableRegionDisplayCoordinator coordinator;
     private Class<?> actionType;
-    private Constructor<?> updateConstructor;
+    private Constructor<?> queueConstructor;
+    private MethodHandle addToQueue;
     private MethodHandle applyQueue;
     private MethodHandle deferredAccessor;
     private MethodHandle processedUpdatesAccessor;
-    private List<Integer> priorityPlan;
-    private List<Object> template;
-    private List<Object> working;
+    private List<Integer> bucketPlan;
+    private Object queue;
 
     @Setup(Level.Trial)
     public void setUp() throws Throwable {
         this.coordinator = new TableRegionDisplayCoordinator(null, null);
         Class<?> coordinatorType = TableRegionDisplayCoordinator.class;
-        Class<?> updateType = Class.forName(coordinatorType.getName() + "$QueuedRegionUpdate");
+        Class<?> queueType = Class.forName(coordinatorType.getName() + "$RegionUpdateQueue");
         Class<?> executionType = Class.forName(coordinatorType.getName() + "$QueueExecution");
         this.actionType = Class.forName(coordinatorType.getName() + "$RegionUpdateAction");
 
-        this.updateConstructor = updateType.getDeclaredConstructor(int.class, long.class, this.actionType);
-        this.updateConstructor.setAccessible(true);
+        this.queueConstructor = queueType.getDeclaredConstructor();
+        this.queueConstructor.setAccessible(true);
 
         MethodHandles.Lookup coordinatorLookup = MethodHandles.privateLookupIn(coordinatorType, MethodHandles.lookup());
         this.applyQueue = coordinatorLookup.findVirtual(
             coordinatorType,
             "applyQueue",
-            MethodType.methodType(executionType, List.class)
+            MethodType.methodType(executionType, queueType)
+        );
+        MethodHandles.Lookup queueLookup = MethodHandles.privateLookupIn(queueType, MethodHandles.lookup());
+        this.addToQueue = queueLookup.findVirtual(
+            queueType,
+            "add",
+            MethodType.methodType(void.class, int.class, this.actionType)
         );
         MethodHandles.Lookup executionLookup = MethodHandles.privateLookupIn(executionType, MethodHandles.lookup());
         this.deferredAccessor = executionLookup.findVirtual(
@@ -77,65 +83,53 @@ public class RegionUpdateQueueBenchmark {
             MethodType.methodType(int.class)
         );
 
-        this.priorityPlan = this.createPriorityPlan();
+        this.bucketPlan = this.createBucketPlan();
         this.verifyQueueContract();
         Object alwaysApply = this.action(() -> true);
-        this.template = this.createUpdates(sequence -> alwaysApply);
-        this.working = new ArrayList<>(this.template);
-    }
-
-    @Setup(Level.Invocation)
-    public void restoreProductionOrder() {
-        for (int index = 0; index < this.template.size(); index++) {
-            this.working.set(index, this.template.get(index));
-        }
+        this.queue = this.createQueue(sequence -> alwaysApply);
     }
 
     @Benchmark
     public Object orderRepresentativeTableRegions() throws Throwable {
-        return this.applyQueue.invoke(this.coordinator, this.working);
+        return this.applyQueue.invoke(this.coordinator, this.queue);
     }
 
-    private List<Integer> createPriorityPlan() {
-        List<Integer> priorities = new ArrayList<>(EXPECTED_REGION_UPDATES);
-        priorities.add(PRIORITY_BOARD);
-        this.repeat(priorities, PRIORITY_BACKGROUND, WALL_TILE_REGIONS);
-        priorities.add(PRIORITY_BOARD);
-        priorities.add(PRIORITY_REACTION_PROMPT);
+    private List<Integer> createBucketPlan() {
+        List<Integer> buckets = new ArrayList<>(EXPECTED_REGION_UPDATES);
+        buckets.add(BUCKET_BOARD);
+        this.repeat(buckets, BUCKET_BACKGROUND, WALL_TILE_REGIONS);
+        buckets.add(BUCKET_BOARD);
+        buckets.add(BUCKET_REACTION_PROMPT);
         for (int seat = 0; seat < SEATS; seat++) {
-            priorities.add(PRIORITY_BACKGROUND);
-            priorities.add(PRIORITY_REACTION_PROMPT);
-            priorities.add(PRIORITY_TURN_STATE);
-            this.repeat(priorities, PRIORITY_HAND, HAND_TILES_PER_SEAT);
-            this.repeat(priorities, PRIORITY_HAND, HAND_TILES_PER_SEAT);
-            this.repeat(priorities, PRIORITY_TURN_STATE, DISCARDS_PER_SEAT);
-            this.repeat(priorities, PRIORITY_TURN_STATE, MELD_TILES_PER_SEAT);
+            buckets.add(BUCKET_BACKGROUND);
+            buckets.add(BUCKET_REACTION_PROMPT);
+            buckets.add(BUCKET_TURN_STATE);
+            this.repeat(buckets, BUCKET_HAND, HAND_TILES_PER_SEAT);
+            this.repeat(buckets, BUCKET_HAND, HAND_TILES_PER_SEAT);
+            this.repeat(buckets, BUCKET_TURN_STATE, DISCARDS_PER_SEAT);
+            this.repeat(buckets, BUCKET_TURN_STATE, MELD_TILES_PER_SEAT);
         }
-        if (priorities.size() != EXPECTED_REGION_UPDATES) {
+        if (buckets.size() != EXPECTED_REGION_UPDATES) {
             throw new IllegalStateException(
-                "Representative region count changed: expected=" + EXPECTED_REGION_UPDATES + ", actual=" + priorities.size()
+                "Representative region count changed: expected=" + EXPECTED_REGION_UPDATES + ", actual=" + buckets.size()
             );
         }
-        return List.copyOf(priorities);
+        return List.copyOf(buckets);
     }
 
-    private void repeat(List<Integer> priorities, int priority, int count) {
+    private void repeat(List<Integer> buckets, int bucket, int count) {
         for (int index = 0; index < count; index++) {
-            priorities.add(priority);
+            buckets.add(bucket);
         }
     }
 
-    private List<Object> createUpdates(LongFunction<Object> actionFactory) throws ReflectiveOperationException {
-        List<Object> updates = new ArrayList<>(this.priorityPlan.size());
-        for (int index = 0; index < this.priorityPlan.size(); index++) {
+    private Object createQueue(LongFunction<Object> actionFactory) throws Throwable {
+        Object created = this.queueConstructor.newInstance();
+        for (int index = 0; index < this.bucketPlan.size(); index++) {
             long sequence = index;
-            updates.add(this.updateConstructor.newInstance(
-                this.priorityPlan.get(index),
-                sequence,
-                actionFactory.apply(sequence)
-            ));
+            this.addToQueue.invoke(created, this.bucketPlan.get(index), actionFactory.apply(sequence));
         }
-        return updates;
+        return created;
     }
 
     private Object action(BooleanSupplier result) {
@@ -152,18 +146,17 @@ public class RegionUpdateQueueBenchmark {
     }
 
     private void verifyQueueContract() throws Throwable {
-        List<Long> expectedOrder = new ArrayList<>(this.priorityPlan.size());
-        for (int index = 0; index < this.priorityPlan.size(); index++) {
+        List<Long> expectedOrder = new ArrayList<>(this.bucketPlan.size());
+        for (int index = 0; index < this.bucketPlan.size(); index++) {
             expectedOrder.add((long) index);
         }
         expectedOrder.sort(
-            Comparator.comparingInt((Long sequence) -> this.priorityPlan.get(sequence.intValue()))
-                .reversed()
+            Comparator.comparingInt((Long sequence) -> this.bucketPlan.get(sequence.intValue()))
                 .thenComparingLong(Long::longValue)
         );
 
-        List<Long> observedOrder = new ArrayList<>(this.priorityPlan.size());
-        List<Object> updates = this.createUpdates(sequence -> this.action(() -> {
+        List<Long> observedOrder = new ArrayList<>(this.bucketPlan.size());
+        Object updates = this.createQueue(sequence -> this.action(() -> {
             observedOrder.add(sequence);
             return true;
         }));
@@ -176,7 +169,7 @@ public class RegionUpdateQueueBenchmark {
         int failureIndex = EXPECTED_REGION_UPDATES / 2;
         long failureSequence = expectedOrder.get(failureIndex);
         observedOrder.clear();
-        updates = this.createUpdates(sequence -> this.action(() -> {
+        updates = this.createQueue(sequence -> this.action(() -> {
             observedOrder.add(sequence);
             return sequence != failureSequence;
         }));

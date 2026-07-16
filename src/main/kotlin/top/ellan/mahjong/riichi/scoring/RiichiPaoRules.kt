@@ -117,12 +117,8 @@ object RiichiPaoRules {
             notes.merge(entry.liablePlayer.uuid, entry.key, ::mergeLiabilityNotes)
         }
         val liabilityTotal = unitValue * liabilityEntries.sumOf { it.yakumanUnits }
-        val targetOwnLiabilityHalf =
-            liabilityEntries
-                .filter { it.liablePlayer == target }
-                .sumOf { unitValue * it.yakumanUnits / 2 }
         return PaoRonBreakdown(
-            targetBase = (basicScore - liabilityTotal) + (liabilityTotal / 2) + targetOwnLiabilityHalf,
+            targetBase = (basicScore - liabilityTotal) + (liabilityTotal / 2),
             liabilityPayments = liabilityPortions,
             liabilityNotes = notes,
             honbaPayer = honbaPayer(liabilityEntries, seatOrderFromDealer) ?: target,

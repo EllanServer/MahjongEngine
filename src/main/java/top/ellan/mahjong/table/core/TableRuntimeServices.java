@@ -1,12 +1,14 @@
 package top.ellan.mahjong.table.core;
 
 import top.ellan.mahjong.compat.CraftEngineService;
+import top.ellan.mahjong.compat.protection.ProtectionService;
 import top.ellan.mahjong.config.PluginSettings;
 import top.ellan.mahjong.db.DatabaseService;
 import top.ellan.mahjong.debug.DebugService;
 import top.ellan.mahjong.gameroom.GameRoomManager;
 import top.ellan.mahjong.i18n.MessageService;
 import top.ellan.mahjong.metrics.MetricsCollector;
+import top.ellan.mahjong.rank.PlayerRankStorage;
 import top.ellan.mahjong.render.display.DisplayEntityRuntime;
 import top.ellan.mahjong.runtime.AsyncService;
 import top.ellan.mahjong.runtime.ServerScheduler;
@@ -32,7 +34,11 @@ public interface TableRuntimeServices extends DisplayEntityRuntime {
 
     CraftEngineService craftEngine();
 
+    ProtectionService protection();
+
     DatabaseService database();
+
+    PlayerRankStorage playerRankStorage();
 
     MetricsCollector metrics();
 

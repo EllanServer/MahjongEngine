@@ -1,14 +1,9 @@
 package top.ellan.mahjong.compat;
 
-import top.ellan.mahjong.render.display.DisplayVisibilityRegistry;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import net.momirealms.craftengine.bukkit.api.BukkitAdaptor;
+import net.momirealms.craftengine.core.entity.culling.Cullable;
+import net.momirealms.craftengine.core.entity.culling.CullingData;
+import net.momirealms.craftengine.core.world.collision.AABB;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
@@ -16,32 +11,30 @@ import org.bukkit.entity.Interaction;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.BoundingBox;
+import top.ellan.mahjong.render.display.DisplayVisibilityRegistry;
+
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class CraftEngineCullingBridge {
     private final CraftEngineBridgeContext context;
     private final Map<Integer, TrackedCullableEntity> trackedCullableEntities = new ConcurrentHashMap<>();
-    private volatile boolean reflectionUnavailable;
-    private volatile CullingReflection reflection;
 
     CraftEngineCullingBridge(CraftEngineBridgeContext context) {
         this.context = context;
     }
 
     void registerCullableEntity(Entity entity) {
-        if (entity == null || !isCullableEntity(entity) || !this.context.plugin().isEnabled()) {
+        if (entity == null || !isCullableEntity(entity) || !this.context.plugin().isEnabled() || !this.isAvailable()) {
             return;
         }
 
-        CullingReflection bridge = this.reflection();
-        if (bridge == null) {
-            return;
-        }
-
-        Object cullingData = this.createCullingData(entity, bridge);
         int entityId = entity.getEntityId();
         UUID entityUuid = entity.getUniqueId();
-        TrackedCullableEntity tracked = new TrackedCullableEntity(entity, entityId, entityUuid, this.createCullableProxy(entity, entityId, bridge, cullingData));
-        TrackedCullableEntity previous = this.trackedCullableEntities.put(entity.getEntityId(), tracked);
+        TrackedCullableEntity tracked = new TrackedCullableEntity(entity, entityId, entityUuid, this.createCullable(entity, entityId));
+        TrackedCullableEntity previous = this.trackedCullableEntities.put(entityId, tracked);
         if (previous != null && previous.entityUuid().equals(entityUuid)) {
             return;
         }
@@ -50,7 +43,7 @@ final class CraftEngineCullingBridge {
             for (Player player : this.onlinePlayersSnapshot()) {
                 this.context.plugin().scheduler().runEntity(player, () -> this.removeTrackedEntity(player, previous.entityId()));
             }
-            this.trackedCullableEntities.put(entity.getEntityId(), tracked);
+            this.trackedCullableEntities.put(entityId, tracked);
         }
 
         for (Player player : this.onlinePlayersSnapshot()) {
@@ -64,10 +57,7 @@ final class CraftEngineCullingBridge {
         }
 
         TrackedCullableEntity tracked = this.trackedCullableEntities.remove(entity.getEntityId());
-        if (tracked == null) {
-            return;
-        }
-        if (!this.context.plugin().isEnabled()) {
+        if (tracked == null || !this.context.plugin().isEnabled()) {
             return;
         }
         for (Player player : this.onlinePlayersSnapshot()) {
@@ -76,7 +66,7 @@ final class CraftEngineCullingBridge {
     }
 
     void syncTrackedEntitiesFor(Player player) {
-        if (player == null || !player.isOnline() || !this.context.plugin().isEnabled()) {
+        if (player == null || !player.isOnline() || !this.context.plugin().isEnabled() || !this.isAvailable()) {
             return;
         }
         for (TrackedCullableEntity tracked : this.trackedCullableEntities.values()) {
@@ -89,59 +79,49 @@ final class CraftEngineCullingBridge {
         this.trackedCullableEntities.clear();
     }
 
-    private Object createCullableProxy(Entity entity, int entityId, CullingReflection bridge, Object cullingData) {
-        InvocationHandler handler = (proxy, method, args) -> this.handleCullableInvocation(proxy, entity, entityId, bridge, cullingData, method, args);
-        return Proxy.newProxyInstance(bridge.classLoader(), new Class<?>[] {bridge.cullableClass()}, handler);
-    }
+    private Cullable createCullable(Entity entity, int entityId) {
+        CullingData cullingData = this.createCullingData(entity);
+        return new Cullable() {
+            @Override
+            public void show(net.momirealms.craftengine.core.entity.player.Player player) {
+                CraftEngineCullingBridge.this.scheduleViewerVisibility(entityId, entity, platformPlayer(player), true);
+            }
 
-    private Object handleCullableInvocation(Object proxy, Entity entity, int entityId, CullingReflection bridge, Object cullingData, Method method, Object[] args) {
-        return switch (method.getName()) {
-            case "show" -> {
-                this.scheduleViewerVisibility(entityId, entity, this.resolvePlatformPlayer(bridge, args), true);
-                yield null;
+            @Override
+            public void hide(net.momirealms.craftengine.core.entity.player.Player player) {
+                CraftEngineCullingBridge.this.scheduleViewerVisibility(entityId, entity, platformPlayer(player), false);
             }
-            case "hide" -> {
-                this.scheduleViewerVisibility(entityId, entity, this.resolvePlatformPlayer(bridge, args), false);
-                yield null;
+
+            @Override
+            public CullingData cullingData() {
+                return cullingData;
             }
-            case "cullingData" -> cullingData;
-            case "hashCode" -> entityId;
-            case "equals" -> proxyEquals(proxy, args);
-            case "toString" -> "MahjongPaperCullable[" + entityId + ']';
-            default -> null;
+
+            @Override
+            public int hashCode() {
+                return entityId;
+            }
+
+            @Override
+            public String toString() {
+                return "MahjongPaperCullable[" + entityId + ']';
+            }
         };
     }
 
-    private Object createCullingData(Entity entity, CullingReflection bridge) {
+    private CullingData createCullingData(Entity entity) {
         BoundingBox box = entity.getBoundingBox();
-        try {
-            Object aabb = bridge.aabbConstructor().newInstance(box.getMinX(), box.getMinY(), box.getMinZ(), box.getMaxX(), box.getMaxY(), box.getMaxZ());
-            return bridge.cullingDataConstructor().newInstance(
-                aabb,
-                maxDistance(entity),
-                0.25D,
-                true
-            );
-        } catch (ReflectiveOperationException exception) {
-            this.context.plugin().debug().log(
-                "lifecycle",
-                "CraftEngine culling data bridge failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
-            );
-            return null;
-        }
+        AABB aabb = new AABB(box.getMinX(), box.getMinY(), box.getMinZ(), box.getMaxX(), box.getMaxY(), box.getMaxZ());
+        return new CullingData(aabb, maxDistance(entity), 0.25D, true);
     }
 
     private void addTrackedEntity(Player player, TrackedCullableEntity tracked) {
-        CullingReflection bridge = this.reflection();
-        if (bridge == null) {
-            return;
-        }
         try {
-            Object cePlayer = bridge.adaptMethod().invoke(null, player);
+            net.momirealms.craftengine.core.entity.player.Player cePlayer = BukkitAdaptor.adapt(player);
             if (cePlayer != null) {
-                bridge.addTrackedEntityMethod().invoke(cePlayer, tracked.entityId(), tracked.cullableProxy());
+                cePlayer.addTrackedEntity(tracked.entityId(), tracked.cullable());
             }
-        } catch (ReflectiveOperationException | RuntimeException exception) {
+        } catch (RuntimeException | LinkageError exception) {
             this.context.plugin().debug().log(
                 "lifecycle",
                 "CraftEngine tracked entity add failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
@@ -150,16 +130,12 @@ final class CraftEngineCullingBridge {
     }
 
     private void removeTrackedEntity(Player player, int entityId) {
-        CullingReflection bridge = this.reflection();
-        if (bridge == null) {
-            return;
-        }
         try {
-            Object cePlayer = bridge.adaptMethod().invoke(null, player);
+            net.momirealms.craftengine.core.entity.player.Player cePlayer = BukkitAdaptor.adapt(player);
             if (cePlayer != null) {
-                bridge.removeTrackedEntityMethod().invoke(cePlayer, entityId);
+                cePlayer.removeTrackedEntity(entityId);
             }
-        } catch (ReflectiveOperationException | RuntimeException exception) {
+        } catch (RuntimeException | LinkageError exception) {
             this.context.plugin().debug().log(
                 "lifecycle",
                 "CraftEngine tracked entity remove failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
@@ -199,74 +175,17 @@ final class CraftEngineCullingBridge {
         return List.copyOf(Bukkit.getOnlinePlayers());
     }
 
-    private Player resolvePlatformPlayer(CullingReflection bridge, Object[] args) {
-        if (args == null || args.length == 0 || args[0] == null) {
-            return null;
-        }
-        try {
-            Object platformPlayer = bridge.platformPlayerMethod().invoke(args[0]);
-            return platformPlayer instanceof Player player ? player : null;
-        } catch (ReflectiveOperationException exception) {
-            this.context.plugin().debug().log(
-                "lifecycle",
-                "CraftEngine platform player bridge failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
-            );
-            return null;
-        }
+    boolean isAvailable() {
+        Plugin craftEngine = this.context.craftEnginePlugin();
+        return craftEngine != null && craftEngine.isEnabled();
     }
 
-    private CullingReflection reflection() {
-        if (this.reflectionUnavailable) {
+    private static Player platformPlayer(net.momirealms.craftengine.core.entity.player.Player player) {
+        if (player == null) {
             return null;
         }
-        CullingReflection cached = this.reflection;
-        if (cached != null) {
-            return cached;
-        }
-
-        Plugin craftEngine = this.context.craftEnginePlugin();
-        if (craftEngine == null || !craftEngine.isEnabled()) {
-            return null;
-        }
-        synchronized (this) {
-            cached = this.reflection;
-            if (cached != null) {
-                return cached;
-            }
-            if (this.reflectionUnavailable) {
-                return null;
-            }
-            try {
-                ClassLoader classLoader = craftEngine.getClass().getClassLoader();
-                Class<?> adaptorClass = Class.forName("net.momirealms.craftengine.bukkit.api.BukkitAdaptor", true, classLoader);
-                Class<?> cullableClass = Class.forName("net.momirealms.craftengine.core.entity.culling.Cullable", true, classLoader);
-                Class<?> cePlayerClass = Class.forName("net.momirealms.craftengine.core.entity.player.Player", true, classLoader);
-                Class<?> aabbClass = Class.forName("net.momirealms.craftengine.core.world.collision.AABB", true, classLoader);
-                Class<?> cullingDataClass = Class.forName("net.momirealms.craftengine.core.entity.culling.CullingData", true, classLoader);
-                CullingReflection resolved = new CullingReflection(
-                    classLoader,
-                    cullableClass,
-                    adaptorClass.getMethod("adapt", Player.class),
-                    cePlayerClass.getMethod("addTrackedEntity", int.class, cullableClass),
-                    cePlayerClass.getMethod("removeTrackedEntity", int.class),
-                    cePlayerClass.getMethod("platformPlayer"),
-                    aabbClass.getConstructor(double.class, double.class, double.class, double.class, double.class, double.class),
-                    cullingDataClass.getConstructor(aabbClass, int.class, double.class, boolean.class)
-                );
-                this.reflection = resolved;
-                return resolved;
-            } catch (ReflectiveOperationException | RuntimeException exception) {
-                this.reflectionUnavailable = true;
-                this.context.plugin().getLogger().warning(
-                    "CraftEngine was detected, but MahjongPaper could not bridge CraftEngine entity culling. Display entities will use normal server tracking."
-                );
-                this.context.plugin().debug().log(
-                    "lifecycle",
-                    "CraftEngine culling reflection bridge failed: " + exception.getClass().getSimpleName() + ": " + exception.getMessage()
-                );
-                return null;
-            }
-        }
+        Object platformPlayer = player.platformPlayer();
+        return platformPlayer instanceof Player bukkitPlayer ? bukkitPlayer : null;
     }
 
     private static int maxDistance(Entity entity) {
@@ -283,22 +202,6 @@ final class CraftEngineCullingBridge {
         return entity instanceof Display || entity instanceof Interaction;
     }
 
-    private static boolean proxyEquals(Object proxy, Object[] args) {
-        return args != null && args.length == 1 && proxy == args[0];
-    }
-
-    private record TrackedCullableEntity(Entity entity, int entityId, UUID entityUuid, Object cullableProxy) {
-    }
-
-    private record CullingReflection(
-        ClassLoader classLoader,
-        Class<?> cullableClass,
-        Method adaptMethod,
-        Method addTrackedEntityMethod,
-        Method removeTrackedEntityMethod,
-        Method platformPlayerMethod,
-        Constructor<?> aabbConstructor,
-        Constructor<?> cullingDataConstructor
-    ) {
+    private record TrackedCullableEntity(Entity entity, int entityId, UUID entityUuid, Cullable cullable) {
     }
 }

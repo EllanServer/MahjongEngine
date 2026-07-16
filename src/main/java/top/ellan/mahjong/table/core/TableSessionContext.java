@@ -58,6 +58,12 @@ public interface TableSessionContext extends TableRenderSubject {
 
     boolean hasPendingReaction();
 
+    /** Uses the round controller's phase-aware notion of which player may act now. */
+    default boolean isCurrentPlayer(UUID playerId) {
+        TableRoundController controller = this.roundControllerInternal();
+        return playerId != null && controller != null && controller.isCurrentPlayer(playerId);
+    }
+
     List<UUID> seatIds();
 
     Set<UUID> spectators();
@@ -90,8 +96,6 @@ public interface TableSessionContext extends TableRenderSubject {
 
     String viewerActionMenuState(UUID viewerId);
 
-    String riichiFingerprintValue();
-
     MahjongRule configuredRuleSnapshot();
 
     MahjongRule configuredRuleInternal();
@@ -114,6 +118,8 @@ public interface TableSessionContext extends TableRenderSubject {
 
     boolean canDeclareTsumo(UUID playerId);
 
+    boolean canDeclareFlower(UUID playerId);
+
     boolean canChooseSichuanMissingSuit(UUID playerId);
 
     boolean isSichuanExchangePhase(UUID playerId);
@@ -123,6 +129,8 @@ public interface TableSessionContext extends TableRenderSubject {
     MahjongTile handTileAtInternal(UUID playerId, int tileIndex);
 
     List<Integer> suggestedRiichiIndices(UUID playerId);
+
+    List<Integer> suggestedFlowerIndices(UUID playerId);
 
     List<String> suggestedConcealedKanTiles(UUID playerId);
 

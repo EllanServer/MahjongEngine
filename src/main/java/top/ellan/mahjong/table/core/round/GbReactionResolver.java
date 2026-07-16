@@ -107,11 +107,10 @@ final class GbReactionResolver {
             return new Resolution(List.of(), null, true, false);
         }
 
-        Claim claim = firstClaimOfType(pending, discarderSeat, playerAt, ReactionType.MINKAN);
-        if (claim != null) {
-            return new Resolution(List.of(), claim, false, false);
-        }
-        claim = firstClaimOfType(pending, discarderSeat, playerAt, ReactionType.PON);
+        // Pung and exposed-kong calls have equal priority. Resolve both in
+        // turn order from the discarder so a farther kong cannot jump over a
+        // nearer pung.
+        Claim claim = firstPungOrKongClaim(pending, discarderSeat, playerAt);
         if (claim != null) {
             return new Resolution(List.of(), claim, false, false);
         }
@@ -120,6 +119,28 @@ final class GbReactionResolver {
             return new Resolution(List.of(), claim, false, false);
         }
         return new Resolution(List.of(), null, false, true);
+    }
+
+    private static Claim firstPungOrKongClaim(
+        PendingReactionWindow pending,
+        SeatWind discarderSeat,
+        Function<SeatWind, UUID> playerAt
+    ) {
+        for (SeatWind wind : GbRoundSupport.orderedAfter(discarderSeat)) {
+            UUID playerId = playerAt.apply(wind);
+            if (playerId == null) {
+                continue;
+            }
+            ReactionResponse response = pending.responses().get(playerId);
+            if (response == null) {
+                continue;
+            }
+            ReactionType type = response.getType();
+            if (type == ReactionType.PON || type == ReactionType.MINKAN) {
+                return new Claim(playerId, response);
+            }
+        }
+        return null;
     }
 
     private static Claim firstClaimOfType(
@@ -169,4 +190,3 @@ final class GbReactionResolver {
     ) {
     }
 }
-

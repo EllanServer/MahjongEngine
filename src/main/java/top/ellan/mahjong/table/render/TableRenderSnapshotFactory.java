@@ -32,6 +32,8 @@ public final class TableRenderSnapshotFactory {
         Set<UUID> onlineViewerIdSet = new HashSet<>(onlineViewerIds);
         Map<UUID, String> viewerMembershipSignatures = new HashMap<>();
         Map<UUID, List<UUID>> viewerIdsExcluding = new HashMap<>();
+        viewerMembershipSignatures.put(null, this.viewerMembershipSignature(serializedOnlineViewerIds, null));
+        viewerIdsExcluding.put(null, List.copyOf(onlineViewerIds));
         for (SerializedViewerId viewer : serializedOnlineViewerIds) {
             UUID viewerId = viewer.id();
             viewerMembershipSignatures.put(
@@ -69,6 +71,7 @@ public final class TableRenderSnapshotFactory {
             session.lastPublicDiscardPlayerIdValue(),
             session.lastPublicDiscardTile(),
             started ? List.copyOf(session.doraIndicators()) : List.of(),
+            session.currentVariant(),
             seats
         );
     }
@@ -124,12 +127,12 @@ public final class TableRenderSnapshotFactory {
             occupied && session.isReady(playerId),
             occupied && session.isQueuedToLeave(playerId),
             occupied && onlineViewerIdSet.contains(playerId),
-            occupied ? viewerMembershipSignatures.getOrDefault(playerId, "") : "",
+            viewerMembershipSignatures.getOrDefault(playerId, ""),
             occupied ? session.selectedHandTileIndex(playerId) : -1,
             occupied ? session.selectedHandTileIndices(playerId) : List.of(),
             occupied ? session.riichiDiscardIndex(playerId) : -1,
             session.stickLayoutCount(wind),
-            occupied ? viewerIdsExcluding.getOrDefault(playerId, List.of()) : List.of(),
+            viewerIdsExcluding.getOrDefault(playerId, List.of()),
             occupied ? session.hand(playerId) : List.of(),
             occupied ? session.discards(playerId) : List.of(),
             occupied ? session.fuuro(playerId) : List.of(),

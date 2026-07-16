@@ -20,6 +20,7 @@ import top.ellan.mahjong.table.core.TableRuntimeServices
 import java.util.Locale
 import java.util.UUID
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SettlementUiIntegrationTest {
@@ -109,6 +110,20 @@ class SettlementUiIntegrationTest {
         assertTrue(rendered.any { it.contains("1p") || it.contains("P1") || it.contains("p1") })
         assertTrue(rendered.any { it.contains("Riichi") || it.contains("reach", ignoreCase = true) })
         assertTrue(rendered.any { it.contains("3,900") || it.contains("3900") })
+    }
+
+    @Test
+    fun `mahjong soul game score is shown only for riichi settlements`() {
+        val session = mock(MahjongTableSession::class.java)
+
+        `when`(session.currentVariant()).thenReturn(MahjongVariant.RIICHI)
+        assertTrue(SettlementUi.shouldShowMahjongSoulGameScore(session))
+
+        `when`(session.currentVariant()).thenReturn(MahjongVariant.GB)
+        assertFalse(SettlementUi.shouldShowMahjongSoulGameScore(session))
+
+        `when`(session.currentVariant()).thenReturn(MahjongVariant.SICHUAN)
+        assertFalse(SettlementUi.shouldShowMahjongSoulGameScore(session))
     }
 
     private fun mockSession(): MahjongTableSession {

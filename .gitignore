@@ -5,6 +5,7 @@
 /buildSrc/.gradle/
 /buildSrc/.kotlin/
 /buildSrc/build/
+/buildSrc/.codex-build/
 /logs/
 /_upstream/
 /.tmp-gb-ref/

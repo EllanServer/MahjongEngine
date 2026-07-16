@@ -45,6 +45,8 @@ import top.ellan.mahjong.command.subcommand.TableSubcommand;
 import top.ellan.mahjong.command.subcommand.TsumoSubcommand;
 import top.ellan.mahjong.command.subcommand.UnspectateSubcommand;
 import top.ellan.mahjong.db.DatabaseService;
+import top.ellan.mahjong.rank.DatabasePlayerRankStorage;
+import top.ellan.mahjong.rank.PlayerRankStorage;
 import top.ellan.mahjong.debug.DebugService;
 import top.ellan.mahjong.gameroom.GameRoomManager;
 import top.ellan.mahjong.gameroom.GameRoomSelectionService;
@@ -72,8 +74,50 @@ public final class MahjongCommand implements CommandExecutor, TabCompleter {
         Supplier<GameRoomManager> gameRoomManager,
         GameRoomSelectionService selectionService
     ) {
-        this.context = new MahjongCommandContext(messages, tableManager, debug, async, scheduler, database, reloadConfiguration, gameRoomManager, selectionService);
+        this(
+            messages,
+            tableManager,
+            debug,
+            async,
+            scheduler,
+            database,
+            fallbackRankStorage(database),
+            reloadConfiguration,
+            gameRoomManager,
+            selectionService
+        );
+    }
+
+    public MahjongCommand(
+        MessageService messages,
+        MahjongTableManager tableManager,
+        DebugService debug,
+        AsyncService async,
+        ServerScheduler scheduler,
+        Supplier<DatabaseService> database,
+        Supplier<PlayerRankStorage> playerRankStorage,
+        Supplier<String> reloadConfiguration,
+        Supplier<GameRoomManager> gameRoomManager,
+        GameRoomSelectionService selectionService
+    ) {
+        this.context = new MahjongCommandContext(
+            messages,
+            tableManager,
+            debug,
+            async,
+            scheduler,
+            database,
+            playerRankStorage,
+            reloadConfiguration,
+            gameRoomManager,
+            selectionService
+        );
         this.subcommands = this.createSubcommands();
+    }
+
+    private static Supplier<PlayerRankStorage> fallbackRankStorage(Supplier<DatabaseService> database) {
+        PlayerRankStorage storage = new DatabasePlayerRankStorage(database);
+        return () -> storage;
     }
 
     /**

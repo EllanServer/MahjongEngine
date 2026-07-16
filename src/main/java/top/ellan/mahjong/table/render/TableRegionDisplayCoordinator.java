@@ -5,22 +5,30 @@ import top.ellan.mahjong.metrics.NoopMetricsCollector;
 import top.ellan.mahjong.model.SeatWind;
 import top.ellan.mahjong.render.display.DisplayEntities;
 import top.ellan.mahjong.render.display.DisplayVisibilityRegistry;
+import top.ellan.mahjong.render.display.DisplayInteractionRayRegistry;
 import top.ellan.mahjong.render.display.TableDisplayRegistry;
 import top.ellan.mahjong.render.layout.TableRenderLayout;
+import top.ellan.mahjong.render.scene.HandRenderer;
+import top.ellan.mahjong.render.scene.SeatRenderer;
+import top.ellan.mahjong.render.scene.ViewerOverlayRenderer;
 import top.ellan.mahjong.table.core.TableSessionContext;
 import top.ellan.mahjong.render.snapshot.TableRenderPrecomputeResult;
 import top.ellan.mahjong.render.snapshot.TableRenderSnapshot;
 import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerActionOverlaySnapshot;
+import top.ellan.mahjong.render.snapshot.TableViewerActionButtonSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerOverlaySnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerPromptSnapshot;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
 
 public final class TableRegionDisplayCoordinator {
     private static final String REGION_TABLE = "table";
@@ -28,17 +36,14 @@ public final class TableRegionDisplayCoordinator {
     private static final String REGION_DORA = "dora";
     private static final String REGION_CENTER = "center";
     private static final String REGION_VIEWER_OVERLAY_PREFIX = "viewer-overlay:";
-    private static final int MAX_WALL_TILE_REGIONS = 136;
+    private static final String REGION_VIEWER_ACTIONS_PREFIX = "viewer-actions:";
+    private static final int MAX_WALL_TILE_REGIONS = 144;
     private static final int MAX_HAND_TILE_REGIONS = 14;
     private static final int MAX_DISCARD_TILE_REGIONS = 24;
     private static final int MAX_MELD_TILE_REGIONS = 20;
+    private static final int SEAT_COUNT = SeatWind.values().length;
     private static final int DEFAULT_MAX_REGION_UPDATES_PER_APPLY = 64;
     private static final int DEFAULT_MAX_ENTITY_SPAWNS_PER_APPLY = 192;
-    private static final int PRIORITY_REACTION_PROMPT = 400;
-    private static final int PRIORITY_HAND = 320;
-    private static final int PRIORITY_TURN_STATE = 240;
-    private static final int PRIORITY_BOARD = 160;
-    private static final int PRIORITY_BACKGROUND = 80;
     private static final String[] VISUAL_REGION_KEYS = createSeatRegionKeys("visual");
     private static final String[] LABEL_REGION_KEYS = createSeatRegionKeys("labels");
     private static final String[] STICK_REGION_KEYS = createSeatRegionKeys("sticks");
@@ -63,13 +68,11 @@ public final class TableRegionDisplayCoordinator {
         MAX_MELD_TILE_REGIONS
     );
     private static final String[] WALL_TILE_REGION_KEYS = createIndexedRegionKeys(REGION_WALL, MAX_WALL_TILE_REGIONS);
-    private static final int[] APPLY_PRIORITY_ORDER = {
-        PRIORITY_REACTION_PROMPT,
-        PRIORITY_HAND,
-        PRIORITY_TURN_STATE,
-        PRIORITY_BOARD,
-        PRIORITY_BACKGROUND
-    };
+    private static final int BUCKET_REACTION_PROMPT = 0;
+    private static final int BUCKET_HAND = 1;
+    private static final int BUCKET_TURN_STATE = 2;
+    private static final int BUCKET_BOARD = 3;
+    private static final int BUCKET_BACKGROUND = 4;
 
     private final TableSessionContext session;
     private final TableRegionFingerprintService fingerprintService;
@@ -77,6 +80,11 @@ public final class TableRegionDisplayCoordinator {
     private final int maxEntitySpawnsPerApply;
     private final Map<String, List<Entity>> regionDisplays = new LinkedHashMap<>();
     private final Map<String, Long> regionFingerprints = new HashMap<>();
+    private final Map<String, Set<UUID>> rayInteractionOwners = new HashMap<>();
+    private final Set<String> publicJoinRayRegions = new LinkedHashSet<>();
+    private final SparrowViewerOverlayCoordinator clientViewerOverlays;
+    private final SparrowRayInteractionProxyCoordinator rayInputProxies;
+    private final TrackedPublicJoinProxyCoordinator trackedPublicJoinProxies;
 
     public TableRegionDisplayCoordinator(TableSessionContext session, TableRegionFingerprintService fingerprintService) {
         this(session, fingerprintService, DEFAULT_MAX_REGION_UPDATES_PER_APPLY, DEFAULT_MAX_ENTITY_SPAWNS_PER_APPLY);
@@ -92,6 +100,9 @@ public final class TableRegionDisplayCoordinator {
         this.fingerprintService = fingerprintService;
         this.maxRegionUpdatesPerApply = Math.max(1, maxRegionUpdatesPerApply);
         this.maxEntitySpawnsPerApply = Math.max(1, maxEntitySpawnsPerApply);
+        this.clientViewerOverlays = new SparrowViewerOverlayCoordinator(session);
+        this.rayInputProxies = new SparrowRayInteractionProxyCoordinator(session);
+        this.trackedPublicJoinProxies = new TrackedPublicJoinProxyCoordinator(session);
     }
 
     public boolean applyRenderPrecompute(TableRenderPrecomputeResult result) {
@@ -104,22 +115,22 @@ public final class TableRegionDisplayCoordinator {
         TableRenderSnapshot snapshot = result.snapshot();
         TableRenderLayout.LayoutPlan plan = result.layout();
         Map<String, Long> fingerprints = result.regionFingerprints();
-        List<QueuedRegionUpdate> queue = new ArrayList<>(512);
+        RegionUpdateQueue queue = new RegionUpdateQueue();
 
-        this.enqueue(queue, PRIORITY_BOARD, () -> this.updateStaticRegion(
+        this.enqueue(queue, BUCKET_BOARD, () -> this.updateStaticRegion(
             REGION_TABLE,
             fingerprintOf(fingerprints, REGION_TABLE),
             budget,
             () -> this.session.renderer().renderTableStructure(this.session, plan)
         ));
         this.enqueueWallRegionUpdates(plan, budget, queue);
-        this.enqueue(queue, PRIORITY_BOARD, () -> this.updateRegionWithSpecs(
+        this.enqueue(queue, BUCKET_BOARD, () -> this.updateRegionWithSpecs(
             REGION_DORA,
             fingerprintOf(fingerprints, REGION_DORA),
             budget,
             () -> this.session.renderer().renderDoraSpecs(this.session, plan)
         ));
-        this.enqueue(queue, PRIORITY_REACTION_PROMPT, () -> this.updateRegionWithSpecs(
+        this.enqueue(queue, BUCKET_REACTION_PROMPT, () -> this.updateRegionWithSpecs(
             REGION_CENTER,
             fingerprintOf(fingerprints, REGION_CENTER),
             budget,
@@ -132,19 +143,21 @@ public final class TableRegionDisplayCoordinator {
             String visualRegionKey = this.seatRegionKey("visual", wind);
             String labelsRegionKey = this.seatRegionKey("labels", wind);
             String sticksRegionKey = this.seatRegionKey("sticks", wind);
-            this.enqueue(queue, PRIORITY_BACKGROUND, () -> this.updateStaticRegion(
+            this.enqueue(queue, BUCKET_BACKGROUND, () -> this.updateStaticRegion(
                 visualRegionKey,
                 fingerprintOf(fingerprints, visualRegionKey),
                 budget,
                 () -> this.session.renderer().renderSeatVisual(this.session, wind)
             ));
-            this.enqueue(queue, PRIORITY_REACTION_PROMPT, () -> this.updateRegionWithSpecs(
+            this.enqueue(queue, BUCKET_REACTION_PROMPT, () -> this.updateSeatLabelRegion(
                 labelsRegionKey,
                 fingerprintOf(fingerprints, labelsRegionKey),
                 budget,
-                () -> this.session.renderer().renderSeatLabelSpecs(this.session, seat, seatPlan)
+                snapshot,
+                seat,
+                seatPlan
             ));
-            this.enqueue(queue, PRIORITY_TURN_STATE, () -> this.updateRegion(
+            this.enqueue(queue, BUCKET_TURN_STATE, () -> this.updateRegion(
                 sticksRegionKey,
                 fingerprintOf(fingerprints, sticksRegionKey),
                 budget,
@@ -179,15 +192,10 @@ public final class TableRegionDisplayCoordinator {
         long startedAt = System.nanoTime();
         MetricsCollector metrics = this.metrics();
         metrics.incrementCounter("table.render.viewer_overlay.apply.calls");
-        this.updateRegionWithSpecs(
-            snapshot.regionKey(),
-            this.fingerprintService.opaqueFingerprint(snapshot.fingerprint()),
-            ApplyBudget.unlimited(),
-            () -> this.session.renderer().renderViewerOverlaySpecs(this.session, snapshot)
-        );
-        this.updateViewerPromptRegion(snapshot.prompt());
-        this.updateViewerActionOverlayRegion(snapshot.actions());
-        this.recordRegionLoadMetrics(metrics);
+        ApplyBudget budget = new ApplyBudget(this.maxRegionUpdatesPerApply, this.maxEntitySpawnsPerApply);
+        this.updateViewerVisualOverlayRegion(snapshot, budget);
+        this.updateViewerPromptRegion(snapshot.prompt(), budget);
+        this.updateViewerActionOverlayRegion(snapshot.actions(), budget);
         metrics.recordTimerNanos("table.render.viewer_overlay.apply.nanos", System.nanoTime() - startedAt);
     }
 
@@ -195,38 +203,146 @@ public final class TableRegionDisplayCoordinator {
         long startedAt = System.nanoTime();
         MetricsCollector metrics = this.metrics();
         metrics.incrementCounter("table.render.viewer_actions.apply.calls");
-        this.updateViewerPromptRegion(snapshot.prompt());
-        this.updateViewerActionOverlayRegion(snapshot.actions());
-        this.recordRegionLoadMetrics(metrics);
+        ApplyBudget budget = new ApplyBudget(this.maxRegionUpdatesPerApply, this.maxEntitySpawnsPerApply);
+        this.updateViewerPromptRegion(snapshot.prompt(), budget);
+        this.updateViewerActionOverlayRegion(snapshot.actions(), budget);
         metrics.recordTimerNanos("table.render.viewer_actions.apply.nanos", System.nanoTime() - startedAt);
     }
 
-    private void updateViewerPromptRegion(TableViewerPromptSnapshot snapshot) {
+    private void updateViewerVisualOverlayRegion(TableViewerOverlaySnapshot snapshot, ApplyBudget budget) {
+        String regionKey = snapshot.regionKey();
+        long fingerprint = this.fingerprintService.opaqueFingerprint(snapshot.fingerprint());
+        if (snapshot.spectator() && this.clientViewerOverlays.isCurrent(regionKey, snapshot.viewerId(), fingerprint)) {
+            this.clearRegion(regionKey);
+            return;
+        }
+        if (!snapshot.spectator() || !this.clientViewerOverlays.canAttempt()) {
+            this.clientViewerOverlays.remove(regionKey);
+            this.updateRegionWithSpecs(
+                regionKey,
+                fingerprint,
+                budget,
+                () -> this.session.renderer().renderViewerOverlaySpecs(this.session, snapshot)
+            );
+            return;
+        }
+
+        List<DisplayEntities.EntitySpec> specs = this.session.renderer().renderViewerOverlaySpecs(this.session, snapshot);
+        if (!budget.canConsumeRegionUpdate(1) || !budget.canConsumeEntitySpawns(specs.size())) {
+            return;
+        }
+        if (this.clientViewerOverlays.tryUpdate(
+                regionKey,
+                snapshot.viewerId(),
+                fingerprint,
+                specs,
+                () -> this.scheduleViewerOverlayFallback(snapshot.viewerId(), regionKey)
+            )) {
+            budget.consumeRegionUpdate(1);
+            budget.consumeEntitySpawns(specs.size());
+            this.clearRegion(regionKey);
+            return;
+        }
+
+        this.clientViewerOverlays.remove(regionKey);
+        this.updateRegionWithSpecs(regionKey, fingerprint, budget, () -> specs);
+    }
+
+    private void scheduleViewerOverlayFallback(UUID viewerId, String regionKey) {
+        this.session.plugin().scheduler().runRegion(this.session.center(), () -> {
+            Player viewer = this.session.onlinePlayer(viewerId);
+            if (viewer == null || !viewer.isOnline() || !this.session.isSpectator(viewerId) || this.clientViewerOverlays.hasRegion(regionKey)) {
+                return;
+            }
+            TableViewerOverlaySnapshot current = this.session.captureViewerOverlaySnapshot(viewer);
+            if (!regionKey.equals(current.regionKey())) {
+                return;
+            }
+            long fingerprint = this.fingerprintService.opaqueFingerprint(current.fingerprint());
+            List<DisplayEntities.EntitySpec> specs = this.session.renderer().renderViewerOverlaySpecs(this.session, current);
+            this.updateRegionWithSpecs(
+                regionKey,
+                fingerprint,
+                new ApplyBudget(1, this.maxEntitySpawnsPerApply),
+                () -> specs
+            );
+        });
+    }
+
+    private void updateViewerPromptRegion(TableViewerPromptSnapshot snapshot, ApplyBudget budget) {
         if (snapshot == null) {
             return;
         }
         this.updateRegionWithSpecs(
             snapshot.regionKey(),
             this.fingerprintService.opaqueFingerprint(snapshot.fingerprint()),
-            ApplyBudget.unlimited(),
+            budget,
             () -> this.session.renderer().renderViewerPromptSpecs(this.session, snapshot)
         );
     }
 
-    private void updateViewerActionOverlayRegion(TableViewerActionOverlaySnapshot snapshot) {
+    private void updateViewerActionOverlayRegion(TableViewerActionOverlaySnapshot snapshot, ApplyBudget budget) {
         if (snapshot == null) {
             return;
         }
-        this.updateRegionWithSpecs(
-            snapshot.regionKey(),
-            this.fingerprintService.opaqueFingerprint(snapshot.fingerprint()),
-            ApplyBudget.unlimited(),
-            () -> this.session.renderer().renderViewerActionOverlaySpecs(this.session, snapshot)
+        String regionKey = snapshot.regionKey();
+        long fingerprint = this.fingerprintService.opaqueFingerprint(snapshot.fingerprint());
+        this.updateRegionWithRayInteractions(
+            regionKey,
+            fingerprint,
+            budget,
+            this.requiresRayInteractions(snapshot),
+            () -> {
+                ViewerOverlayRenderer.ViewerActionOverlayPlan renderPlan = this.session.renderer()
+                    .renderViewerActionOverlayPlan(this.session, snapshot);
+                return new RayRegionRenderPlan(
+                    renderPlan.entitySpecs(),
+                    singleViewerRayInteractions(snapshot.viewerId(), renderPlan.flatInteractions())
+                );
+            }
+        );
+    }
+
+    private boolean requiresRayInteractions(TableViewerActionOverlaySnapshot snapshot) {
+        for (TableViewerActionButtonSnapshot button : snapshot.actionButtons()) {
+            if (button.placement() != TableViewerActionButtonSnapshot.Placement.OVERHEAD_CENTER) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean updateSeatLabelRegion(
+        String regionKey,
+        long fingerprint,
+        ApplyBudget budget,
+        TableRenderSnapshot snapshot,
+        TableSeatRenderSnapshot seat,
+        TableRenderLayout.SeatLayoutPlan seatPlan
+    ) {
+        boolean requiresRayInteractions = !snapshot.started() && !snapshot.roundStartInProgress();
+        return this.updateRegionWithRayInteractions(
+            regionKey,
+            fingerprint,
+            budget,
+            requiresRayInteractions,
+            () -> {
+                SeatRenderer.SeatLabelRenderPlan renderPlan = this.session.renderer()
+                    .renderSeatLabelPlan(this.session, seat, seatPlan);
+                return new RayRegionRenderPlan(
+                    renderPlan.entitySpecs(),
+                    renderPlan.rayInteractions(),
+                    renderPlan.publicJoinBindings()
+                );
+            }
         );
     }
 
     public List<String> regionKeys() {
-        return List.copyOf(this.regionDisplays.keySet());
+        Set<String> keys = new LinkedHashSet<>(this.regionFingerprints.keySet());
+        keys.addAll(this.regionDisplays.keySet());
+        keys.addAll(this.clientViewerOverlays.regionKeys());
+        return List.copyOf(keys);
     }
 
     public List<String> regionKeysWithPrefix(String prefix) {
@@ -234,7 +350,7 @@ public final class TableRegionDisplayCoordinator {
             return this.regionKeys();
         }
         List<String> keys = new ArrayList<>();
-        for (String regionKey : this.regionDisplays.keySet()) {
+        for (String regionKey : this.regionKeys()) {
             if (regionKey.startsWith(prefix)) {
                 keys.add(regionKey);
             }
@@ -243,11 +359,54 @@ public final class TableRegionDisplayCoordinator {
     }
 
     public void removeManagedRegionDisplays(String regionKey) {
+        this.clientViewerOverlays.remove(regionKey);
         this.removeRegionDisplays(regionKey);
-        this.recordRegionLoadMetrics(this.metrics());
+        this.regionFingerprints.remove(regionKey);
+    }
+
+    public void discardViewerClientOverlay(UUID viewerId) {
+        if (viewerId != null) {
+            this.clientViewerOverlays.remove(REGION_VIEWER_OVERLAY_PREFIX + viewerId);
+            this.rayInputProxies.removeViewer(viewerId);
+            this.trackedPublicJoinProxies.discardViewer(viewerId);
+        }
+    }
+
+    public void trackPublicJoinSource(
+        Player player,
+        String regionKey,
+        int sourceEntityId,
+        UUID sourceEntityUuid
+    ) {
+        this.trackedPublicJoinProxies.track(
+            player,
+            regionKey,
+            sourceEntityId,
+            sourceEntityUuid
+        );
+    }
+
+    public void untrackPublicJoinSource(
+        Player player,
+        String regionKey,
+        int sourceEntityId,
+        UUID sourceEntityUuid
+    ) {
+        this.trackedPublicJoinProxies.untrack(
+            player,
+            regionKey,
+            sourceEntityId,
+            sourceEntityUuid
+        );
     }
 
     public void clearRenderDisplays() {
+        this.clientViewerOverlays.clear();
+        this.rayInputProxies.clear();
+        this.trackedPublicJoinProxies.clear();
+        DisplayInteractionRayRegistry.clearTable(this.session.id());
+        this.rayInteractionOwners.clear();
+        this.publicJoinRayRegions.clear();
         this.regionFingerprints.clear();
         this.removeAllDisplays();
         this.recordRegionLoadMetrics(this.metrics());
@@ -261,6 +420,12 @@ public final class TableRegionDisplayCoordinator {
      * entity.remove() directly since onDisable runs on the main thread.
      */
     public void shutdown() {
+        this.clientViewerOverlays.shutdown();
+        this.rayInputProxies.shutdown();
+        this.trackedPublicJoinProxies.shutdown();
+        DisplayInteractionRayRegistry.clearTable(this.session.id());
+        this.rayInteractionOwners.clear();
+        this.publicJoinRayRegions.clear();
         this.regionFingerprints.clear();
         for (String regionKey : List.copyOf(this.regionDisplays.keySet())) {
             List<Entity> entities = this.regionDisplays.remove(regionKey);
@@ -288,15 +453,19 @@ public final class TableRegionDisplayCoordinator {
     }
 
     public void invalidateFingerprints() {
+        this.clientViewerOverlays.clear();
         this.regionFingerprints.clear();
         this.recordRegionLoadMetrics(this.metrics());
     }
 
     public boolean hasRegionDisplays() {
-        return !this.regionDisplays.isEmpty();
+        return !this.regionDisplays.isEmpty() || this.clientViewerOverlays.hasRegions();
     }
 
     public boolean hasStaleDisplayRegions() {
+        if (this.clientViewerOverlays.hasStaleRegions()) {
+            return true;
+        }
         for (List<Entity> entities : this.regionDisplays.values()) {
             if (this.hasInvalidDisplayEntity(entities)) {
                 return true;
@@ -305,17 +474,12 @@ public final class TableRegionDisplayCoordinator {
         return false;
     }
 
-    private QueueExecution applyQueue(List<QueuedRegionUpdate> updates) {
-        if (!this.hasProductionQueueOrder(updates)) {
-            return this.applySortedQueue(updates);
-        }
+    private QueueExecution applyQueue(RegionUpdateQueue updates) {
         int processed = 0;
-        for (int priority : APPLY_PRIORITY_ORDER) {
-            for (QueuedRegionUpdate update : updates) {
-                if (update.priority() != priority) {
-                    continue;
-                }
-                if (!update.action().apply()) {
+        for (int bucketIndex = 0; bucketIndex < updates.bucketCount(); bucketIndex++) {
+            List<RegionUpdateAction> bucket = updates.bucket(bucketIndex);
+            for (int updateIndex = 0, bucketSize = bucket.size(); updateIndex < bucketSize; updateIndex++) {
+                if (!bucket.get(updateIndex).apply()) {
                     return new QueueExecution(true, processed);
                 }
                 processed++;
@@ -324,48 +488,15 @@ public final class TableRegionDisplayCoordinator {
         return new QueueExecution(false, processed);
     }
 
-    private boolean hasProductionQueueOrder(List<QueuedRegionUpdate> updates) {
-        long previousSequence = Long.MIN_VALUE;
-        for (QueuedRegionUpdate update : updates) {
-            if (update.sequence() < previousSequence || !this.isProductionPriority(update.priority())) {
-                return false;
-            }
-            previousSequence = update.sequence();
-        }
-        return true;
-    }
-
-    private boolean isProductionPriority(int priority) {
-        return switch (priority) {
-            case PRIORITY_REACTION_PROMPT, PRIORITY_HAND, PRIORITY_TURN_STATE, PRIORITY_BOARD, PRIORITY_BACKGROUND -> true;
-            default -> false;
-        };
-    }
-
-    private QueueExecution applySortedQueue(List<QueuedRegionUpdate> updates) {
-        updates.sort(
-            Comparator.comparingInt(QueuedRegionUpdate::priority).reversed()
-                .thenComparingLong(QueuedRegionUpdate::sequence)
-        );
-        int processed = 0;
-        for (QueuedRegionUpdate update : updates) {
-            if (!update.action().apply()) {
-                return new QueueExecution(true, processed);
-            }
-            processed++;
-        }
-        return new QueueExecution(false, processed);
-    }
-
-    private void enqueue(List<QueuedRegionUpdate> queue, int priority, RegionUpdateAction action) {
-        queue.add(new QueuedRegionUpdate(priority, queue.size(), action));
+    private void enqueue(RegionUpdateQueue queue, int bucketIndex, RegionUpdateAction action) {
+        queue.add(bucketIndex, action);
     }
 
     private void enqueuePrivateHandRegionUpdates(
         TableSeatRenderSnapshot seat,
         TableRenderLayout.SeatLayoutPlan plan,
         ApplyBudget budget,
-        List<QueuedRegionUpdate> queue
+        RegionUpdateQueue queue
     ) {
         this.clearRegion(this.seatRegionKey("hand-private", seat.wind()));
         int handSize = seat.playerId() == null ? 0 : seat.hand().size();
@@ -376,11 +507,13 @@ public final class TableRegionDisplayCoordinator {
                 continue;
             }
             int index = tileIndex;
-            this.enqueue(queue, PRIORITY_HAND, () -> this.updateRegionWithSpecs(
+            this.enqueue(queue, BUCKET_HAND, () -> this.updatePrivateHandTileRegion(
                 regionKey,
                 this.fingerprintService.handPrivateTileFingerprint(seat, plan, index),
                 budget,
-                () -> this.session.renderer().renderHandPrivateTileSpecs(this.session, seat, plan, index)
+                seat,
+                plan,
+                index
             ));
         }
     }
@@ -390,7 +523,7 @@ public final class TableRegionDisplayCoordinator {
         TableSeatRenderSnapshot seat,
         TableRenderLayout.SeatLayoutPlan plan,
         ApplyBudget budget,
-        List<QueuedRegionUpdate> queue
+        RegionUpdateQueue queue
     ) {
         this.clearRegion(this.seatRegionKey("hand-public", seat.wind()));
         int handSize = seat.playerId() == null ? 0 : seat.hand().size();
@@ -401,7 +534,7 @@ public final class TableRegionDisplayCoordinator {
                 continue;
             }
             int index = tileIndex;
-            this.enqueue(queue, PRIORITY_HAND, () -> this.updateRegionWithSpecs(
+            this.enqueue(queue, BUCKET_HAND, () -> this.updateRegionWithSpecs(
                 regionKey,
                 this.fingerprintService.handPublicTileFingerprint(snapshot, seat, plan, index),
                 budget,
@@ -414,7 +547,7 @@ public final class TableRegionDisplayCoordinator {
         TableSeatRenderSnapshot seat,
         TableRenderLayout.SeatLayoutPlan plan,
         ApplyBudget budget,
-        List<QueuedRegionUpdate> queue
+        RegionUpdateQueue queue
     ) {
         this.clearRegion(this.seatRegionKey("discards", seat.wind()));
         int discardCount = seat.playerId() == null ? 0 : plan.discardPlacements().size();
@@ -425,7 +558,7 @@ public final class TableRegionDisplayCoordinator {
                 continue;
             }
             int index = discardIndex;
-            this.enqueue(queue, PRIORITY_TURN_STATE, () -> this.updateRegionWithSpecs(
+            this.enqueue(queue, BUCKET_TURN_STATE, () -> this.updateRegionWithSpecs(
                 regionKey,
                 this.fingerprintService.discardTileFingerprint(seat, plan, index),
                 budget,
@@ -438,7 +571,7 @@ public final class TableRegionDisplayCoordinator {
         TableSeatRenderSnapshot seat,
         TableRenderLayout.SeatLayoutPlan plan,
         ApplyBudget budget,
-        List<QueuedRegionUpdate> queue
+        RegionUpdateQueue queue
     ) {
         this.clearRegion(this.seatRegionKey("melds", seat.wind()));
         int meldCount = seat.playerId() == null ? 0 : plan.meldPlacements().size();
@@ -449,7 +582,7 @@ public final class TableRegionDisplayCoordinator {
                 continue;
             }
             int index = meldIndex;
-            this.enqueue(queue, PRIORITY_TURN_STATE, () -> this.updateRegionWithSpecs(
+            this.enqueue(queue, BUCKET_TURN_STATE, () -> this.updateRegionWithSpecs(
                 regionKey,
                 this.fingerprintService.meldTileFingerprint(seat, plan, index),
                 budget,
@@ -461,7 +594,7 @@ public final class TableRegionDisplayCoordinator {
     private void enqueueWallRegionUpdates(
         TableRenderLayout.LayoutPlan plan,
         ApplyBudget budget,
-        List<QueuedRegionUpdate> queue
+        RegionUpdateQueue queue
     ) {
         this.clearRegion(REGION_WALL);
         int wallTileCount = plan.wallTiles().size();
@@ -472,7 +605,7 @@ public final class TableRegionDisplayCoordinator {
                 continue;
             }
             int index = wallIndex;
-            this.enqueue(queue, PRIORITY_BACKGROUND, () -> this.updateRegionWithSpecs(
+            this.enqueue(queue, BUCKET_BACKGROUND, () -> this.updateRegionWithSpecs(
                 regionKey,
                 this.fingerprintService.wallTileFingerprint(plan, index),
                 budget,
@@ -491,16 +624,187 @@ public final class TableRegionDisplayCoordinator {
                 continue;
             }
             int index = tileIndex;
-            if (!this.updateRegionWithSpecs(
+            if (!this.updatePrivateHandTileRegion(
                 regionKey,
                 this.fingerprintService.handPrivateTileFingerprint(seat, plan, tileIndex),
                 budget,
-                () -> this.session.renderer().renderHandPrivateTileSpecs(this.session, seat, plan, index)
+                seat,
+                plan,
+                index
             )) {
                 return false;
             }
         }
         return true;
+    }
+
+    private boolean updatePrivateHandTileRegion(
+        String regionKey,
+        long fingerprint,
+        ApplyBudget budget,
+        TableSeatRenderSnapshot seat,
+        TableRenderLayout.SeatLayoutPlan plan,
+        int tileIndex
+    ) {
+        UUID viewerId = seat.playerId();
+        if (viewerId == null) {
+            this.clearRegion(regionKey);
+            return true;
+        }
+        return this.updateRegionWithRayInteractions(
+            regionKey,
+            fingerprint,
+            budget,
+            true,
+            () -> {
+                HandRenderer.HandTileRenderPlan renderPlan = this.session.renderer()
+                    .renderHandPrivateTilePlan(this.session, seat, plan, tileIndex);
+                return new RayRegionRenderPlan(
+                    renderPlan.entitySpecs(),
+                    singleViewerRayInteractions(viewerId, renderPlan.rayInteractions())
+                );
+            }
+        );
+    }
+
+    private boolean updateRegionWithRayInteractions(
+        String regionKey,
+        long fingerprint,
+        ApplyBudget budget,
+        boolean requiresRayInteractions,
+        RayRegionRenderer renderer
+    ) {
+        Long previousFingerprint = this.regionFingerprints.get(regionKey);
+        List<Entity> currentEntities = this.regionDisplays.get(regionKey);
+        if (this.hasInvalidDisplayEntity(currentEntities)) {
+            this.removeRegionDisplays(regionKey);
+            previousFingerprint = null;
+            currentEntities = null;
+        }
+        if (previousFingerprint != null
+            && previousFingerprint == fingerprint
+            && (currentEntities != null || this.regionFingerprints.containsKey(regionKey))
+            && (!requiresRayInteractions || this.rayInteractionsCurrent(regionKey))) {
+            return true;
+        }
+        if (!budget.canConsumeRegionUpdate(1)) {
+            return false;
+        }
+        RayRegionRenderPlan renderPlan = renderer.render();
+        List<DisplayEntities.EntitySpec> specs = renderPlan.entitySpecs();
+        if (currentEntities != null && DisplayEntities.reconcile(this.session, currentEntities, specs)) {
+            budget.consumeRegionUpdate(1);
+            this.regionFingerprints.put(regionKey, fingerprint);
+            this.replaceRayInteractions(
+                regionKey,
+                renderPlan.rayInteractions(),
+                renderPlan.publicJoinBindings(),
+                currentEntities
+            );
+            return true;
+        }
+        if (!budget.canConsumeEntitySpawns(specs.size())) {
+            return false;
+        }
+        budget.consumeRegionUpdate(1);
+        budget.consumeEntitySpawns(specs.size());
+        this.removeRegionDisplays(regionKey);
+        List<Entity> entities = DisplayEntities.spawnAll(this.session, specs);
+        if (!entities.isEmpty()) {
+            this.regionDisplays.put(regionKey, entities);
+        }
+        this.regionFingerprints.put(regionKey, fingerprint);
+        this.replaceRayInteractions(
+            regionKey,
+            renderPlan.rayInteractions(),
+            renderPlan.publicJoinBindings(),
+            entities
+        );
+        return true;
+    }
+
+    private boolean rayInteractionsCurrent(String regionKey) {
+        Set<UUID> owners = this.rayInteractionOwners.get(regionKey);
+        boolean hasPublicJoin = this.publicJoinRayRegions.contains(regionKey);
+        if (hasPublicJoin
+            && (!DisplayInteractionRayRegistry.isPublicJoinRegionCurrent(this.session.id(), regionKey)
+                || !DisplayInteractionRayRegistry.isPublicJoinSourceCurrent(this.session.id(), regionKey))) {
+            return false;
+        }
+        if (owners != null) {
+            for (UUID ownerId : owners) {
+                if (!DisplayInteractionRayRegistry.isRegionCurrent(ownerId, this.session.id(), regionKey)) {
+                    return false;
+                }
+            }
+        }
+        boolean hasPrivateInteractions = owners != null && !owners.isEmpty();
+        return (hasPrivateInteractions || hasPublicJoin)
+            && (!hasPrivateInteractions || this.rayInputProxies.isCurrent(regionKey, owners));
+    }
+
+    private void replaceRayInteractions(
+        String regionKey,
+        Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> interactionsByViewer,
+        List<SeatRenderer.PublicJoinBinding> publicJoinBindings,
+        List<Entity> regionEntities
+    ) {
+        Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> interactions = interactionsByViewer == null
+            ? Map.of()
+            : interactionsByViewer;
+        Set<UUID> nextOwners = new LinkedHashSet<>();
+        interactions.forEach((viewerId, viewerInteractions) -> {
+            if (viewerId != null && viewerInteractions != null && !viewerInteractions.isEmpty()) {
+                nextOwners.add(viewerId);
+            }
+        });
+        Set<UUID> previousOwners = this.rayInteractionOwners.get(regionKey);
+        if (previousOwners != null) {
+            for (UUID previousOwner : previousOwners) {
+                if (!nextOwners.contains(previousOwner)) {
+                    DisplayInteractionRayRegistry.clearRegion(previousOwner, this.session.id(), regionKey);
+                }
+            }
+        }
+        interactions.forEach((viewerId, viewerInteractions) -> {
+            if (viewerId != null) {
+                DisplayInteractionRayRegistry.replaceRegion(
+                    viewerId,
+                    this.session.id(),
+                    regionKey,
+                    viewerInteractions
+                );
+            }
+        });
+        List<DisplayInteractionRayRegistry.RayInteraction> publicJoinInteractions = publicJoinBindings == null
+            ? List.of()
+            : publicJoinBindings.stream().map(SeatRenderer.PublicJoinBinding::interaction).toList();
+        DisplayInteractionRayRegistry.replacePublicJoinRegion(
+            this.session.id(),
+            regionKey,
+            publicJoinInteractions
+        );
+        if (publicJoinInteractions == null || publicJoinInteractions.isEmpty()) {
+            this.publicJoinRayRegions.remove(regionKey);
+        } else {
+            this.publicJoinRayRegions.add(regionKey);
+        }
+        this.trackedPublicJoinProxies.replaceRegion(regionKey, publicJoinBindings, regionEntities);
+        this.rayInputProxies.replace(regionKey, interactions);
+        if (nextOwners.isEmpty()) {
+            this.rayInteractionOwners.remove(regionKey);
+        } else {
+            this.rayInteractionOwners.put(regionKey, Set.copyOf(nextOwners));
+        }
+    }
+
+    private static Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> singleViewerRayInteractions(
+        UUID viewerId,
+        List<DisplayInteractionRayRegistry.RayInteraction> interactions
+    ) {
+        return viewerId == null || interactions == null || interactions.isEmpty()
+            ? Map.of()
+            : Map.of(viewerId, List.copyOf(interactions));
     }
 
     private boolean updateRegion(String regionKey, long fingerprint, ApplyBudget budget, RegionRenderer renderer) {
@@ -550,13 +854,13 @@ public final class TableRegionDisplayCoordinator {
             return false;
         }
         List<DisplayEntities.EntitySpec> specs = renderer.render();
-        if (!budget.canConsumeEntitySpawns(specs.size())) {
-            return false;
-        }
         if (currentEntities != null && DisplayEntities.reconcile(this.session, currentEntities, specs)) {
             budget.consumeRegionUpdate(1);
             this.regionFingerprints.put(regionKey, fingerprint);
             return true;
+        }
+        if (!budget.canConsumeEntitySpawns(specs.size())) {
+            return false;
         }
         budget.consumeRegionUpdate(1);
         budget.consumeEntitySpawns(specs.size());
@@ -582,6 +886,7 @@ public final class TableRegionDisplayCoordinator {
     }
 
     private void removeRegionDisplays(String regionKey) {
+        this.clearFlatInteractionsForRegion(regionKey);
         List<Entity> entities = this.regionDisplays.remove(regionKey);
         if (entities == null) {
             return;
@@ -599,6 +904,33 @@ public final class TableRegionDisplayCoordinator {
             }
         }
         this.regionFingerprints.remove(regionKey);
+    }
+
+    private void clearFlatInteractionsForRegion(String regionKey) {
+        this.rayInputProxies.remove(regionKey);
+        this.trackedPublicJoinProxies.removeRegion(regionKey);
+        this.publicJoinRayRegions.remove(regionKey);
+        DisplayInteractionRayRegistry.clearPublicJoinRegion(this.session.id(), regionKey);
+        Set<UUID> ownerIds = this.rayInteractionOwners.remove(regionKey);
+        if (ownerIds != null) {
+            for (UUID ownerId : ownerIds) {
+                DisplayInteractionRayRegistry.clearRegion(ownerId, this.session.id(), regionKey);
+            }
+            return;
+        }
+        if (regionKey == null || !regionKey.startsWith(REGION_VIEWER_ACTIONS_PREFIX)) {
+            return;
+        }
+        String viewerId = regionKey.substring(REGION_VIEWER_ACTIONS_PREFIX.length());
+        try {
+            DisplayInteractionRayRegistry.clearRegion(
+                UUID.fromString(viewerId),
+                this.session.id(),
+                regionKey
+            );
+        } catch (IllegalArgumentException ignored) {
+            // Only UUID-backed viewer action regions can own flat interactions.
+        }
     }
 
     private boolean hasInvalidDisplayEntity(List<Entity> entities) {
@@ -628,11 +960,27 @@ public final class TableRegionDisplayCoordinator {
         if (metrics == null) {
             return;
         }
-        metrics.recordGauge("table.render.region.active_regions", this.regionFingerprints.size());
-        metrics.recordGauge("table.render.region.regions_with_entities", this.regionDisplays.size());
-        metrics.recordGauge("table.render.region.managed_entities", this.managedEntityCount());
-        metrics.recordGauge("table.render.region.viewer_overlay_regions", this.countRegionsWithPrefix(this.regionFingerprints, REGION_VIEWER_OVERLAY_PREFIX));
-        metrics.recordGauge("table.render.region.viewer_overlay_entities", this.managedEntityCountWithPrefix(REGION_VIEWER_OVERLAY_PREFIX));
+        metrics.recordGauge("table.render.region.active_regions", this.regionFingerprints.size() + this.clientViewerOverlays.regionCount());
+        metrics.recordGauge("table.render.region.regions_with_entities", this.regionDisplays.size() + this.clientViewerOverlays.regionCount());
+        metrics.recordGauge(
+            "table.render.region.managed_entities",
+            this.managedEntityCount()
+                + this.clientViewerOverlays.entityCount()
+                + this.rayInputProxies.entityCount()
+                + this.trackedPublicJoinProxies.entityCount()
+        );
+        metrics.recordGauge(
+            "table.render.region.client_input_proxy_entities",
+            this.rayInputProxies.entityCount() + this.trackedPublicJoinProxies.entityCount()
+        );
+        metrics.recordGauge(
+            "table.render.region.viewer_overlay_regions",
+            this.countRegionsWithPrefix(this.regionFingerprints, REGION_VIEWER_OVERLAY_PREFIX) + this.clientViewerOverlays.regionCount()
+        );
+        metrics.recordGauge(
+            "table.render.region.viewer_overlay_entities",
+            this.managedEntityCountWithPrefix(REGION_VIEWER_OVERLAY_PREFIX) + this.clientViewerOverlays.entityCount()
+        );
     }
 
     private long managedEntityCount() {
@@ -772,6 +1120,11 @@ public final class TableRegionDisplayCoordinator {
     }
 
     @FunctionalInterface
+    private interface RayRegionRenderer {
+        RayRegionRenderPlan render();
+    }
+
+    @FunctionalInterface
     private interface RegionUpdateAction {
         boolean apply();
     }
@@ -822,9 +1175,60 @@ public final class TableRegionDisplayCoordinator {
         }
     }
 
-    private record QueuedRegionUpdate(int priority, long sequence, RegionUpdateAction action) {
+    private static final class RegionUpdateQueue {
+        private final List<RegionUpdateAction>[] buckets;
+        private int size;
+
+        @SuppressWarnings("unchecked")
+        private RegionUpdateQueue() {
+            this.buckets = (List<RegionUpdateAction>[]) new List<?>[] {
+                new ArrayList<>(1 + SEAT_COUNT),
+                new ArrayList<>(2 * MAX_HAND_TILE_REGIONS * SEAT_COUNT),
+                new ArrayList<>((1 + MAX_DISCARD_TILE_REGIONS + MAX_MELD_TILE_REGIONS) * SEAT_COUNT),
+                new ArrayList<>(2),
+                new ArrayList<>(MAX_WALL_TILE_REGIONS + SEAT_COUNT),
+            };
+        }
+
+        private void add(int bucketIndex, RegionUpdateAction action) {
+            this.buckets[bucketIndex].add(action);
+            this.size++;
+        }
+
+        private List<RegionUpdateAction> bucket(int bucketIndex) {
+            return this.buckets[bucketIndex];
+        }
+
+        private int bucketCount() {
+            return this.buckets.length;
+        }
+
+        private int size() {
+            return this.size;
+        }
     }
 
     private record QueueExecution(boolean deferred, int processedUpdates) {
+    }
+
+    private record RayRegionRenderPlan(
+        List<DisplayEntities.EntitySpec> entitySpecs,
+        Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> rayInteractions,
+        List<SeatRenderer.PublicJoinBinding> publicJoinBindings
+    ) {
+        private RayRegionRenderPlan(
+            List<DisplayEntities.EntitySpec> entitySpecs,
+            Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> rayInteractions
+        ) {
+            this(entitySpecs, rayInteractions, List.of());
+        }
+
+        private RayRegionRenderPlan {
+            entitySpecs = List.copyOf(entitySpecs);
+            Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> immutable = new LinkedHashMap<>();
+            rayInteractions.forEach((viewerId, interactions) -> immutable.put(viewerId, List.copyOf(interactions)));
+            rayInteractions = Map.copyOf(immutable);
+            publicJoinBindings = List.copyOf(publicJoinBindings);
+        }
     }
 }

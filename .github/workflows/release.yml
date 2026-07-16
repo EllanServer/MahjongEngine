@@ -77,7 +77,7 @@ jobs:
         # Pin to the lowest supported Paper baseline so the released jar stays runtime-compatible
         # with Paper/Folia 1.20.1 -> 26.2. PaperCompatibility handles newer APIs at runtime.
         # Quote each -P argument because PowerShell on Windows runners mis-parses `1.20.1-R0.1-SNAPSHOT`.
-        run: ${{ matrix.gradle }} build -x test "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaTarget=17" "-PmahjongJavaToolchain=25"
+        run: ${{ matrix.gradle }} build "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaTarget=21" "-PmahjongJavaToolchain=25" "-PmahjongRequireNative=true"
 
       - name: Verify artifact compatibility (Linux only)
         if: runner.os == 'Linux'
@@ -98,7 +98,7 @@ jobs:
           python3 - "$JAR" <<'PY'
           import sys, zipfile, struct
           jar = sys.argv[1]
-          allowed_max = 61  # Java 17
+          allowed_max = 65  # Java 21
           bad = []
           with zipfile.ZipFile(jar) as z:
               for n in z.namelist():
@@ -112,11 +112,11 @@ jobs:
                   if major > allowed_max:
                       bad.append((n, major))
           if bad:
-              print(f'::error::Found {len(bad)} class files compiled above Java 17:')
+              print(f'::error::Found {len(bad)} class files compiled above Java 21:')
               for n, m in bad[:20]:
                   print(f'  {n}: major={m} (Java {m-44})')
               sys.exit(1)
-          print('All classes compiled to Java 17 or lower.')
+          print('All classes compiled to Java 21 or lower.')
           PY
 
       - name: Upload platform jar
@@ -183,6 +183,18 @@ jobs:
           (cd extract/macos && jar xf "$GITHUB_WORKSPACE/$MACOS_JAR" native)
           jar uf "$UNIVERSAL_JAR" -C extract/windows native -C extract/macos native
 
+          jar tf "$UNIVERSAL_JAR" > universal-entries.txt
+          for required in \
+            native/linux-x86_64/mahjongpaper_gb.so \
+            native/windows-x86_64/mahjongpaper_gb.dll \
+            native/windows-x86_64/libwinpthread-1.dll \
+            native/macos-x86_64/mahjongpaper_gb.dylib; do
+            if ! grep -Fxq "$required" universal-entries.txt; then
+              echo "::error::Universal jar is missing $required"
+              exit 1
+            fi
+          done
+
       - name: Upload universal jar
         uses: actions/upload-artifact@v7
         with:
@@ -237,6 +249,22 @@ jobs:
             echo "Release ${{ steps.tag.outputs.tag }}" > "$NOTES_FILE"
           fi
           echo "file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.tag.outputs.tag }}"
+          VERSION="${VERSION#v}"
+          BUILD_VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' build.gradle.kts | head -n 1)"
+          if [[ -z "$BUILD_VERSION" || "$BUILD_VERSION" != "$VERSION" ]]; then
+            echo "::error::Release tag version $VERSION does not match build.gradle.kts version $BUILD_VERSION"
+            exit 1
+          fi
+          if [[ ! -f CHANGELOG.md ]] || ! grep -Eq "^## ${VERSION//./\\.}([[:space:]]|$)" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no section for $VERSION"
+            exit 1
+          fi
 
       - name: Download universal jar
         uses: actions/download-artifact@v8

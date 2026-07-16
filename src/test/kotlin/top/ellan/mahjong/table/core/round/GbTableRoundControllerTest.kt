@@ -62,12 +62,25 @@ class GbTableRoundControllerTest {
 
         assertEquals(7, controller.dicePoints())
         assertEquals(7, controller.dicePoints2())
-        val expected = reorderWall(sourceWall, 7, 7, 0).drop(53).dropLast(GbRoundSupport.DEAD_WALL_SIZE)
+        val expected = reorderWall(sourceWall, 7, 7, 0).drop(53)
         assertEquals(expected, currentWall(controller))
     }
 
     @Test
-    fun `discard draw supplements flower from the back and exposes it publicly`() {
+    fun `sichuan opening uses one dice pair and the smaller die for the break`() {
+        val sourceWall = deterministicSichuanWall()
+        val controller = controller(profile = GbRuleProfile.SICHUAN, wall = sourceWall)
+        controller.setPendingDiceRoll(OpeningDiceRoll(2, 5, 6, 6))
+
+        controller.startRound()
+
+        assertEquals(7, controller.dicePoints())
+        val expected = reorderSichuanWall(sourceWall, 7, 2, 0).drop(53)
+        assertEquals(expected, currentWall(controller))
+    }
+
+    @Test
+    fun `drawn flower stays concealed until the player declares it and then replaces from the back`() {
         val controller =
             controller(
                 object : GbNativeRulesGateway() {
@@ -95,9 +108,50 @@ class GbTableRoundControllerTest {
         assertTrue(controller.discard(east, 0))
         assertFalse(controller.hasPendingReaction())
         assertEquals(14, controller.hand(south).size)
+        assertEquals(top.ellan.mahjong.model.MahjongTile.PLUM, controller.hand(south).last())
+        assertTrue(controller.fuuro(south).isEmpty())
+        assertTrue(controller.canDeclareFlower(south))
+        assertEquals(listOf(13), controller.suggestedFlowerIndices(south))
+
+        assertTrue(controller.declareFlower(south, 13))
         assertFalse(controller.hand(south).contains(top.ellan.mahjong.model.MahjongTile.PLUM))
         assertEquals(listOf(top.ellan.mahjong.model.MahjongTile.PLUM), controller.fuuro(south).single().tiles())
         assertEquals(top.ellan.mahjong.model.MahjongTile.S9, controller.hand(south).last())
+    }
+
+    @Test
+    fun `player may retain and discard a flower without opening a reaction window`() {
+        val controller =
+            controller(
+                object : GbNativeRulesGateway() {
+                    override fun isAvailable(): Boolean = true
+
+                    override fun evaluateFan(request: GbFanRequest): GbFanResponse = GbFanResponse(false, 0, emptyList(), "cannot win")
+
+                    override fun evaluateTing(request: GbTingRequest): GbTingResponse = GbTingResponse(true, emptyList(), null)
+
+                    override fun evaluateWin(request: GbWinRequest): GbWinResponse = GbWinResponse(false, error = "cannot win")
+                },
+            )
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+        val south = player(SeatWind.SOUTH)
+        val west = player(SeatWind.WEST)
+        val north = player(SeatWind.NORTH)
+
+        forceHand(controller, east, listOf("NORTH", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "P1", "P2", "P3", "P4"))
+        forceHand(controller, south, listOf("M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "P1", "P2", "P3", "P4"))
+        forceHand(controller, west, listOf("M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "P1", "P2", "P3", "P4"))
+        forceHand(controller, north, listOf("S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "P1", "P2", "P3", "P4"))
+        forceWall(controller, listOf("PLUM", "S9"))
+
+        assertTrue(controller.discard(east, 0))
+        assertEquals(MahjongTile.PLUM, controller.hand(south).last())
+        assertTrue(controller.discard(south, controller.hand(south).lastIndex))
+        assertFalse(controller.hasPendingReaction())
+        assertEquals(MahjongTile.PLUM, controller.discards(south).last())
+        assertTrue(controller.fuuro(south).isEmpty())
+        assertEquals(MahjongTile.S9, controller.hand(west).last())
     }
 
     @Test
@@ -421,7 +475,9 @@ class GbTableRoundControllerTest {
                 }?.scoreChange,
         )
     }
+}
 
+class SichuanTableRoundControllerRulesTest {
     @Test
     fun `sichuan tsumo uses local hu evaluation`() {
         val controller = controller(profile = GbRuleProfile.SICHUAN)
@@ -455,20 +511,30 @@ class GbTableRoundControllerTest {
         forceHand(controller, north, listOf("M2", "M3", "M4", "M5", "M6", "M7", "P1", "P2", "P3", "P4", "P5", "P6", "P7"))
         forceWall(controller, listOf("P9", "P9", "M1"))
 
+        val eastBeforeWin = controller.points(east)
         assertTrue(controller.declareTsumo(east))
+        val eastWinScore = controller.points(east) - eastBeforeWin
         assertTrue(controller.started())
         assertEquals(SeatWind.SOUTH, controller.currentSeat())
         assertTrue(controller.canDeclareTsumo(south))
 
+        val southBeforeWin = controller.points(south)
         assertTrue(controller.declareTsumo(south))
+        val southWinScore = controller.points(south) - southBeforeWin
         assertTrue(controller.started())
         assertEquals(SeatWind.WEST, controller.currentSeat())
         assertTrue(controller.canDeclareTsumo(west))
 
+        val westBeforeWin = controller.points(west)
         assertTrue(controller.declareTsumo(west))
+        val westWinScore = controller.points(west) - westBeforeWin
         assertFalse(controller.started())
         assertEquals("TSUMO", controller.lastResolution()?.title)
         assertEquals(3, controller.lastResolution()?.yakuSettlements?.size)
+        assertEquals(
+            mapOf("EAST" to eastWinScore, "SOUTH" to southWinScore, "WEST" to westWinScore),
+            controller.lastResolution()?.yakuSettlements?.associate { it.displayName to it.score },
+        )
     }
 
     @Test
@@ -546,11 +612,11 @@ class GbTableRoundControllerTest {
         forceHand(controller, east, listOf("M1", "M1", "M1", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M7", "M7", "M9", "M9"))
 
         assertTrue(controller.declareTsumo(east))
-        assertEquals(24, controller.points(east) - 25000)
+        assertEquals(27, controller.points(east) - 25000)
     }
 
     @Test
-    fun `sichuan seven fan hands are not capped at five fan`() {
+    fun `sichuan high fan hands score at the three fan cap`() {
         val controller = controller(profile = GbRuleProfile.SICHUAN)
         controller.startRound()
         val east = player(SeatWind.EAST)
@@ -559,7 +625,7 @@ class GbTableRoundControllerTest {
         forceHand(controller, east, listOf("M1", "M1", "M1", "M1", "M2", "M2", "M2", "M2", "M3", "M3", "M3", "M3", "M4", "M4"))
 
         assertTrue(controller.declareTsumo(east))
-        assertEquals(192, controller.points(east) - 25000)
+        assertEquals(27, controller.points(east) - 25000)
     }
 
     @Test
@@ -654,62 +720,36 @@ class GbTableRoundControllerTest {
     }
 
     @Test
-    fun `sichuan exchange requires same suit and transitions to dingque`() {
-        val controller = controller(profile = GbRuleProfile.SICHUAN, dicePoints = 4)
+    fun `standard sichuan starts directly at dingque and disables exchange`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
         controller.startRound()
         val east = player(SeatWind.EAST)
-        val south = player(SeatWind.SOUTH)
-        val west = player(SeatWind.WEST)
-        val north = player(SeatWind.NORTH)
-
-        forceHand(controller, east, listOf("M1", "M2", "M3", "P1", "P2", "P3", "P4", "S1", "S2", "S3", "S4", "S5", "S6", "S7"))
-        forceHand(controller, south, listOf("P1", "P2", "P3", "M4", "M5", "M6", "M7", "S1", "S2", "S3", "S4", "S5", "S6"))
-        forceHand(controller, west, listOf("S1", "S2", "S3", "M1", "M2", "M3", "M4", "P4", "P5", "P6", "P7", "P8", "P9"))
-        forceHand(controller, north, listOf("M4", "M5", "M6", "P4", "P5", "P6", "P7", "S4", "S5", "S6", "S7", "S8", "S9"))
-
-        assertTrue(controller.canSelectHandTile(south, 0))
-        assertTrue(controller.handleHandTileClick(east, 0, false))
-        assertFalse(controller.handleHandTileClick(east, 3, false))
-        assertTrue(controller.handleHandTileClick(east, 1, false))
-        assertTrue(controller.handleHandTileClick(east, 2, false))
-        assertTrue(controller.handleHandTileClick(south, 0, false))
-        assertTrue(controller.handleHandTileClick(south, 1, false))
-        assertTrue(controller.handleHandTileClick(south, 2, false))
-        assertTrue(controller.handleHandTileClick(west, 0, false))
-        assertTrue(controller.handleHandTileClick(west, 1, false))
-        assertTrue(controller.handleHandTileClick(west, 2, false))
-        assertTrue(controller.handleHandTileClick(north, 0, false))
-        assertTrue(controller.handleHandTileClick(north, 1, false))
-        assertTrue(controller.handleHandTileClick(north, 2, false))
-
+        assertFalse(controller.isSichuanExchangePhase(east))
+        assertFalse(controller.submitSichuanExchangeSelection(east, listOf(0, 1, 2)))
+        assertFalse(controller.handleHandTileClick(east, 0, false))
         assertTrue(controller.canChooseSichuanMissingSuit(east))
         assertFalse(controller.canSelectHandTile(east, 0))
-        assertTrue(controller.hand(south).containsAll(listOf(MahjongTile.M1, MahjongTile.M2, MahjongTile.M3)))
-        assertTrue(controller.hand(east).containsAll(listOf(MahjongTile.M4, MahjongTile.M5, MahjongTile.M6)))
     }
 
     @Test
-    fun `sichuan bulk exchange submission transitions directly to dingque`() {
-        val controller = controller(profile = GbRuleProfile.SICHUAN, dicePoints = 4)
+    fun `four dingque declarations activate standard sichuan play`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
         controller.startRound()
         val east = player(SeatWind.EAST)
         val south = player(SeatWind.SOUTH)
         val west = player(SeatWind.WEST)
         val north = player(SeatWind.NORTH)
 
-        forceHand(controller, east, listOf("M1", "M2", "M3", "P1", "P2", "P3", "P4", "S1", "S2", "S3", "S4", "S5", "S6", "S7"))
-        forceHand(controller, south, listOf("P1", "P2", "P3", "M4", "M5", "M6", "M7", "S1", "S2", "S3", "S4", "S5", "S6"))
-        forceHand(controller, west, listOf("S1", "S2", "S3", "M1", "M2", "M3", "M4", "P4", "P5", "P6", "P7", "P8", "P9"))
-        forceHand(controller, north, listOf("M4", "M5", "M6", "P4", "P5", "P6", "P7", "S4", "S5", "S6", "S7", "S8", "S9"))
+        assertTrue(controller.chooseSichuanMissingSuit(east, "wan"))
+        assertFalse(controller.isCurrentPlayer(east))
+        assertTrue(controller.isCurrentPlayer(south))
+        assertTrue(controller.chooseSichuanMissingSuit(south, "tong"))
+        assertTrue(controller.chooseSichuanMissingSuit(west, "suo"))
+        assertTrue(controller.chooseSichuanMissingSuit(north, "wan"))
 
-        assertTrue(controller.submitSichuanExchangeSelection(east, listOf(0, 1, 2)))
-        assertTrue(controller.submitSichuanExchangeSelection(south, listOf(0, 1, 2)))
-        assertTrue(controller.submitSichuanExchangeSelection(west, listOf(0, 1, 2)))
-        assertTrue(controller.submitSichuanExchangeSelection(north, listOf(0, 1, 2)))
-
-        assertTrue(controller.canChooseSichuanMissingSuit(east))
-        assertTrue(controller.hand(south).containsAll(listOf(MahjongTile.M1, MahjongTile.M2, MahjongTile.M3)))
-        assertTrue(controller.hand(east).containsAll(listOf(MahjongTile.M4, MahjongTile.M5, MahjongTile.M6)))
+        SeatWind.values().forEach { wind -> assertFalse(controller.canChooseSichuanMissingSuit(player(wind))) }
+        assertTrue(controller.isCurrentPlayer(east))
+        assertFalse(controller.isCurrentPlayer(south))
     }
 
     @Test
@@ -762,7 +802,9 @@ class GbTableRoundControllerTest {
         assertEquals(2, settledSichuanPlayers(controller).size)
         assertTrue(controller.started())
     }
+}
 
+class GbTableRoundControllerBotAndKanTest {
     @Test
     fun `gb bot discard suggestion prefers discard that keeps eight fan waits`() {
         val targetHand = encodedTiles("M1", "M2", "M3", "M4", "M5", "M6", "P1", "P2", "P3", "S1", "S2", "S3", "RED_DRAGON")
@@ -889,7 +931,7 @@ class GbTableRoundControllerTest {
     }
 
     @Test
-    fun `concealed kan with empty replacement wall ends the hand in draw`() {
+    fun `concealed kan is rejected when no replacement tile remains`() {
         val controller = controller()
         controller.startRound()
         val east = player(SeatWind.EAST)
@@ -897,10 +939,10 @@ class GbTableRoundControllerTest {
         forceHand(controller, east, listOf("M1", "M1", "M1", "M1", "P1", "P2", "P3", "S1", "S2", "S3", "S4", "S5", "S6", "S7"))
         forceWall(controller, emptyList())
 
-        assertTrue(controller.declareKan(east, "m1"))
-        assertFalse(controller.started())
-        assertEquals("DRAW", controller.lastResolution()?.title)
-        assertEquals(1, controller.kanCount())
+        assertFalse(controller.declareKan(east, "m1"))
+        assertTrue(controller.started())
+        assertNull(controller.lastResolution())
+        assertEquals(0, controller.kanCount())
     }
 
     @Test
@@ -1039,219 +1081,480 @@ class GbTableRoundControllerTest {
         assertEquals(3, meld.tiles().size)
         assertEquals(MahjongTile.P3, meld.addedKanTile())
     }
+}
 
-    private fun controller(
-        gateway: GbNativeRulesGateway = defaultGateway(),
-        profile: GbRuleProfile = GbRuleProfile.GB,
-        dicePoints: Int? = null,
-        wall: List<MahjongTile>? = null,
-    ): GbTableRoundController {
-        val seats = EnumMap<SeatWind, UUID>(SeatWind::class.java)
-        val names = mutableMapOf<UUID, String>()
-        SeatWind.values().forEach { wind ->
-            val playerId = player(wind)
-            seats[wind] = playerId
-            names[playerId] = wind.name
-        }
-        return if (dicePoints == null && wall == null) {
-            GbTableRoundController(MahjongRule(), seats, names, gateway, profile)
-        } else {
-            GbTableRoundController(
-                MahjongRule(),
-                seats,
-                names,
-                gateway,
-                profile,
-                IntSupplier { dicePoints ?: 7 },
-                Supplier { wall ?: deterministicWall() },
-            )
-        }
+class SichuanTableRoundControllerReactionTest {
+    @Test
+    fun `sichuan passed win blocks the same payment tier until the player draws`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+        val south = player(SeatWind.SOUTH)
+        val west = player(SeatWind.WEST)
+        val north = player(SeatWind.NORTH)
+
+        activateSichuan(controller, east to "suo", south to "suo", west to "suo", north to "suo")
+        forceHand(controller, east, listOf("P9", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "P1", "P2", "P3", "P4"))
+        forceHand(controller, south, nonWinningP9DiscardHand())
+        forceHand(controller, west, lowP9Wait())
+        forceHand(controller, north, disconnectedHand())
+        forceWall(controller, listOf("M8", "M9", "P5", "P6", "P7", "P8", "M2", "M3"))
+
+        assertTrue(controller.discard(east, controller.hand(east).indexOf(MahjongTile.P9)))
+        assertTrue(controller.availableReactions(west)?.canRon == true)
+        assertTrue(controller.react(west, ReactionResponse(ReactionType.SKIP, null)))
+        assertNotNull(passedWinUnit(controller, west))
+        assertEquals(SeatWind.SOUTH, controller.currentSeat())
+
+        assertTrue(controller.discard(south, controller.hand(south).indexOf(MahjongTile.P9)))
+        assertFalse(settledSichuanPlayers(controller).contains(west))
+        assertEquals(SeatWind.WEST, controller.currentSeat())
+        assertNull(passedWinUnit(controller, west), "The restriction must clear only after West actually draws")
     }
 
-    private fun defaultGateway(): GbNativeRulesGateway =
-        object : GbNativeRulesGateway() {
-            override fun isAvailable(): Boolean = true
+    @Test
+    fun `standard sichuan allows passing ron in the final four draws`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+        val south = player(SeatWind.SOUTH)
 
-            override fun evaluateFan(request: GbFanRequest): GbFanResponse =
-                GbFanResponse(true, 8, listOf(GbFanEntry("Mock Fan", 8, 1)), null)
+        activateSichuan(controller, *SeatWind.values().map { player(it) to "suo" }.toTypedArray())
+        forceHand(controller, east, listOf("P9") + disconnectedHand())
+        forceHand(controller, south, sequenceP9Wait())
+        forceHand(controller, player(SeatWind.WEST), disconnectedHand())
+        forceHand(controller, player(SeatWind.NORTH), disconnectedHand())
+        forceWall(controller, listOf("M2", "M4", "P6", "P8"))
 
-            override fun evaluateTing(request: GbTingRequest): GbTingResponse =
-                GbTingResponse(true, listOf(GbTingCandidate("W1", 8, listOf(GbFanEntry("Mock Fan", 8, 1)))), null)
-
-            override fun evaluateWin(request: GbWinRequest): GbWinResponse {
-                val winnerDelta = 24
-                val loserSeat = request.discarderSeat ?: "SOUTH"
-                return GbWinResponse(
-                    true,
-                    if (request.winType == "SELF_DRAW") "TSUMO" else "RON",
-                    8,
-                    listOf(GbFanEntry("Mock Fan", 8, 1)),
-                    listOf(GbScoreDelta(request.winnerSeat, winnerDelta), GbScoreDelta(loserSeat, -winnerDelta)),
-                    null,
-                )
-            }
-        }
-
-    private fun forceHand(
-        controller: GbTableRoundController,
-        playerId: UUID,
-        tiles: List<String>,
-    ) {
-        val handsField = GbTableRoundController::class.java.getDeclaredField("hands")
-        handsField.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val hands = handsField.get(controller) as MutableMap<UUID, MutableList<top.ellan.mahjong.model.MahjongTile>>
-        hands[playerId] = tiles.map(top.ellan.mahjong.model.MahjongTile::valueOf).toMutableList()
-        forceFlowers(controller, playerId, emptyList())
+        assertTrue(controller.discard(east, 0))
+        assertTrue(controller.availableReactions(south)?.canRon == true)
+        assertTrue(controller.react(south, ReactionResponse(ReactionType.SKIP, null)))
+        assertFalse(settledSichuanPlayers(controller).contains(south))
     }
 
-    private fun addPung(
-        controller: GbTableRoundController,
-        playerId: UUID,
-        tile: String,
-        selfSeat: SeatWind = SeatWind.EAST,
-    ) {
-        val meldsField = GbTableRoundController::class.java.getDeclaredField("melds")
-        meldsField.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val melds = meldsField.get(controller) as MutableMap<UUID, MutableList<Any>>
-        val meldClass = GbMeldState::class.java
-        val pung =
-            meldClass.getDeclaredMethod(
-                "pung",
-                MahjongTile::class.java,
-                SeatWind::class.java,
-                SeatWind::class.java,
-            )
-        pung.isAccessible = true
-        melds.getValue(playerId).add(
-            pung.invoke(
-                null,
-                MahjongTile.valueOf(tile),
-                SeatWind.SOUTH,
-                selfSeat,
-            ),
+    @Test
+    fun `standard sichuan allows discarding a winning hand in the final four draws`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+
+        activateSichuan(controller, *SeatWind.values().map { player(it) to "suo" }.toTypedArray())
+        forceHand(controller, east, sequenceP9Wait() + "P9")
+        forceWall(controller, listOf("M2", "M4", "P6", "P8"))
+
+        assertTrue(controller.canWinByTsumo(east))
+        assertTrue(controller.canSelectHandTile(east, 0))
+    }
+
+    @Test
+    fun `standard sichuan keeps pung and kong reactions in the final four draws`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+        val south = player(SeatWind.SOUTH)
+
+        activateSichuan(controller, *SeatWind.values().map { player(it) to "suo" }.toTypedArray())
+        forceHand(controller, east, listOf("M1") + disconnectedHand())
+        forceHand(controller, south, listOf("M1", "M1", "M1", "M2", "M4", "M6", "M8", "P1", "P3", "P5", "P6", "P7", "P8"))
+        forceHand(controller, player(SeatWind.WEST), disconnectedHand())
+        forceHand(controller, player(SeatWind.NORTH), disconnectedHand())
+        forceWall(controller, listOf("M2", "M4", "P6", "P8"))
+
+        assertTrue(controller.discard(east, 0))
+        val options = assertNotNull(controller.availableReactions(south))
+        assertTrue(options.canPon)
+        assertTrue(options.canMinkan)
+    }
+
+    @Test
+    fun `passing zero fan ping hu still allows a one fan win before drawing`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+        val south = player(SeatWind.SOUTH)
+        val west = player(SeatWind.WEST)
+        val north = player(SeatWind.NORTH)
+
+        activateSichuan(controller, east to "suo", south to "suo", west to "suo", north to "suo")
+        forceHand(controller, east, listOf("P9", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "P1", "P2", "P3", "P4"))
+        forceHand(controller, south, nonWinningP9DiscardHand())
+        forceHand(controller, west, lowP9Wait())
+        forceHand(controller, north, disconnectedHand())
+        forceWall(controller, listOf("M8", "M9", "P5", "P6", "P7", "P8", "M2", "M3"))
+
+        assertTrue(controller.discard(east, controller.hand(east).indexOf(MahjongTile.P9)))
+        assertTrue(controller.react(west, ReactionResponse(ReactionType.SKIP, null)))
+        assertEquals(1, passedWinUnit(controller, west), "A passed zero-fan hand must retain its one-point tier")
+        forceHand(controller, west, listOf("P1", "P1", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P7", "P7", "P7", "P9"))
+
+        assertTrue(controller.discard(south, controller.hand(south).indexOf(MahjongTile.P9)))
+        assertTrue(controller.availableReactions(west)?.canRon == true)
+        assertTrue(controller.react(west, ReactionResponse(ReactionType.RON, null)))
+        assertTrue(settledSichuanPlayers(controller).contains(west))
+    }
+
+    @Test
+    fun `a player cannot overwrite an already submitted reaction in the same window`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+        val west = player(SeatWind.WEST)
+        val north = player(SeatWind.NORTH)
+
+        activateSichuan(controller, *SeatWind.values().map { player(it) to "suo" }.toTypedArray())
+        forceHand(controller, east, listOf("P9", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "P1", "P2", "P3", "P4"))
+        forceHand(controller, player(SeatWind.SOUTH), disconnectedHand())
+        forceHand(controller, west, lowP9Wait())
+        forceHand(controller, north, lowP9Wait())
+        forceWall(controller, listOf("M8", "M9", "P5", "P6", "P7", "P8", "M2", "M3"))
+
+        assertTrue(controller.discard(east, controller.hand(east).indexOf(MahjongTile.P9)))
+        assertTrue(controller.react(west, ReactionResponse(ReactionType.SKIP, null)))
+        assertFalse(controller.react(west, ReactionResponse(ReactionType.RON, null)))
+        assertTrue(controller.react(north, ReactionResponse(ReactionType.SKIP, null)))
+        assertFalse(settledSichuanPlayers(controller).contains(west))
+    }
+
+    @Test
+    fun `choosing pung instead of a Sichuan win keeps the passed win restriction until a draw`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+        val west = player(SeatWind.WEST)
+
+        activateSichuan(controller, *SeatWind.values().map { player(it) to "suo" }.toTypedArray())
+        forceHand(controller, east, listOf("P9", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "P1", "P2", "P3", "P4"))
+        forceHand(controller, player(SeatWind.SOUTH), disconnectedHand())
+        forceHand(controller, west, listOf("M1", "M1", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "P2", "P2", "P9", "P9"))
+        forceHand(controller, player(SeatWind.NORTH), disconnectedHand())
+        forceWall(controller, listOf("M8", "M9", "P5", "P6", "P7", "P8", "M2", "M3"))
+
+        assertTrue(controller.discard(east, controller.hand(east).indexOf(MahjongTile.P9)))
+        val options = assertNotNull(controller.availableReactions(west))
+        assertTrue(options.canRon)
+        assertTrue(options.canPon)
+        assertTrue(controller.react(west, ReactionResponse(ReactionType.PON, null)))
+        assertNotNull(passedWinUnit(controller, west))
+        assertEquals(SeatWind.WEST, controller.currentSeat())
+
+        assertTrue(controller.discard(west, 0))
+        assertNotNull(passedWinUnit(controller, west), "Calling pung does not draw, so the restriction must remain")
+    }
+
+    @Test
+    fun `sichuan gang shang pao transfers kong income without refunding original payers`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+        val south = player(SeatWind.SOUTH)
+        val west = player(SeatWind.WEST)
+        val north = player(SeatWind.NORTH)
+
+        activateSichuan(controller, east to "suo", south to "suo", west to "suo", north to "suo")
+        forceHand(controller, east, listOf("M1", "M1", "M1", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "P1", "P2", "P3", "P4"))
+        forceHand(controller, south, lowP9Wait())
+        forceHand(controller, west, disconnectedHand())
+        forceHand(controller, north, disconnectedHand())
+        forceWall(controller, listOf("M8", "P5", "P6", "P7", "P8", "P9"))
+
+        assertTrue(controller.declareKan(east, "m1"))
+        assertEquals(25006, controller.points(east))
+        assertTrue(controller.discard(east, controller.hand(east).indexOf(MahjongTile.P9)))
+        assertTrue(controller.react(south, ReactionResponse(ReactionType.RON, null)))
+
+        assertEquals(24998, controller.points(east))
+        assertEquals(25006, controller.points(south))
+        assertEquals(24998, controller.points(west))
+        assertEquals(24998, controller.points(north))
+    }
+
+    @Test
+    fun `sichuan gang shang pao transfers every consecutive kong income`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+        val south = player(SeatWind.SOUTH)
+
+        activateSichuan(controller, *SeatWind.values().map { player(it) to "suo" }.toTypedArray())
+        forceHand(
+            controller,
+            east,
+            listOf("M1", "M1", "M1", "M1", "M2", "M2", "M2", "M2", "M3", "M4", "M5", "P1", "P2", "P3"),
         )
+        forceHand(controller, south, sequenceP9Wait())
+        forceHand(controller, player(SeatWind.WEST), disconnectedHand())
+        forceHand(controller, player(SeatWind.NORTH), disconnectedHand())
+        forceWall(controller, listOf("M8", "M9", "P5", "P6", "P8", "P9"))
+
+        assertTrue(controller.declareKan(east, "m1"))
+        assertTrue(controller.declareKan(east, "m2"))
+        assertEquals(25012, controller.points(east))
+        assertTrue(controller.discard(east, controller.hand(east).indexOf(MahjongTile.P9)))
+        assertTrue(controller.react(south, ReactionResponse(ReactionType.RON, null)))
+
+        assertEquals(24998, controller.points(east))
+        assertEquals(25010, controller.points(south))
+        assertEquals(24996, controller.points(player(SeatWind.WEST)))
+        assertEquals(24996, controller.points(player(SeatWind.NORTH)))
     }
 
-    private fun forceWall(
-        controller: GbTableRoundController,
-        tiles: List<String>,
-    ) {
-        val wallField = GbTableRoundController::class.java.getDeclaredField("wall")
-        wallField.isAccessible = true
-        val deadWallField = GbTableRoundController::class.java.getDeclaredField("deadWall")
-        deadWallField.isAccessible = true
-        val parsed = tiles.map(top.ellan.mahjong.model.MahjongTile::valueOf)
+    @Test
+    fun `sichuan multi ron call transfer rounds each share up and discarder pays the difference`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+        val south = player(SeatWind.SOUTH)
+        val west = player(SeatWind.WEST)
+        val north = player(SeatWind.NORTH)
 
-        @Suppress("UNCHECKED_CAST")
-        val wall = wallField.get(controller) as MutableCollection<top.ellan.mahjong.model.MahjongTile>
-        wall.clear()
-        wall.addAll(parsed)
-        // Provide a minimal dead wall so replacement draws (flower / kan) succeed.
-        @Suppress("UNCHECKED_CAST")
-        val deadWall = deadWallField.get(controller) as MutableCollection<top.ellan.mahjong.model.MahjongTile>
-        deadWall.clear()
-        deadWall.add(top.ellan.mahjong.model.MahjongTile.M1)
+        activateSichuan(controller, *SeatWind.values().map { player(it) to "suo" }.toTypedArray())
+        forceHand(controller, east, listOf("M1") + sequenceP9Wait())
+        forceHand(
+            controller,
+            south,
+            listOf("M1", "M1", "M1", "M2", "M4", "M6", "M8", "P1", "P3", "P5", "P6", "P7", "P8"),
+        )
+        forceHand(controller, west, sequenceP9Wait())
+        forceHand(controller, north, sequenceP9Wait())
+        forceWall(controller, listOf("M8", "M9", "P5", "P6", "P9"))
+
+        assertTrue(controller.discard(east, 0))
+        assertTrue(controller.availableReactions(south)?.canMinkan == true)
+        assertTrue(controller.react(south, ReactionResponse(ReactionType.MINKAN, null)))
+        assertEquals(25002, controller.points(south))
+        assertTrue(controller.discard(south, controller.hand(south).indexOf(MahjongTile.P9)))
+        assertTrue(controller.react(east, ReactionResponse(ReactionType.RON, null)))
+        assertTrue(controller.react(west, ReactionResponse(ReactionType.RON, null)))
+        assertTrue(controller.react(north, ReactionResponse(ReactionType.RON, null)))
+
+        assertEquals(25001, controller.points(east))
+        assertEquals(24993, controller.points(south))
+        assertEquals(25003, controller.points(west))
+        assertEquals(25003, controller.points(north))
     }
 
-    private fun forceFlowers(
-        controller: GbTableRoundController,
-        playerId: UUID,
-        tiles: List<String>,
-    ) {
-        val flowersField = GbTableRoundController::class.java.getDeclaredField("flowers")
-        flowersField.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val flowers = flowersField.get(controller) as MutableMap<UUID, MutableList<top.ellan.mahjong.model.MahjongTile>>
-        flowers[playerId] = tiles.map(top.ellan.mahjong.model.MahjongTile::valueOf).toMutableList()
+    @Test
+    fun `sichuan call transfer chain clears when the kong discard is not won`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+
+        activateSichuan(controller, *SeatWind.values().map { player(it) to "suo" }.toTypedArray())
+        forceHand(controller, east, listOf("M1", "M1", "M1", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "P1", "P2", "P3", "P4"))
+        SeatWind.values().filter { it != SeatWind.EAST }.forEach { forceHand(controller, player(it), disconnectedHand()) }
+        forceWall(controller, listOf("M8", "M9", "P5", "P6", "P8"))
+
+        assertTrue(controller.declareKan(east, "m1"))
+        assertEquals(1, pendingSichuanCallTransferCount(controller))
+        assertTrue(controller.discard(east, controller.hand(east).indexOf(MahjongTile.P8)))
+        assertEquals(0, pendingSichuanCallTransferCount(controller))
     }
 
-    private fun activateSichuan(
-        controller: GbTableRoundController,
-        vararg declarations: Pair<UUID, String>,
-    ) {
-        val phaseClass = Class.forName("${GbTableRoundController::class.java.name}\$SichuanPreparationPhase")
-        val activePhase = phaseClass.enumConstants.first { (it as Enum<*>).name == "ACTIVE" }
-        val phaseField = GbTableRoundController::class.java.getDeclaredField("sichuanPreparationPhase")
-        phaseField.isAccessible = true
-        phaseField.set(controller, activePhase)
+    @Test
+    fun `sichuan exhaustive draw refunds every kong payment earned by a not ready player`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
 
-        val missingSuitsField = GbTableRoundController::class.java.getDeclaredField("chosenMissingSuits")
-        missingSuitsField.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val chosenMissingSuits = missingSuitsField.get(controller) as MutableMap<UUID, Any>
-        chosenMissingSuits.clear()
-        val suitClass = Class.forName("top.ellan.mahjong.table.core.round.SichuanSuit")
-        declarations.forEach { (playerId, suitKey) ->
-            val suit = suitClass.enumConstants.first { (it as Enum<*>).name == suitKey.uppercase() }
-            chosenMissingSuits[playerId] = suit
-        }
+        activateSichuan(
+            controller,
+            east to "wan",
+            player(SeatWind.SOUTH) to "suo",
+            player(SeatWind.WEST) to "suo",
+            player(SeatWind.NORTH) to "suo",
+        )
+        forceHand(controller, east, listOf("M1", "M1", "M1", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "P1", "P2", "P3", "P4"))
+        forceWall(controller, listOf("M8", "P5", "P6", "P7", "P8", "P9"))
+        assertTrue(controller.declareKan(east, "m1"))
+        assertEquals(25006, controller.points(east))
+
+        forceHand(controller, east, listOf("M2", "M4", "M6", "M8", "M9", "P1", "P3", "P5", "P7", "P9"))
+        SeatWind.values().filter { it != SeatWind.EAST }.forEach { forceHand(controller, player(it), disconnectedHand()) }
+        SeatWind.values().forEach { forceHasDrawn(controller, player(it), false) }
+        invokeNoArg(controller, "applySichuanExhaustiveDrawSettlement")
+
+        SeatWind.values().forEach { assertEquals(25000, controller.points(player(it))) }
     }
 
-    private fun settledSichuanPlayers(controller: GbTableRoundController): Set<UUID> {
-        val field = GbTableRoundController::class.java.getDeclaredField("settledSichuanPlayers")
-        field.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        return field.get(controller) as Set<UUID>
+    @Test
+    fun `natural flower pig pays ordinary cha jiao without a fixed transfer`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+        val south = player(SeatWind.SOUTH)
+        val west = player(SeatWind.WEST)
+        val north = player(SeatWind.NORTH)
+
+        activateSichuan(controller, *SeatWind.values().map { player(it) to "suo" }.toTypedArray())
+        forceHand(controller, east, listOf("S1", "M1", "M3", "M5", "M7", "M9", "P1", "P3", "P5", "P7", "P9", "M2", "P4"))
+        forceHand(controller, south, sequenceP9Wait())
+        forceHand(controller, west, disconnectedHand())
+        forceHand(controller, north, disconnectedHand())
+        SeatWind.values().forEach { forceHasDrawn(controller, player(it), false) }
+
+        invokeNoArg(controller, "applySichuanExhaustiveDrawSettlement")
+
+        assertEquals(24999, controller.points(east))
+        assertEquals(25003, controller.points(south))
+        assertEquals(24999, controller.points(west))
+        assertEquals(24999, controller.points(north))
+    }
+}
+
+class SichuanTableRoundControllerProgressionTest {
+    @Test
+    fun `first Sichuan winner becomes dealer of the next hand`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+        val south = player(SeatWind.SOUTH)
+
+        activateSichuan(controller, *SeatWind.values().map { player(it) to "suo" }.toTypedArray())
+        forceHand(controller, east, listOf("P9", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "P1", "P2", "P3", "P4"))
+        forceHand(controller, south, lowP9Wait())
+        forceHand(controller, player(SeatWind.WEST), disconnectedHand())
+        forceHand(controller, player(SeatWind.NORTH), disconnectedHand())
+        forceWall(controller, listOf("M8", "M9", "P5", "P6", "P7", "P8", "M2", "M3"))
+
+        assertTrue(controller.discard(east, controller.hand(east).indexOf(MahjongTile.P9)))
+        assertTrue(controller.react(south, ReactionResponse(ReactionType.RON, null)))
+        invokeStringArg(controller, "finishSichuanBloodBattle", "RON")
+        assertEquals(SeatWind.EAST, controller.dealerSeat(), "Settlement keeps showing the dealer of the completed hand")
+
+        controller.startRound()
+        assertEquals(SeatWind.SOUTH, controller.dealerSeat())
+        assertEquals(14, controller.hand(south).size)
     }
 
-    private fun currentWall(controller: GbTableRoundController): List<MahjongTile> {
-        val wallField = GbTableRoundController::class.java.getDeclaredField("wall")
-        wallField.isAccessible = true
-        val wall = wallField.get(controller)
-        return when (wall) {
-            is List<*> -> wall.filterIsInstance<MahjongTile>()
-            is Collection<*> -> wall.filterIsInstance<MahjongTile>().toList()
-            else -> emptyList()
-        }
+    @Test
+    fun `Sichuan added kong requires the fourth tile to be the current draw`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+
+        activateSichuan(controller, *SeatWind.values().map { player(it) to "suo" }.toTypedArray())
+        addPung(controller, east, "P3")
+        forceWall(controller, listOf("M8", "M9", "P5", "P6", "P7", "P8"))
+        forceHand(controller, east, listOf("P3", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "P9"))
+        assertFalse(controller.suggestedAddedKanTiles(east).contains("p3"))
+        assertFalse(controller.declareKan(east, "p3"))
+
+        forceHand(controller, east, listOf("M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "P9", "P3"))
+        assertTrue(controller.suggestedAddedKanTiles(east).contains("p3"))
     }
 
-    private fun deterministicWall(): List<MahjongTile> {
-        val sequence =
-            MahjongTile.values().filter { tile ->
-                tile != MahjongTile.UNKNOWN && !tile.isRedFive && !tile.isFlower
+    @Test
+    fun `robbing an added kong consumes only the fourth tile and keeps the pung`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+        val south = player(SeatWind.SOUTH)
+
+        activateSichuan(controller, *SeatWind.values().map { player(it) to "suo" }.toTypedArray())
+        addPung(controller, east, "P3")
+        forceHand(controller, east, listOf("M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "P9", "P3"))
+        forceHand(controller, south, listOf("M1", "M1", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "P4", "P5", "P6", "P3"))
+        forceHand(controller, player(SeatWind.WEST), disconnectedHand())
+        forceHand(controller, player(SeatWind.NORTH), disconnectedHand())
+        forceWall(controller, listOf("M8", "M9", "P5", "P6", "P7", "P8"))
+
+        assertTrue(controller.declareKan(east, "p3"))
+        assertTrue(controller.availableReactions(south)?.canRon == true)
+        assertTrue(controller.react(south, ReactionResponse(ReactionType.RON, null)))
+
+        assertEquals(10, controller.hand(east).size)
+        val pung = controller.fuuro(east).single()
+        assertEquals(3, pung.tiles().size)
+        assertNull(pung.addedKanTile())
+        assertEquals(0, controller.kanCount())
+    }
+
+    @Test
+    fun `Sichuan ting never offers a fifth physical copy across a pung`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+        controller.startRound()
+        val east = player(SeatWind.EAST)
+
+        activateSichuan(controller, *SeatWind.values().map { player(it) to "suo" }.toTypedArray())
+        addPung(controller, east, "P3")
+        forceHand(controller, east, listOf("P3", "M1", "M2", "M3", "M4", "M5", "M6", "P7", "P8", "P9"))
+        forceHasDrawn(controller, east, false)
+        invalidateTing(controller, east)
+
+        assertFalse(controller.tingOptions(east).waits.any { it.tile == "P3" })
+    }
+
+    @Test
+    fun `Sichuan match ends after exactly eight hands without a return point extension`() {
+        val controller = controller(profile = GbRuleProfile.SICHUAN)
+
+        repeat(8) { handIndex ->
+            controller.startRound()
+            invokeNoArg(controller, "finishExhaustiveDraw")
+            if (handIndex < 7) {
+                assertFalse(controller.gameFinished(), "hand ${handIndex + 1} must not end the match")
             }
-        return List(144) { sequence[it % sequence.size] }
+        }
+
+        assertTrue(controller.gameFinished())
+        assertEquals(SeatWind.SOUTH, controller.roundWind())
+        assertEquals(3, controller.roundIndex())
     }
 
-    private fun reorderWall(
-        wall: List<MahjongTile>,
-        dicePoints: Int,
-        roundIndex: Int,
-    ): List<MahjongTile> = reorderWall(wall, dicePoints, dicePoints, roundIndex)
+    @Test
+    fun `Sichuan match honors configured starting points and one game length`() {
+        val rule =
+            MahjongRule(
+                length = MahjongRule.GameLength.ONE_GAME,
+                startingPoints = 12_345,
+                minPointsToWin = 99_999,
+            )
+        val controller = controller(profile = GbRuleProfile.SICHUAN, rule = rule)
 
-    private fun reorderWall(
-        wall: List<MahjongTile>,
-        directionDicePoints: Int,
-        breakDicePoints: Int,
-        roundIndex: Int,
-    ): List<MahjongTile> {
-        val seatCount = SeatWind.values().size
-        val wallTilesPerSide = wall.size / seatCount
-        val directionIndex = seatCount - (((directionDicePoints % seatCount) - 1 + roundIndex) % seatCount)
-        val breakIndex = (directionIndex * wallTilesPerSide + breakDicePoints * 2).mod(wall.size)
-        return List(wall.size) { offset -> wall[(breakIndex + offset) % wall.size] }
+        controller.startRound()
+        SeatWind.values().forEach { wind -> assertEquals(12_345, controller.points(player(wind))) }
+        invokeNoArg(controller, "finishExhaustiveDraw")
+
+        assertTrue(controller.gameFinished())
     }
+}
 
-    private fun encodedTiles(vararg names: String): List<String> = names.map { GbTileEncoding.encode(MahjongTile.valueOf(it)) }
+private fun controller(
+    gateway: GbNativeRulesGateway = defaultGateway(),
+    profile: GbRuleProfile = GbRuleProfile.GB,
+    rule: MahjongRule = MahjongRule(),
+    dicePoints: Int? = null,
+    wall: List<MahjongTile>? = null,
+): GbTableRoundController {
+    val seats = EnumMap<SeatWind, UUID>(SeatWind::class.java)
+    val names = mutableMapOf<UUID, String>()
+    SeatWind.values().forEach { wind ->
+        val playerId = player(wind)
+        seats[wind] = playerId
+        names[playerId] = wind.name
+    }
+    val testWall = wall ?: if (profile == GbRuleProfile.SICHUAN) deterministicSichuanWall() else deterministicWall()
+    return GbTableRoundController(
+        rule,
+        seats,
+        names,
+        gateway,
+        profile,
+        IntSupplier { dicePoints ?: 7 },
+        Supplier { testWall },
+    )
+}
 
-    private class CapturingGateway : GbNativeRulesGateway() {
-        var lastFanRequest: GbFanRequest? = null
-        var lastWinRequest: GbWinRequest? = null
-
+private fun defaultGateway(): GbNativeRulesGateway =
+    object : GbNativeRulesGateway() {
         override fun isAvailable(): Boolean = true
 
-        override fun evaluateFan(request: GbFanRequest): GbFanResponse {
-            lastFanRequest = request
-            return GbFanResponse(true, 8, listOf(GbFanEntry("Mock Fan", 8, 1)), null)
-        }
+        override fun evaluateFan(request: GbFanRequest): GbFanResponse = GbFanResponse(true, 8, listOf(GbFanEntry("Mock Fan", 8, 1)), null)
 
         override fun evaluateTing(request: GbTingRequest): GbTingResponse =
             GbTingResponse(true, listOf(GbTingCandidate("W1", 8, listOf(GbFanEntry("Mock Fan", 8, 1)))), null)
 
         override fun evaluateWin(request: GbWinRequest): GbWinResponse {
-            lastWinRequest = request
             val winnerDelta = 24
             val loserSeat = request.discarderSeat ?: "SOUTH"
             return GbWinResponse(
@@ -1265,5 +1568,255 @@ class GbTableRoundControllerTest {
         }
     }
 
-    private fun player(wind: SeatWind): UUID = UUID.nameUUIDFromBytes(wind.name.toByteArray())
+private fun forceHand(
+    controller: GbTableRoundController,
+    playerId: UUID,
+    tiles: List<String>,
+) {
+    val handsField = GbTableRoundController::class.java.getDeclaredField("hands")
+    handsField.isAccessible = true
+    @Suppress("UNCHECKED_CAST")
+    val hands = handsField.get(controller) as MutableMap<UUID, MutableList<top.ellan.mahjong.model.MahjongTile>>
+    hands[playerId] = tiles.map(top.ellan.mahjong.model.MahjongTile::valueOf).toMutableList()
+    forceFlowers(controller, playerId, emptyList())
 }
+
+private fun addPung(
+    controller: GbTableRoundController,
+    playerId: UUID,
+    tile: String,
+    selfSeat: SeatWind = SeatWind.EAST,
+) {
+    val meldsField = GbTableRoundController::class.java.getDeclaredField("melds")
+    meldsField.isAccessible = true
+    @Suppress("UNCHECKED_CAST")
+    val melds = meldsField.get(controller) as MutableMap<UUID, MutableList<Any>>
+    val meldClass = GbMeldState::class.java
+    val pung =
+        meldClass.getDeclaredMethod(
+            "pung",
+            MahjongTile::class.java,
+            SeatWind::class.java,
+            SeatWind::class.java,
+        )
+    pung.isAccessible = true
+    melds.getValue(playerId).add(
+        pung.invoke(
+            null,
+            MahjongTile.valueOf(tile),
+            SeatWind.SOUTH,
+            selfSeat,
+        ),
+    )
+}
+
+private fun forceWall(
+    controller: GbTableRoundController,
+    tiles: List<String>,
+) {
+    val wallField = GbTableRoundController::class.java.getDeclaredField("wall")
+    wallField.isAccessible = true
+    val parsed = tiles.map(top.ellan.mahjong.model.MahjongTile::valueOf)
+
+    @Suppress("UNCHECKED_CAST")
+    val wall = wallField.get(controller) as MutableCollection<top.ellan.mahjong.model.MahjongTile>
+    wall.clear()
+    wall.addAll(parsed)
+}
+
+private fun forceFlowers(
+    controller: GbTableRoundController,
+    playerId: UUID,
+    tiles: List<String>,
+) {
+    val flowersField = GbTableRoundController::class.java.getDeclaredField("flowers")
+    flowersField.isAccessible = true
+    @Suppress("UNCHECKED_CAST")
+    val flowers = flowersField.get(controller) as MutableMap<UUID, MutableList<top.ellan.mahjong.model.MahjongTile>>
+    flowers[playerId] = tiles.map(top.ellan.mahjong.model.MahjongTile::valueOf).toMutableList()
+}
+
+private fun activateSichuan(
+    controller: GbTableRoundController,
+    vararg declarations: Pair<UUID, String>,
+) {
+    val phaseClass = Class.forName("${GbTableRoundController::class.java.name}\$SichuanPreparationPhase")
+    val activePhase = phaseClass.enumConstants.first { (it as Enum<*>).name == "ACTIVE" }
+    val phaseField = GbTableRoundController::class.java.getDeclaredField("sichuanPreparationPhase")
+    phaseField.isAccessible = true
+    phaseField.set(controller, activePhase)
+
+    val missingSuitsField = GbTableRoundController::class.java.getDeclaredField("chosenMissingSuits")
+    missingSuitsField.isAccessible = true
+    @Suppress("UNCHECKED_CAST")
+    val chosenMissingSuits = missingSuitsField.get(controller) as MutableMap<UUID, Any>
+    chosenMissingSuits.clear()
+    val suitClass = Class.forName("top.ellan.mahjong.table.core.round.SichuanSuit")
+    declarations.forEach { (playerId, suitKey) ->
+        val suit = suitClass.enumConstants.first { (it as Enum<*>).name == suitKey.uppercase() }
+        chosenMissingSuits[playerId] = suit
+    }
+}
+
+private fun lowP9Wait(): List<String> = listOf("M1", "M1", "M1", "M2", "M3", "M4", "M5", "M6", "M7", "P2", "P3", "P4", "P9")
+
+private fun sequenceP9Wait(): List<String> = listOf("M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "P2", "P3", "P4", "P9")
+
+private fun nonWinningP9DiscardHand(): List<String> = listOf("P9", "M2", "M2", "M4", "M4", "M6", "M6", "M8", "M8", "P1", "P3", "P5", "P7")
+
+private fun disconnectedHand(): List<String> = listOf("M1", "M3", "M5", "M7", "M9", "P1", "P3", "P5", "P7", "P9", "M2", "P4", "P6")
+
+private fun passedWinUnit(
+    controller: GbTableRoundController,
+    playerId: UUID,
+): Int? {
+    val field = GbTableRoundController::class.java.getDeclaredField("sichuanPassedWinUnits")
+    field.isAccessible = true
+    @Suppress("UNCHECKED_CAST")
+    return (field.get(controller) as Map<UUID, Int>)[playerId]
+}
+
+private fun pendingSichuanCallTransferCount(controller: GbTableRoundController): Int {
+    val field = GbTableRoundController::class.java.getDeclaredField("pendingSichuanCallTransferEvents")
+    field.isAccessible = true
+    return (field.get(controller) as Collection<*>).size
+}
+
+private fun forceHasDrawn(
+    controller: GbTableRoundController,
+    playerId: UUID,
+    hasDrawn: Boolean,
+) {
+    val field = GbTableRoundController::class.java.getDeclaredField("hasDrawnTile")
+    field.isAccessible = true
+    @Suppress("UNCHECKED_CAST")
+    (field.get(controller) as MutableMap<UUID, Boolean>)[playerId] = hasDrawn
+}
+
+private fun invalidateTing(
+    controller: GbTableRoundController,
+    playerId: UUID,
+) {
+    val field = GbTableRoundController::class.java.getDeclaredField("dirtyTingPlayers")
+    field.isAccessible = true
+    @Suppress("UNCHECKED_CAST")
+    (field.get(controller) as MutableSet<UUID>).add(playerId)
+}
+
+private fun invokeNoArg(
+    controller: GbTableRoundController,
+    methodName: String,
+) {
+    val method = GbTableRoundController::class.java.getDeclaredMethod(methodName)
+    method.isAccessible = true
+    method.invoke(controller)
+}
+
+private fun invokeStringArg(
+    controller: GbTableRoundController,
+    methodName: String,
+    argument: String,
+) {
+    val method = GbTableRoundController::class.java.getDeclaredMethod(methodName, String::class.java)
+    method.isAccessible = true
+    method.invoke(controller, argument)
+}
+
+private fun settledSichuanPlayers(controller: GbTableRoundController): Set<UUID> {
+    val field = GbTableRoundController::class.java.getDeclaredField("settledSichuanPlayers")
+    field.isAccessible = true
+    @Suppress("UNCHECKED_CAST")
+    return field.get(controller) as Set<UUID>
+}
+
+private fun currentWall(controller: GbTableRoundController): List<MahjongTile> {
+    val wallField = GbTableRoundController::class.java.getDeclaredField("wall")
+    wallField.isAccessible = true
+    val wall = wallField.get(controller)
+    return when (wall) {
+        is List<*> -> wall.filterIsInstance<MahjongTile>()
+        is Collection<*> -> wall.filterIsInstance<MahjongTile>().toList()
+        else -> emptyList()
+    }
+}
+
+private fun deterministicWall(): List<MahjongTile> {
+    val sequence =
+        MahjongTile.values().filter { tile ->
+            tile != MahjongTile.UNKNOWN && !tile.isRedFive && !tile.isFlower
+        }
+    return List(144) { sequence[it % sequence.size] }
+}
+
+private fun deterministicSichuanWall(): List<MahjongTile> {
+    val sequence =
+        MahjongTile.values().filter { tile ->
+            tile != MahjongTile.UNKNOWN && !tile.isRedFive && !tile.isFlower && !GbRoundSupport.isHonor(tile)
+        }
+    return List(108) { sequence[it % sequence.size] }
+}
+
+private fun reorderSichuanWall(
+    wall: List<MahjongTile>,
+    dicePoints: Int,
+    smallerDie: Int,
+    dealerIndex: Int,
+): List<MahjongTile> {
+    val seatCount = SeatWind.values().size
+    val wallTilesPerSide = wall.size / seatCount
+    val openDoorIndex = Math.floorMod(dealerIndex + dicePoints - 1, seatCount)
+    val breakIndex = (openDoorIndex * wallTilesPerSide + smallerDie * 2).mod(wall.size)
+    return List(wall.size) { offset -> wall[(breakIndex + offset) % wall.size] }
+}
+
+private fun reorderWall(
+    wall: List<MahjongTile>,
+    dicePoints: Int,
+    dealerIndex: Int,
+): List<MahjongTile> = reorderWall(wall, dicePoints, dicePoints, dealerIndex)
+
+private fun reorderWall(
+    wall: List<MahjongTile>,
+    directionDicePoints: Int,
+    breakDicePoints: Int,
+    dealerIndex: Int,
+): List<MahjongTile> {
+    val seatCount = SeatWind.values().size
+    val wallTilesPerSide = wall.size / seatCount
+    val openDoorIndex = Math.floorMod(dealerIndex + directionDicePoints - 1, seatCount)
+    val breakIndex = (openDoorIndex * wallTilesPerSide + (directionDicePoints + breakDicePoints) * 2).mod(wall.size)
+    return List(wall.size) { offset -> wall[(breakIndex + offset) % wall.size] }
+}
+
+private fun encodedTiles(vararg names: String): List<String> = names.map { GbTileEncoding.encode(MahjongTile.valueOf(it)) }
+
+private class CapturingGateway : GbNativeRulesGateway() {
+    var lastFanRequest: GbFanRequest? = null
+    var lastWinRequest: GbWinRequest? = null
+
+    override fun isAvailable(): Boolean = true
+
+    override fun evaluateFan(request: GbFanRequest): GbFanResponse {
+        lastFanRequest = request
+        return GbFanResponse(true, 8, listOf(GbFanEntry("Mock Fan", 8, 1)), null)
+    }
+
+    override fun evaluateTing(request: GbTingRequest): GbTingResponse =
+        GbTingResponse(true, listOf(GbTingCandidate("W1", 8, listOf(GbFanEntry("Mock Fan", 8, 1)))), null)
+
+    override fun evaluateWin(request: GbWinRequest): GbWinResponse {
+        lastWinRequest = request
+        val winnerDelta = 24
+        val loserSeat = request.discarderSeat ?: "SOUTH"
+        return GbWinResponse(
+            true,
+            if (request.winType == "SELF_DRAW") "TSUMO" else "RON",
+            8,
+            listOf(GbFanEntry("Mock Fan", 8, 1)),
+            listOf(GbScoreDelta(request.winnerSeat, winnerDelta), GbScoreDelta(loserSeat, -winnerDelta)),
+            null,
+        )
+    }
+}
+
+private fun player(wind: SeatWind): UUID = UUID.nameUUIDFromBytes(wind.name.toByteArray())

@@ -73,6 +73,10 @@ public final class RuleSettingsUi {
             open(player, session);
             return;
         }
+        if (action == RuleAction.LOCAL_YAKU) {
+            open(player, session);
+            return;
+        }
         if (!applyAction(session, action, event.isRightClick(), event.isShiftClick())) {
             session.plugin().messages().send(player, "command.rule_update_failed");
         }
@@ -104,7 +108,6 @@ public final class RuleSettingsUi {
         inventory.setItem(25, optionItem(session, locale, RuleAction.MINIMUM_HAN, Material.GOLD_INGOT, minimumHanLabel(session, locale, rule.getMinimumHan()), variant != MahjongVariant.RIICHI));
         inventory.setItem(28, optionItem(session, locale, RuleAction.RED_FIVE, Material.RED_DYE, redFiveLabel(session, locale, rule.getRedFive()), variant != MahjongVariant.RIICHI));
         inventory.setItem(30, optionItem(session, locale, RuleAction.OPEN_TANYAO, Material.BAMBOO, booleanLabel(session, locale, rule.getOpenTanyao()), variant != MahjongVariant.RIICHI));
-        inventory.setItem(32, optionItem(session, locale, RuleAction.LOCAL_YAKU, Material.ENCHANTED_BOOK, booleanLabel(session, locale, rule.getLocalYaku()), variant != MahjongVariant.RIICHI));
         inventory.setItem(34, optionItem(session, locale, RuleAction.RON_MODE, Material.CROSSBOW, ronModeLabel(session, locale, rule.getRonMode()), variant != MahjongVariant.RIICHI));
         inventory.setItem(40, optionItem(session, locale, RuleAction.RIICHI_PROFILE, Material.WRITABLE_BOOK, riichiProfileLabel(session, locale, rule.getRiichiProfile()), variant != MahjongVariant.RIICHI));
         return inventory;

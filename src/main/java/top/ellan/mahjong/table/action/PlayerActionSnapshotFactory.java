@@ -40,7 +40,7 @@ public final class PlayerActionSnapshotFactory {
                 List.of()
             );
         }
-        if (this.session.currentSeat() != this.session.seatOf(viewerId)) {
+        if (!this.session.isCurrentPlayer(viewerId)) {
             return new PlayerActionSnapshot(PlayerActionPhase.WAITING, menuState, 0, 0, false, List.of());
         }
         return new PlayerActionSnapshot(PlayerActionPhase.TURN, menuState, 0, 0, false, this.turnActions(viewerId, menuState));
@@ -96,6 +96,33 @@ public final class PlayerActionSnapshotFactory {
         List<PlayerActionEntry> actions = new ArrayList<>(12);
         if (this.session.canDeclareTsumo(viewerId)) {
             actions.add(new PlayerActionEntry(PlayerActionId.TSUMO, "turn:tsumo", "table.action.tsumo", NamedTextColor.GOLD, false, List.of()));
+        }
+
+        List<PlayerActionEntry> flowerActions = new ArrayList<>();
+        if (this.session.canDeclareFlower(viewerId)) {
+            List<top.ellan.mahjong.model.MahjongTile> hand = this.session.hand(viewerId);
+            for (Integer tileIndex : this.session.suggestedFlowerIndices(viewerId)) {
+                if (tileIndex == null || tileIndex < 0 || tileIndex >= hand.size()) {
+                    continue;
+                }
+                flowerActions.add(new PlayerActionEntry(
+                    PlayerActionId.FLOWER,
+                    "turn:flower:" + tileIndex,
+                    "table.action.flower",
+                    NamedTextColor.GREEN,
+                    false,
+                    List.of(hand.get(tileIndex).name(), String.valueOf(tileIndex))
+                ));
+            }
+        }
+        if ("turn-flower".equals(menuState)) {
+            actions.addAll(flowerActions);
+            actions.add(new PlayerActionEntry(PlayerActionId.MENU_BACK, "menu:back", "table.action.back", NamedTextColor.GRAY, true, List.of()));
+            return List.copyOf(actions);
+        } else if (flowerActions.size() == 1) {
+            actions.add(flowerActions.get(0));
+        } else if (!flowerActions.isEmpty()) {
+            actions.add(new PlayerActionEntry(PlayerActionId.MENU_TURN_FLOWER, "menu:turn-flower", "table.action.flower", NamedTextColor.GREEN, true, List.of()));
         }
 
         List<PlayerActionEntry> kanActions = new ArrayList<>();

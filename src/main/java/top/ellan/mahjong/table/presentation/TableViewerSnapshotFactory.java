@@ -1,9 +1,10 @@
 package top.ellan.mahjong.table.presentation;
 
+import top.ellan.mahjong.presentation.TableFeedbackPolicy;
 import top.ellan.mahjong.model.MahjongVariant;
 import top.ellan.mahjong.riichi.ReactionOptions;
+import top.ellan.mahjong.riichi.RoundResolution;
 import top.ellan.mahjong.table.action.PlayerActionEntry;
-import top.ellan.mahjong.table.action.PlayerActionId;
 import top.ellan.mahjong.table.action.PlayerActionPhase;
 import top.ellan.mahjong.table.action.PlayerActionSnapshot;
 import top.ellan.mahjong.table.action.PlayerActionSnapshotFactory;
@@ -12,13 +13,15 @@ import top.ellan.mahjong.table.core.TableSessionMutator;
 import top.ellan.mahjong.render.snapshot.TableSpectatorSeatOverlaySnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerActionOverlaySnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerActionButtonSnapshot;
+import top.ellan.mahjong.render.snapshot.TableViewerActionBarSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerHudSnapshot;
+import top.ellan.mahjong.render.snapshot.TableViewerHudPresentationSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerOverlaySnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerPromptSnapshot;
+import top.ellan.mahjong.render.scene.TableRenderConstants;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.UUID;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
@@ -42,7 +45,7 @@ public final class TableViewerSnapshotFactory {
         Locale locale = this.session.plugin().messages().resolveLocale(player);
         UUID viewerId = player.getUniqueId();
         PlayerActionSnapshot actionSnapshot = this.actionSnapshotFactory.capture(viewerId);
-        ViewerSummarySnapshot summary = this.captureViewerSummarySnapshot(locale, viewerId, actionSnapshot);
+        ViewerSummarySnapshot summary = this.captureViewerSummarySnapshot(locale, viewerId, actionSnapshot, false);
         return this.session.plugin().messages().render(
             player,
             "command.rule_summary",
@@ -54,7 +57,7 @@ public final class TableViewerSnapshotFactory {
         Locale locale = this.session.plugin().messages().resolveLocale(viewer);
         UUID viewerId = viewer.getUniqueId();
         PlayerActionSnapshot actionSnapshot = this.actionSnapshotFactory.capture(viewerId);
-        return this.viewerOverlay(locale, this.captureViewerSummarySnapshot(locale, viewerId, actionSnapshot));
+        return this.viewerOverlay(locale, this.captureViewerSummarySnapshot(locale, viewerId, actionSnapshot, false));
     }
 
     public TableViewerOverlaySnapshot captureViewerOverlaySnapshot(Player viewer) {
@@ -63,83 +66,119 @@ public final class TableViewerSnapshotFactory {
         String regionKey = "viewer-overlay:" + viewerId;
         boolean spectator = this.session.isSpectator(viewerId);
         PlayerActionSnapshot actionSnapshot = this.actionSnapshotFactory.capture(viewerId);
-        ViewerSummarySnapshot summary = this.captureViewerSummarySnapshot(locale, viewerId, actionSnapshot);
-        List<TableViewerActionButtonSnapshot> actionButtons = this.viewerActionButtons(locale, spectator, actionSnapshot);
+        ViewerSummarySnapshot summary = this.captureViewerSummarySnapshot(locale, viewerId, actionSnapshot, true);
+        boolean overheadActive = this.isOverheadActive(viewerId);
+        List<TableViewerActionButtonSnapshot> actionButtons = this.viewerActionButtons(locale, viewer, spectator, actionSnapshot);
         Component overlay = this.viewerOverlay(locale, summary);
-        TableViewerPromptSnapshot prompt = this.viewerPromptSnapshot(locale, viewerId, spectator, summary);
+        TableViewerPromptSnapshot prompt = this.viewerPromptSnapshot(locale, viewerId, spectator || overheadActive, summary);
         TableViewerActionOverlaySnapshot actions = this.viewerActionOverlaySnapshot(locale, viewerId, spectator, actionButtons);
         List<TableSpectatorSeatOverlaySnapshot> seatOverlays = List.of();
-        String fingerprint = this.viewerOverlayFingerprint(locale, viewerId, spectator, summary, seatOverlays);
+        String fingerprint = this.viewerOverlayFingerprint(locale, viewerId, summary);
         return new TableViewerOverlaySnapshot(viewerId, regionKey, spectator, overlay, prompt, actions, seatOverlays, fingerprint);
     }
 
-    public TableViewerHudSnapshot captureViewerHudSnapshot(Locale locale, UUID viewerId) {
-        float progress = this.hudProgress();
-        BossBar.Color color = this.hudColor(viewerId);
-        PlayerActionSnapshot actionSnapshot = this.actionSnapshotFactory.capture(viewerId);
-        ViewerSummarySnapshot summary = this.captureViewerSummarySnapshot(locale, viewerId, actionSnapshot);
-        boolean spectator = summary.spectator();
-        long nextRoundSeconds = this.session.nextRoundSecondsRemainingValue();
-        Object lastResolution = this.session.lastResolution();
+    public TableViewerHudPresentationSnapshot captureViewerHudPresentationSnapshot(Locale locale, UUID viewerId) {
+        long secondsRemaining = this.session.actionDeadlineSecondsRemaining(viewerId);
+        ViewerHudPollState pollState = this.captureViewerHudPollState(viewerId, secondsRemaining > 0L);
+        return new TableViewerHudPresentationSnapshot(
+            this.captureViewerHudSnapshot(locale, viewerId, pollState),
+            secondsRemaining <= 0L
+                ? TableViewerActionBarSnapshot.hidden()
+                : this.captureViewerActionBarSnapshot(locale, pollState.actionPhase(), secondsRemaining)
+        );
+    }
 
-        if (!this.session.hasRoundController()) {
-            return this.buildWaitingHudSnapshot(locale, progress, color, spectator, nextRoundSeconds, lastResolution, summary);
+    public TableViewerHudSnapshot captureViewerHudSnapshot(Locale locale, UUID viewerId) {
+        return this.captureViewerHudSnapshot(locale, viewerId, this.captureViewerHudPollState(viewerId, false));
+    }
+
+    private TableViewerHudSnapshot captureViewerHudSnapshot(Locale locale, UUID viewerId, ViewerHudPollState pollState) {
+        float progress = this.hudProgress(pollState);
+        BossBar.Color color = this.hudColor(viewerId, pollState);
+
+        if (!pollState.hasRoundController()) {
+            return this.buildWaitingHudSnapshot(locale, progress, color);
         }
 
-        if (this.session.isRoundFinished() && this.session.lastResolution() != null) {
+        RoundResolution lastResolution = pollState.roundFinished() ? this.session.lastResolution() : null;
+        if (lastResolution != null) {
+            String round = this.session.roundDisplay(locale);
+            String resolutionTitle = this.resolutionLabel(locale, lastResolution.getTitle());
             Component title = this.session.plugin().messages().render(
                 locale,
                 "hud.finished",
-                this.session.plugin().messages().tag("round", summary.round()),
-                this.session.plugin().messages().tag("title", summary.resolutionTitle())
+                this.session.plugin().messages().tag("round", round),
+                this.session.plugin().messages().tag("title", resolutionTitle)
             );
-            String stateSignature = this.hudSignatureBuilder(
-                    locale, progress, color, nextRoundSeconds, spectator, this.session.isStarted(), lastResolution
-                )
-                .field(summary.round())
-                .field(summary.resolutionTitle())
+            String stateSignature = this.hudSignatureBuilder(locale, progress, color)
+                .field(round)
+                .field(resolutionTitle)
                 .toString();
             return new TableViewerHudSnapshot(title, progress, color, stateSignature);
         }
 
-        if (!this.session.isStarted()) {
-            return this.buildWaitingHudSnapshot(locale, progress, color, spectator, nextRoundSeconds, lastResolution, summary);
+        if (!pollState.started()) {
+            return this.buildWaitingHudSnapshot(locale, progress, color);
         }
 
-        Component title = this.buildRoundHudTitle(locale, summary);
-        String stateSignature = this.hudSignatureBuilder(locale, progress, color, nextRoundSeconds, spectator, true, lastResolution)
-            .field(summary.round())
-            .field(summary.dealer())
-            .field(summary.turn())
-            .field(summary.wall())
-            .field(summary.riichiPool())
-            .field(summary.doraSummary())
-            .field(summary.roleLabel())
-            .field(this.session.lastPublicDiscardPlayerId())
-            .field(this.session.lastPublicDiscardTile())
-            .field(summary.reactionOptionsFingerprint())
+        String round = this.session.roundDisplay(locale);
+        String turn = this.session.currentTurnDisplayName();
+        int wall = this.session.remainingWallCount();
+        Component title = this.buildRoundHudTitle(locale, round, turn, wall);
+        String stateSignature = this.hudSignatureBuilder(locale, progress, color)
+            .field(round)
+            .field(turn)
+            .field(wall)
             .toString();
         return new TableViewerHudSnapshot(title, progress, color, stateSignature);
+    }
+
+    public TableViewerActionBarSnapshot captureViewerActionBarSnapshot(Locale locale, UUID viewerId) {
+        long secondsRemaining = this.session.actionDeadlineSecondsRemaining(viewerId);
+        if (secondsRemaining <= 0L) {
+            return TableViewerActionBarSnapshot.hidden();
+        }
+        return this.captureViewerActionBarSnapshot(locale, this.captureViewerActionPhase(viewerId), secondsRemaining);
+    }
+
+    private TableViewerActionBarSnapshot captureViewerActionBarSnapshot(
+        Locale locale,
+        PlayerActionPhase phase,
+        long secondsRemaining
+    ) {
+        String messageKey = switch (phase) {
+            case TURN -> "actionbar.deadline.discard";
+            case REACTION -> "actionbar.deadline.reaction";
+            case SICHUAN_EXCHANGE -> "actionbar.deadline.sichuan_exchange";
+            case SICHUAN_DING_QUE -> "actionbar.deadline.sichuan_ding_que";
+            case NONE, WAITING -> null;
+        };
+        if (messageKey == null) {
+            return TableViewerActionBarSnapshot.hidden();
+        }
+        Component message = this.session.plugin().messages().render(
+            locale,
+            messageKey,
+            this.session.plugin().messages().number(locale, "seconds", secondsRemaining)
+        );
+        return new TableViewerActionBarSnapshot(message, true);
     }
 
     private TableViewerHudSnapshot buildWaitingHudSnapshot(
         Locale locale,
         float progress,
-        BossBar.Color color,
-        boolean spectator,
-        long nextRoundSeconds,
-        Object lastResolution,
-        ViewerSummarySnapshot summary
+        BossBar.Color color
     ) {
+        String waitingSummary = this.session.waitingDisplaySummary(locale);
         Component title = this.session.plugin().messages().render(
             locale,
             "hud.waiting",
             this.session.plugin().messages().tag("table_id", this.session.id()),
-            this.session.plugin().messages().tag("summary", summary.waitingSummary())
+            this.session.plugin().messages().tag("summary", waitingSummary)
         );
-        String stateSignature = this.hudSignatureBuilder(locale, progress, color, nextRoundSeconds, spectator, false, lastResolution)
-            .field(summary.waitingSummary())
-            .field(summary.ruleSummary())
+        String stateSignature = this.hudSignatureBuilder(locale, progress, color)
+            .field(this.session.id())
+            .field(waitingSummary)
             .toString();
         return new TableViewerHudSnapshot(title, progress, color, stateSignature);
     }
@@ -147,20 +186,12 @@ public final class TableViewerSnapshotFactory {
     private DelimitedFingerprintBuilder hudSignatureBuilder(
         Locale locale,
         float progress,
-        BossBar.Color color,
-        long nextRoundSeconds,
-        boolean spectator,
-        boolean started,
-        Object lastResolution
+        BossBar.Color color
     ) {
         return fingerprintBuilder(192)
             .field(locale.toLanguageTag())
             .field(progress)
-            .field(color)
-            .field(nextRoundSeconds)
-            .field(spectator)
-            .field(started)
-            .field(lastResolution);
+            .field(color);
     }
 
     private Component viewerOverlay(Locale locale, ViewerSummarySnapshot summary) {
@@ -222,15 +253,20 @@ public final class TableViewerSnapshotFactory {
         );
     }
 
-    private ViewerSummarySnapshot captureViewerSummarySnapshot(Locale locale, UUID viewerId, PlayerActionSnapshot actionSnapshot) {
+    private ViewerSummarySnapshot captureViewerSummarySnapshot(
+        Locale locale,
+        UUID viewerId,
+        PlayerActionSnapshot actionSnapshot,
+        boolean includeCommandStateSummary
+    ) {
         boolean spectator = this.session.isSpectator(viewerId);
-        String waitingSummary = this.session.waitingDisplaySummary(locale);
-        String ruleSummary = this.session.ruleDisplaySummary(locale);
-        if (!this.session.hasRoundController()) {
+        boolean hasRoundController = this.session.hasRoundController();
+        boolean started = hasRoundController && this.session.isStarted();
+        String waitingSummary = started ? "" : this.session.waitingDisplaySummary(locale);
+        if (!hasRoundController) {
             return new ViewerSummarySnapshot(
                 spectator,
                 waitingSummary,
-                ruleSummary,
                 "",
                 "",
                 "",
@@ -238,7 +274,6 @@ public final class TableViewerSnapshotFactory {
                 0,
                 "",
                 this.viewerRoleLabel(locale, viewerId),
-                "",
                 "",
                 "",
                 "",
@@ -251,20 +286,21 @@ public final class TableViewerSnapshotFactory {
         String turn = this.session.currentTurnDisplayName();
         int wall = this.session.remainingWallCount();
         int riichiPool = this.session.riichiPoolCount();
-        String doraSummary = this.doraSummary(locale);
+        String doraSummary = this.session.currentVariant() == MahjongVariant.RIICHI ? this.doraSummary(locale) : "";
         String roleLabel = this.viewerRoleLabel(locale, viewerId);
         String lastDiscardSummary = this.lastDiscardSummary(locale);
         ReactionOptions options = this.session.availableReactions(viewerId);
-        String reactionOptionsFingerprint = Objects.toString(options, "");
-        String resolutionTitle = this.session.lastResolution() == null
+        RoundResolution lastResolution = this.session.lastResolution();
+        String resolutionTitle = lastResolution == null
             ? ""
-            : this.resolutionLabel(locale, this.session.lastResolution().getTitle());
-        String viewerPrompt = this.viewerPrompt(locale, viewerId, actionSnapshot, options, turn, spectator);
-        String commandStateSummary = this.buildCommandStateSummary(locale, round, turn, wall, options, resolutionTitle);
+            : this.resolutionLabel(locale, lastResolution.getTitle());
+        String viewerPrompt = this.viewerPrompt(locale, viewerId, actionSnapshot, options, spectator);
+        String commandStateSummary = includeCommandStateSummary
+            ? this.buildCommandStateSummary(locale, round, turn, wall, options, resolutionTitle)
+            : "";
         return new ViewerSummarySnapshot(
             spectator,
             waitingSummary,
-            ruleSummary,
             round,
             dealer,
             turn,
@@ -275,7 +311,6 @@ public final class TableViewerSnapshotFactory {
             lastDiscardSummary,
             viewerPrompt,
             resolutionTitle,
-            reactionOptionsFingerprint,
             commandStateSummary
         );
     }
@@ -339,30 +374,13 @@ public final class TableViewerSnapshotFactory {
         );
     }
 
-    private Component buildRoundHudTitle(Locale locale, ViewerSummarySnapshot summary) {
-        MahjongVariant variant = this.session.currentVariant();
-        if (variant == MahjongVariant.RIICHI) {
-            return this.session.plugin().messages().render(
-                locale,
-                "hud.round_riichi",
-                this.session.plugin().messages().tag("round", summary.round()),
-                this.session.plugin().messages().tag("dealer", summary.dealer()),
-                this.session.plugin().messages().tag("turn", summary.turn()),
-                this.session.plugin().messages().number(locale, "wall", summary.wall()),
-                this.session.plugin().messages().number(locale, "riichi_pool", summary.riichiPool()),
-                this.session.plugin().messages().tag("dora", summary.doraSummary()),
-                this.session.plugin().messages().tag("role", summary.roleLabel())
-            );
-        }
+    private Component buildRoundHudTitle(Locale locale, String round, String turn, int wall) {
         return this.session.plugin().messages().render(
             locale,
-            "hud.round_gb",
-            this.session.plugin().messages().tag("round", summary.round()),
-            this.session.plugin().messages().tag("dealer", summary.dealer()),
-            this.session.plugin().messages().tag("turn", summary.turn()),
-            this.session.plugin().messages().number(locale, "wall", summary.wall()),
-            this.session.plugin().messages().tag("dice", this.session.dicePoints() + "+" + this.session.breakDicePoints()),
-            this.session.plugin().messages().tag("role", summary.roleLabel())
+            "hud.round_compact",
+            this.session.plugin().messages().tag("round", round),
+            this.session.plugin().messages().tag("turn", turn),
+            this.session.plugin().messages().number(locale, "wall", wall)
         );
     }
 
@@ -371,37 +389,39 @@ public final class TableViewerSnapshotFactory {
         UUID viewerId,
         PlayerActionSnapshot actionSnapshot,
         ReactionOptions options,
-        String currentTurnName,
         boolean spectator
     ) {
         if (spectator || actionSnapshot == null || actionSnapshot.phase() == PlayerActionPhase.NONE) {
             return "";
         }
-        return switch (actionSnapshot.phase()) {
-            case REACTION -> options == null ? "" : this.reactionSummary(locale, options);
-            case TURN -> this.turnPrompt(locale, viewerId, actionSnapshot);
-            case SICHUAN_EXCHANGE -> this.sichuanExchangePrompt(locale, actionSnapshot);
-            case SICHUAN_DING_QUE -> this.session.plugin().messages().plain(locale, "overlay.prompt.sichuan_dingque");
-            case WAITING -> "";
-            case NONE -> "";
+        TableFeedbackPolicy.DecisionCue cue = switch (actionSnapshot.phase()) {
+            case REACTION -> options == null ? null : new TableFeedbackPolicy.DecisionCue(
+                "reaction",
+                TableFeedbackPolicy.Priority.REACTION,
+                this.session.plugin().messages().plain(locale, "overlay.prompt.choose_reaction"),
+                this.suggestedReaction(locale, options)
+            );
+            case TURN -> new TableFeedbackPolicy.DecisionCue(
+                "turn",
+                TableFeedbackPolicy.Priority.TURN,
+                this.session.plugin().messages().plain(locale, "overlay.your_turn"),
+                this.discardSuggestion(locale, viewerId)
+            );
+            case SICHUAN_EXCHANGE -> new TableFeedbackPolicy.DecisionCue(
+                "sichuan-exchange",
+                TableFeedbackPolicy.Priority.REQUIRED_ACTION,
+                this.sichuanExchangePrompt(locale, actionSnapshot),
+                ""
+            );
+            case SICHUAN_DING_QUE -> new TableFeedbackPolicy.DecisionCue(
+                "sichuan-dingque",
+                TableFeedbackPolicy.Priority.REQUIRED_ACTION,
+                this.session.plugin().messages().plain(locale, "overlay.prompt.sichuan_dingque"),
+                ""
+            );
+            case WAITING, NONE -> null;
         };
-    }
-
-    private String turnPrompt(Locale locale, UUID viewerId, PlayerActionSnapshot actionSnapshot) {
-        String actions = this.actionLabels(locale, actionSnapshot.actions());
-        String suggestion = this.discardSuggestion(locale, viewerId);
-        if (!suggestion.isBlank()) {
-            suggestion = " | " + suggestion;
-        }
-        if (actions.isBlank()) {
-            return this.session.plugin().messages().plain(locale, "overlay.your_turn") + suggestion;
-        }
-        return this.session.plugin().messages().plain(
-            locale,
-            "table.turn_prompt",
-            this.session.plugin().messages().tag("actions", actions),
-            this.session.plugin().messages().tag("suggestion", suggestion)
-        );
+        return TableFeedbackPolicy.resolveDecision(cue == null ? List.of() : List.of(cue)).text();
     }
 
     private String sichuanExchangePrompt(Locale locale, PlayerActionSnapshot actionSnapshot) {
@@ -416,55 +436,48 @@ public final class TableViewerSnapshotFactory {
         );
     }
 
-    private String actionLabels(Locale locale, List<PlayerActionEntry> actions) {
-        if (actions == null || actions.isEmpty()) {
-            return "";
-        }
-        List<String> labels = new java.util.ArrayList<>(actions.size());
-        for (PlayerActionEntry action : actions) {
-            if (action.actionId() == PlayerActionId.MENU_BACK) {
-                continue;
-            }
-            labels.add(this.actionLabel(locale, action));
-        }
-        return String.join("/", labels);
-    }
-
     private String viewerOverlayFingerprint(
         Locale locale,
         UUID viewerId,
-        boolean spectator,
-        ViewerSummarySnapshot summary,
-        List<TableSpectatorSeatOverlaySnapshot> seatOverlays
+        ViewerSummarySnapshot summary
     ) {
         DelimitedFingerprintBuilder builder = fingerprintBuilder(256)
             .field(locale.toLanguageTag())
-            .field(viewerId)
-            .field(spectator)
-            .field(this.session.nextRoundSecondsRemainingValue())
-            .field(this.session.lastResolution())
-            .field(summary.waitingSummary())
-            .field(summary.ruleSummary())
+            .field(viewerId);
+        if (!this.session.hasRoundController()) {
+            return builder
+                .field("waiting")
+                .field(this.session.id())
+                .field(summary.waitingSummary())
+                .toString();
+        }
+        if (!this.session.isStarted()) {
+            if (this.session.isRoundFinished() && this.session.lastResolution() != null) {
+                return builder
+                    .field("finished")
+                    .field(summary.round())
+                    .field(summary.resolutionTitle())
+                    .toString();
+            }
+            return builder
+                .field("waiting")
+                .field(this.session.id())
+                .field(summary.waitingSummary())
+                .toString();
+        }
+        builder
+            .field("active")
+            .field(this.session.currentVariant())
             .field(summary.round())
             .field(summary.dealer())
             .field(summary.turn())
             .field(summary.wall())
-            .field(summary.riichiPool())
             .field(summary.roleLabel())
-            .field(summary.lastDiscardSummary())
-            .field(summary.resolutionTitle())
-            .field(summary.commandStateSummary());
-        if (!this.session.hasRoundController()) {
-            return builder.field("no-engine").toString();
-        }
-        builder.field(this.session.roundDisplay())
-            .field(this.session.remainingWallCount())
-            .field(this.session.currentSeat())
-            .field(this.session.lastPublicDiscardPlayerId())
-            .field(this.session.lastPublicDiscardTile())
-            .field(summary.reactionOptionsFingerprint());
-        for (TableSpectatorSeatOverlaySnapshot seatOverlay : seatOverlays) {
-            builder.field(seatOverlay.signature());
+            .field(summary.lastDiscardSummary());
+        if (this.session.currentVariant() == MahjongVariant.RIICHI) {
+            builder
+                .field(summary.riichiPool())
+                .field(summary.doraSummary());
         }
         return builder.toString();
     }
@@ -503,16 +516,17 @@ public final class TableViewerSnapshotFactory {
                 .field(button.label())
                 .field(button.color())
                 .field(button.command())
-                .field(button.hitboxWidth());
+                .field(button.hitboxWidth())
+                .field(button.placement());
         }
         return new TableViewerActionOverlaySnapshot(viewerId, "viewer-actions:" + viewerId, actionButtons, builder.toString());
     }
 
-    private float hudProgress() {
-        if (!this.session.hasRoundController()) {
+    private float hudProgress(ViewerHudPollState pollState) {
+        if (!pollState.hasRoundController()) {
             return Math.min(1.0F, this.session.size() / 4.0F);
         }
-        if (!this.session.isStarted()) {
+        if (!pollState.started()) {
             return this.session.size() == 0 ? 0.0F : Math.max(0.0F, Math.min(1.0F, this.session.readyCount() / (float) this.session.size()));
         }
         int remainingWallCount = this.session.remainingWallCount();
@@ -523,44 +537,92 @@ public final class TableViewerSnapshotFactory {
         return Math.max(0.03F, Math.min(1.0F, remainingWallCount / divisor));
     }
 
-    private BossBar.Color hudColor(UUID viewerId) {
-        if (!this.session.hasRoundController()) {
+    private BossBar.Color hudColor(UUID viewerId, ViewerHudPollState pollState) {
+        if (!pollState.hasRoundController()) {
             return BossBar.Color.WHITE;
         }
-        if (this.session.isRoundFinished()) {
+        if (pollState.roundFinished()) {
             return BossBar.Color.PURPLE;
         }
-        if (!this.session.isStarted()) {
+        if (!pollState.started()) {
             return BossBar.Color.YELLOW;
         }
-        if (this.session.availableReactions(viewerId) != null) {
+        if (pollState.reactionOptions() != null) {
             return BossBar.Color.RED;
         }
         if (this.session.currentSeat() == this.session.seatOf(viewerId)) {
             return BossBar.Color.GREEN;
         }
-        return this.session.isSpectator(viewerId) ? BossBar.Color.BLUE : BossBar.Color.WHITE;
+        return pollState.spectator() ? BossBar.Color.BLUE : BossBar.Color.WHITE;
     }
 
-    private String reactionSummary(Locale locale, ReactionOptions options) {
-        List<String> actions = new java.util.ArrayList<>(4);
-        if (options.getCanRon()) {
-            actions.add(this.session.plugin().messages().plain(locale, "table.action.ron"));
+    private ViewerHudPollState captureViewerHudPollState(UUID viewerId, boolean includeActionPhase) {
+        boolean hasRoundController = this.session.hasRoundController();
+        boolean roundFinished = hasRoundController && this.session.isRoundFinished();
+        boolean started = hasRoundController && this.session.isStarted();
+        boolean spectator = viewerId == null || this.session.isSpectator(viewerId);
+        ReactionOptions reactionOptions = started && !roundFinished
+            ? this.session.availableReactions(viewerId)
+            : null;
+        PlayerActionPhase actionPhase = includeActionPhase
+            ? this.captureViewerActionPhase(viewerId, hasRoundController, started, spectator, reactionOptions)
+            : PlayerActionPhase.NONE;
+        return new ViewerHudPollState(
+            hasRoundController,
+            roundFinished,
+            started,
+            spectator,
+            reactionOptions,
+            actionPhase
+        );
+    }
+
+    private PlayerActionPhase captureViewerActionPhase(UUID viewerId) {
+        if (viewerId == null) {
+            return PlayerActionPhase.NONE;
         }
-        if (options.getCanPon()) {
-            actions.add(this.session.plugin().messages().plain(locale, "table.action.pon"));
+        boolean hasRoundController = this.session.hasRoundController();
+        boolean started = hasRoundController && this.session.isStarted();
+        boolean spectator = this.session.isSpectator(viewerId);
+        ReactionOptions reactionOptions = started && !spectator ? this.session.availableReactions(viewerId) : null;
+        return this.captureViewerActionPhase(
+            viewerId,
+            hasRoundController,
+            started,
+            spectator,
+            reactionOptions
+        );
+    }
+
+    private PlayerActionPhase captureViewerActionPhase(
+        UUID viewerId,
+        boolean hasRoundController,
+        boolean started,
+        boolean spectator,
+        ReactionOptions reactionOptions
+    ) {
+        if (viewerId == null || spectator || !hasRoundController || !started) {
+            return PlayerActionPhase.NONE;
         }
-        if (options.getCanMinkan()) {
-            actions.add(this.session.plugin().messages().plain(locale, "table.action.minkan"));
+        if (reactionOptions != null && this.session.hasPendingReaction()) {
+            return PlayerActionPhase.REACTION;
         }
-        if (!options.getChiiPairs().isEmpty()) {
-            actions.add(this.session.plugin().messages().plain(locale, "table.action.chii"));
+        if (this.session.canChooseSichuanMissingSuit(viewerId)) {
+            return PlayerActionPhase.SICHUAN_DING_QUE;
         }
-        String summary = this.session.plugin().messages().plain(locale, "overlay.reactions") + " " + String.join("/", actions);
+        if (this.session.isSichuanExchangePhase(viewerId)) {
+            return PlayerActionPhase.SICHUAN_EXCHANGE;
+        }
+        return this.session.currentSeat() == this.session.seatOf(viewerId)
+            ? PlayerActionPhase.TURN
+            : PlayerActionPhase.WAITING;
+    }
+
+    private String suggestedReaction(Locale locale, ReactionOptions options) {
         if (options.getSuggestedResponse() == null) {
-            return summary;
+            return "";
         }
-        return summary + " | " + this.session.plugin().messages().plain(
+        return this.session.plugin().messages().plain(
             locale,
             "table.suggested_action",
             this.session.plugin().messages().tag("action", this.reactionLabel(locale, options.getSuggestedResponse()))
@@ -669,22 +731,64 @@ public final class TableViewerSnapshotFactory {
 
     private List<TableViewerActionButtonSnapshot> viewerActionButtons(
         Locale locale,
+        Player viewer,
         boolean spectator,
         PlayerActionSnapshot actionSnapshot
     ) {
         if (spectator || !this.session.hasRoundController()) {
             return List.of();
         }
-        if (!actionSnapshot.hasActions()) {
+        UUID viewerId = viewer.getUniqueId();
+        boolean active = this.isOverheadActive(viewerId);
+        if (active) {
+            // Overhead is a read-only camera view. Shift restores the player to the original
+            // seat-local hitboxes, which remain the authoritative controls for every decision.
             return List.of();
         }
-        java.util.ArrayList<TableViewerActionButtonSnapshot> buttons = new java.util.ArrayList<>(actionSnapshot.actions().size());
+        boolean cameraAvailable = this.session.plugin().tableManager() == null
+            || this.session.plugin().tableManager().overheadViews().isAvailable();
+        boolean overheadAvailable = this.session.isStarted()
+            && this.session.seatOf(viewerId) != null
+            && this.session.plugin().settings().tables().overheadView().enabled()
+            && viewer.isInsideVehicle()
+            && cameraAvailable;
+        if (!actionSnapshot.hasActions() && !overheadAvailable) {
+            return List.of();
+        }
+        java.util.ArrayList<TableViewerActionButtonSnapshot> buttons = new java.util.ArrayList<>(
+            actionSnapshot.actions().size() + (overheadAvailable ? 1 : 0)
+        );
         int index = 0;
         for (PlayerActionEntry action : actionSnapshot.actions()) {
-            this.addButton(buttons, this.actionButtonId(action, index), this.actionLabel(locale, action), action.color(), action.command());
+            this.addButton(
+                buttons,
+                this.actionButtonId(action, index),
+                TableFeedbackPolicy.compactActionLabel(this.actionLabel(locale, action)),
+                action.color(),
+                action.command(),
+                TableViewerActionButtonSnapshot.Placement.ACTION_ROW
+            );
             index++;
         }
+        if (overheadAvailable) {
+            String labelKey = "table.action.view_river";
+            String label = TableFeedbackPolicy.compactActionLabel(this.session.plugin().messages().plain(locale, labelKey));
+            float hitboxWidth = this.actionButtonHitboxWidth(label);
+            buttons.add(new TableViewerActionButtonSnapshot(
+                "view-river",
+                label,
+                NamedTextColor.AQUA,
+                "view:river",
+                hitboxWidth,
+                TableViewerActionButtonSnapshot.Placement.RIGHT_SIDE
+            ));
+        }
         return List.copyOf(buttons);
+    }
+
+    private boolean isOverheadActive(UUID viewerId) {
+        return this.session.plugin().tableManager() != null
+            && this.session.plugin().tableManager().overheadViews().isActive(viewerId);
     }
 
     private void addButton(
@@ -694,8 +798,19 @@ public final class TableViewerSnapshotFactory {
         NamedTextColor color,
         String command
     ) {
+        this.addButton(buttons, actionId, label, color, command, TableViewerActionButtonSnapshot.Placement.ACTION_ROW);
+    }
+
+    private void addButton(
+        List<TableViewerActionButtonSnapshot> buttons,
+        String actionId,
+        String label,
+        NamedTextColor color,
+        String command,
+        TableViewerActionButtonSnapshot.Placement placement
+    ) {
         float hitboxWidth = this.actionButtonHitboxWidth(label);
-        buttons.add(new TableViewerActionButtonSnapshot(actionId, label, color, command, hitboxWidth));
+        buttons.add(new TableViewerActionButtonSnapshot(actionId, label, color, command, hitboxWidth, placement));
     }
 
     private String actionButtonId(PlayerActionEntry action, int index) {
@@ -727,24 +842,14 @@ public final class TableViewerSnapshotFactory {
         if (label == null || label.isBlank()) {
             return 0.7F;
         }
-        int visualUnits = 0;
-        for (int i = 0; i < label.length(); i++) {
-            char ch = label.charAt(i);
-            if (Character.isWhitespace(ch)) {
-                visualUnits += 1;
-                continue;
-            }
-            visualUnits += isWideGlyph(ch) ? 2 : 1;
-        }
-        float estimated = 0.24F + visualUnits * 0.085F;
-        return Math.max(0.7F, Math.min(2.2F, estimated));
-    }
-
-    private static boolean isWideGlyph(char ch) {
-        return (ch >= 0x2E80 && ch <= 0x9FFF)
-            || (ch >= 0xF900 && ch <= 0xFAFF)
-            || (ch >= 0xFF01 && ch <= 0xFF60)
-            || (ch >= 0xFFE0 && ch <= 0xFFE6);
+        int visualUnits = TableFeedbackPolicy.visualUnits(label);
+        float estimated = TableRenderConstants.ACTION_LABEL_BASE_WIDTH
+            + TableRenderConstants.ACTION_LABEL_DECORATION_WIDTH
+            + visualUnits * TableRenderConstants.ACTION_LABEL_WIDTH_PER_UNIT;
+        return Math.max(
+            TableRenderConstants.ACTION_LABEL_MIN_WIDTH,
+            Math.min(TableRenderConstants.ACTION_LABEL_MAX_WIDTH, estimated)
+        );
     }
 
     private static DelimitedFingerprintBuilder fingerprintBuilder(int capacity) {
@@ -754,7 +859,6 @@ public final class TableViewerSnapshotFactory {
     private record ViewerSummarySnapshot(
         boolean spectator,
         String waitingSummary,
-        String ruleSummary,
         String round,
         String dealer,
         String turn,
@@ -765,8 +869,17 @@ public final class TableViewerSnapshotFactory {
         String lastDiscardSummary,
         String viewerPrompt,
         String resolutionTitle,
-        String reactionOptionsFingerprint,
         String commandStateSummary
+    ) {
+    }
+
+    private record ViewerHudPollState(
+        boolean hasRoundController,
+        boolean roundFinished,
+        boolean started,
+        boolean spectator,
+        ReactionOptions reactionOptions,
+        PlayerActionPhase actionPhase
     ) {
     }
 

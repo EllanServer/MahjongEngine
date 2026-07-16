@@ -1,5 +1,8 @@
 package top.ellan.mahjong.render
 
+import org.bukkit.Location
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.`when`
 import top.ellan.mahjong.model.MahjongTile
 import top.ellan.mahjong.model.SeatWind
 import top.ellan.mahjong.render.display.DisplayEntities
@@ -7,19 +10,18 @@ import top.ellan.mahjong.render.layout.DiscardLayout
 import top.ellan.mahjong.render.layout.TableRenderLayout
 import top.ellan.mahjong.render.layout.WallLayout
 import top.ellan.mahjong.render.scene.MeldView
+import top.ellan.mahjong.render.scene.TableGeometry
+import top.ellan.mahjong.render.scene.TableRenderConstants
 import top.ellan.mahjong.render.scene.TableRenderer
-import top.ellan.mahjong.riichi.model.ScoringStick
-import top.ellan.mahjong.table.core.MahjongTableSession
 import top.ellan.mahjong.render.snapshot.TableRenderSnapshot
 import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot
+import top.ellan.mahjong.riichi.model.ScoringStick
+import top.ellan.mahjong.table.core.MahjongTableSession
 import java.util.EnumMap
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import org.bukkit.Location
-import org.mockito.Mockito.mock
-import org.mockito.Mockito.`when`
 
 class TableRendererTest {
     private val tileWidth = 0.1125
@@ -53,8 +55,25 @@ class TableRendererTest {
     }
 
     @Test
+    fun `supported upper wall tiles keep the normal stacked layer offset`() {
+        val stackedOffset = TableRenderConstants.TILE_DEPTH + TableRenderConstants.TILE_PADDING
+        assertEquals(stackedOffset, TableGeometry.wallLayerYOffset(1), 1.0e-9)
+
+        val plan = TableRenderLayout.precompute(startedSnapshot())
+        val upperIndex =
+            (0 until plan.wallTiles().lastIndex step 2).first { index ->
+                plan.wallTiles()[index] != null && plan.wallTiles()[index + 1] != null
+            }
+        val upper = plan.wallTiles()[upperIndex]!!
+        val lower = plan.wallTiles()[upperIndex + 1]!!
+        assertEquals(stackedOffset, upper.point().y() - lower.point().y(), 1.0e-9)
+    }
+
+    @Test
     fun `riichi discard uses sideways footprint and yaw`() {
-        assertTrue(DiscardLayout.discardFootprint(tileWidth, tileHeight, true) > DiscardLayout.discardFootprint(tileWidth, tileHeight, false))
+        assertTrue(
+            DiscardLayout.discardFootprint(tileWidth, tileHeight, true) > DiscardLayout.discardFootprint(tileWidth, tileHeight, false),
+        )
         assertEquals(-180.0f, DiscardLayout.discardYaw(SeatWind.EAST, true))
         assertEquals(90.0f, DiscardLayout.discardYaw(SeatWind.SOUTH, true))
         assertEquals(0.0f, DiscardLayout.discardYaw(SeatWind.WEST, true))
@@ -88,15 +107,41 @@ class TableRendererTest {
     fun `table layout follows upstream seat sides`() {
         val plan = TableRenderLayout.precompute(startedSnapshot())
 
-        assertTrue(plan.seat(SeatWind.EAST).privateHandPoints().first().x() > 0.0)
+        assertTrue(
+            plan
+                .seat(SeatWind.EAST)
+                .privateHandPoints()
+                .first()
+                .x() > 0.0,
+        )
         assertTrue(plan.seat(SeatWind.SOUTH).handBase().z() < 0.0)
         assertTrue(plan.seat(SeatWind.WEST).handBase().x() < 0.0)
         assertTrue(plan.seat(SeatWind.NORTH).handBase().z() > 0.0)
 
-        val eastWall = plan.wallTiles().withIndex().first { it.value != null && WallLayout.wallSeat(it.index) == SeatWind.EAST }.value!!
-        val southWall = plan.wallTiles().withIndex().first { it.value != null && WallLayout.wallSeat(it.index) == SeatWind.SOUTH }.value!!
-        val westWall = plan.wallTiles().withIndex().first { it.value != null && WallLayout.wallSeat(it.index) == SeatWind.WEST }.value!!
-        val northWall = plan.wallTiles().withIndex().first { it.value != null && WallLayout.wallSeat(it.index) == SeatWind.NORTH }.value!!
+        val eastWall =
+            plan
+                .wallTiles()
+                .withIndex()
+                .first { it.value != null && WallLayout.wallSeat(it.index) == SeatWind.EAST }
+                .value!!
+        val southWall =
+            plan
+                .wallTiles()
+                .withIndex()
+                .first { it.value != null && WallLayout.wallSeat(it.index) == SeatWind.SOUTH }
+                .value!!
+        val westWall =
+            plan
+                .wallTiles()
+                .withIndex()
+                .first { it.value != null && WallLayout.wallSeat(it.index) == SeatWind.WEST }
+                .value!!
+        val northWall =
+            plan
+                .wallTiles()
+                .withIndex()
+                .first { it.value != null && WallLayout.wallSeat(it.index) == SeatWind.NORTH }
+                .value!!
 
         assertTrue(eastWall.point().x() > 0.0)
         assertTrue(southWall.point().z() < 0.0)
@@ -107,7 +152,8 @@ class TableRendererTest {
     @Test
     fun `waiting snapshot skips live wall and dora layout`() {
         val base = startedSnapshot()
-        val snapshot = TableRenderSnapshot(
+        val snapshot =
+            TableRenderSnapshot(
                 base.version(),
                 base.cancellationNonce(),
                 base.worldName(),
@@ -132,7 +178,7 @@ class TableRendererTest {
                 null,
                 null,
                 emptyList(),
-                base.seats()
+                base.seats(),
             )
 
         val plan = TableRenderLayout.precompute(snapshot)
@@ -145,41 +191,54 @@ class TableRendererTest {
     fun `wall layout keeps physical slots stable when one live wall tile is drawn`() {
         val base = startedSnapshot()
         val before = TableRenderLayout.precompute(base)
-        val after = TableRenderLayout.precompute(
-            TableRenderSnapshot(
-                base.version(),
-                base.cancellationNonce(),
-                base.worldName(),
-                base.centerX(),
-                base.centerY(),
-                base.centerZ(),
-                base.started(),
-                base.gameFinished(),
-                base.roundStartInProgress(),
-                69,
-                base.kanCount(),
-                base.dicePoints(),
-                base.breakDicePoints(),
-                base.roundIndex(),
-                base.honbaCount(),
-                base.dealerSeat(),
-                base.currentSeat(),
-                base.openDoorSeat(),
-                base.waitingDisplaySummary(),
-                base.ruleDisplaySummary(),
-                base.publicCenterText(),
-                base.lastPublicDiscardPlayerId(),
-                base.lastPublicDiscardTile(),
-                base.doraIndicators(),
-                base.seats()
+        val after =
+            TableRenderLayout.precompute(
+                TableRenderSnapshot(
+                    base.version(),
+                    base.cancellationNonce(),
+                    base.worldName(),
+                    base.centerX(),
+                    base.centerY(),
+                    base.centerZ(),
+                    base.started(),
+                    base.gameFinished(),
+                    base.roundStartInProgress(),
+                    69,
+                    base.kanCount(),
+                    base.dicePoints(),
+                    base.breakDicePoints(),
+                    base.roundIndex(),
+                    base.honbaCount(),
+                    base.dealerSeat(),
+                    base.currentSeat(),
+                    base.openDoorSeat(),
+                    base.waitingDisplaySummary(),
+                    base.ruleDisplaySummary(),
+                    base.publicCenterText(),
+                    base.lastPublicDiscardPlayerId(),
+                    base.lastPublicDiscardTile(),
+                    base.doraIndicators(),
+                    base.seats(),
+                ),
             )
-        )
 
-        val changedSlots = before.wallTiles().indices.count { index ->
-            !samePlacement(before.wallTiles()[index], after.wallTiles()[index])
-        }
+        val changedSlots =
+            before.wallTiles().indices.count { index ->
+                !samePlacement(before.wallTiles()[index], after.wallTiles()[index])
+            }
 
         assertEquals(1, changedSlots)
+    }
+
+    @Test
+    fun `wall layout never contains concealed tile identities`() {
+        val wallTiles = TableRenderLayout.precompute(startedSnapshot()).wallTiles().filterNotNull()
+
+        assertTrue(wallTiles.isNotEmpty())
+        wallTiles.forEach { placement ->
+            assertEquals(MahjongTile.UNKNOWN, placement.tile())
+            assertEquals(DisplayEntities.TileRenderPose.FLAT_FACE_DOWN, placement.pose())
+        }
     }
 
     @Test
@@ -195,6 +254,7 @@ class TableRendererTest {
 
         val spec = renderer.renderHandPublicTileSpecs(session, snapshot, seat, plan, 0).single() as DisplayEntities.TileDisplaySpec
 
+        assertEquals(MahjongTile.UNKNOWN, spec.tile())
         assertEquals(null, spec.privateViewers())
         assertEquals(listOf(seat.playerId()), spec.hiddenViewers())
     }
@@ -203,49 +263,52 @@ class TableRendererTest {
     fun `kakan tile stays on table plane and moves inward`() {
         val eastId = UUID.fromString("00000000-0000-0000-0000-000000000001")
         val seats = EnumMap<SeatWind, TableSeatRenderSnapshot>(SeatWind::class.java)
-        seats[SeatWind.EAST] = seatSnapshot(
-            wind = SeatWind.EAST,
-            playerId = eastId,
-            melds = listOf(
-                MeldView(
-                    listOf(MahjongTile.M5, MahjongTile.M5, MahjongTile.M5),
-                    listOf(false, false, false),
-                    1,
-                    90,
-                    MahjongTile.M5
-                )
+        seats[SeatWind.EAST] =
+            seatSnapshot(
+                wind = SeatWind.EAST,
+                playerId = eastId,
+                melds =
+                    listOf(
+                        MeldView(
+                            listOf(MahjongTile.M5, MahjongTile.M5, MahjongTile.M5),
+                            listOf(false, false, false),
+                            1,
+                            90,
+                            MahjongTile.M5,
+                        ),
+                    ),
             )
-        )
         seats[SeatWind.SOUTH] = seatSnapshot(SeatWind.SOUTH, UUID.fromString("00000000-0000-0000-0000-000000000002"))
         seats[SeatWind.WEST] = seatSnapshot(SeatWind.WEST, UUID.fromString("00000000-0000-0000-0000-000000000003"))
         seats[SeatWind.NORTH] = seatSnapshot(SeatWind.NORTH, UUID.fromString("00000000-0000-0000-0000-000000000004"))
-        val snapshot = TableRenderSnapshot(
-            1L,
-            0L,
-            "world",
-            0.0,
-            64.0,
-            0.0,
-            true,
-            false,
-            false,
-            70,
-            0,
-            6,
-            6,
-            0,
-            1,
-            SeatWind.EAST,
-            SeatWind.SOUTH,
-            SeatWind.EAST,
-            "waiting",
-            "rules",
-            "center",
-            null,
-            null,
-            listOf(MahjongTile.M1, MahjongTile.P1),
-            seats
-        )
+        val snapshot =
+            TableRenderSnapshot(
+                1L,
+                0L,
+                "world",
+                0.0,
+                64.0,
+                0.0,
+                true,
+                false,
+                false,
+                70,
+                0,
+                6,
+                6,
+                0,
+                1,
+                SeatWind.EAST,
+                SeatWind.SOUTH,
+                SeatWind.EAST,
+                "waiting",
+                "rules",
+                "center",
+                null,
+                null,
+                listOf(MahjongTile.M1, MahjongTile.P1),
+                seats,
+            )
 
         val meldPlacements = TableRenderLayout.precompute(snapshot).seat(SeatWind.EAST).meldPlacements()
         assertEquals(4, meldPlacements.size)
@@ -269,16 +332,17 @@ class TableRendererTest {
     private fun startedSnapshot(): TableRenderSnapshot {
         val seats = EnumMap<SeatWind, TableSeatRenderSnapshot>(SeatWind::class.java)
         val eastId = UUID.fromString("00000000-0000-0000-0000-000000000001")
-        seats[SeatWind.EAST] = seatSnapshot(
-            wind = SeatWind.EAST,
-            playerId = eastId,
-            hand = List(13) { MahjongTile.M1 },
-            discards = listOf(MahjongTile.EAST, MahjongTile.SOUTH),
-            riichi = true,
-            riichiDiscardIndex = 1,
-            scoringSticks = listOf(ScoringStick.P1000),
-            cornerSticks = listOf(ScoringStick.P100)
-        )
+        seats[SeatWind.EAST] =
+            seatSnapshot(
+                wind = SeatWind.EAST,
+                playerId = eastId,
+                hand = List(13) { MahjongTile.M1 },
+                discards = listOf(MahjongTile.EAST, MahjongTile.SOUTH),
+                riichi = true,
+                riichiDiscardIndex = 1,
+                scoringSticks = listOf(ScoringStick.P1000),
+                cornerSticks = listOf(ScoringStick.P100),
+            )
         seats[SeatWind.SOUTH] = seatSnapshot(SeatWind.SOUTH, UUID.fromString("00000000-0000-0000-0000-000000000002"))
         seats[SeatWind.WEST] = seatSnapshot(SeatWind.WEST, UUID.fromString("00000000-0000-0000-0000-000000000003"))
         seats[SeatWind.NORTH] = seatSnapshot(SeatWind.NORTH, UUID.fromString("00000000-0000-0000-0000-000000000004"))
@@ -307,7 +371,7 @@ class TableRendererTest {
             null,
             null,
             listOf(MahjongTile.M1, MahjongTile.P1),
-            seats
+            seats,
         )
     }
 
@@ -320,7 +384,7 @@ class TableRendererTest {
         riichiDiscardIndex: Int = -1,
         melds: List<MeldView> = emptyList(),
         scoringSticks: List<ScoringStick> = emptyList(),
-        cornerSticks: List<ScoringStick> = emptyList()
+        cornerSticks: List<ScoringStick> = emptyList(),
     ) = TableSeatRenderSnapshot(
         wind,
         playerId,
@@ -341,77 +405,91 @@ class TableRendererTest {
         discards,
         melds,
         scoringSticks,
-        cornerSticks
+        cornerSticks,
     )
 
     private fun samePlacement(
         left: TableRenderLayout.TilePlacement?,
-        right: TableRenderLayout.TilePlacement?
+        right: TableRenderLayout.TilePlacement?,
     ): Boolean {
         if (left == null || right == null) {
             return left == right
         }
-        return left.point() == right.point()
-            && left.yaw() == right.yaw()
-            && left.tile() == right.tile()
-            && left.pose() == right.pose()
+        return left.point() == right.point() &&
+            left.yaw() == right.yaw() &&
+            left.tile() == right.tile() &&
+            left.pose() == right.pose()
     }
 
-    private fun horizontalTileRankForClaimIndex(wind: SeatWind, claimIndex: Int): Int {
+    private fun horizontalTileRankForClaimIndex(
+        wind: SeatWind,
+        claimIndex: Int,
+    ): Int {
         val playerId = UUID.fromString("00000000-0000-0000-0000-000000000101")
         val seats = EnumMap<SeatWind, TableSeatRenderSnapshot>(SeatWind::class.java)
-        seats[wind] = seatSnapshot(
-            wind = wind,
-            playerId = playerId,
-            melds = listOf(
-                MeldView(
-                    listOf(MahjongTile.M5, MahjongTile.M5, MahjongTile.M5),
-                    listOf(false, false, false),
-                    claimIndex,
-                    90,
-                    null
-                )
+        seats[wind] =
+            seatSnapshot(
+                wind = wind,
+                playerId = playerId,
+                melds =
+                    listOf(
+                        MeldView(
+                            listOf(MahjongTile.M5, MahjongTile.M5, MahjongTile.M5),
+                            listOf(false, false, false),
+                            claimIndex,
+                            90,
+                            null,
+                        ),
+                    ),
             )
-        )
         for (other in SeatWind.values()) {
             if (other != wind) {
                 seats[other] = seatSnapshot(other, UUID.randomUUID())
             }
         }
-        val snapshot = TableRenderSnapshot(
-            1L,
-            0L,
-            "world",
-            0.0,
-            64.0,
-            0.0,
-            true,
-            false,
-            false,
-            70,
-            0,
-            6,
-            6,
-            0,
-            1,
-            SeatWind.EAST,
-            SeatWind.SOUTH,
-            SeatWind.EAST,
-            "waiting",
-            "rules",
-            "center",
-            null,
-            null,
-            listOf(MahjongTile.M1),
-            seats
-        )
-        val placements = TableRenderLayout.precompute(snapshot).seat(wind).meldPlacements().take(3)
+        val snapshot =
+            TableRenderSnapshot(
+                1L,
+                0L,
+                "world",
+                0.0,
+                64.0,
+                0.0,
+                true,
+                false,
+                false,
+                70,
+                0,
+                6,
+                6,
+                0,
+                1,
+                SeatWind.EAST,
+                SeatWind.SOUTH,
+                SeatWind.EAST,
+                "waiting",
+                "rules",
+                "center",
+                null,
+                null,
+                listOf(MahjongTile.M1),
+                seats,
+            )
+        val placements =
+            TableRenderLayout
+                .precompute(snapshot)
+                .seat(wind)
+                .meldPlacements()
+                .take(3)
         val horizontal = placements.first { it.yaw() != seatYawFor(wind) }
         val ordered = placements.sortedBy { leftToRightScalar(it.point(), wind) }
         return ordered.indexOf(horizontal)
     }
 
-    private fun leftToRightScalar(point: TableRenderLayout.Point, wind: SeatWind): Double =
+    private fun leftToRightScalar(
+        point: TableRenderLayout.Point,
+        wind: SeatWind,
+    ): Double =
         when (wind) {
             SeatWind.EAST -> -point.z()
             SeatWind.SOUTH -> -point.x()
@@ -427,10 +505,13 @@ class TableRendererTest {
             SeatWind.NORTH -> 0.0f
         }
 
-    private fun centerDistanceSquared(point: TableRenderLayout.Point, centerX: Double, centerZ: Double): Double {
+    private fun centerDistanceSquared(
+        point: TableRenderLayout.Point,
+        centerX: Double,
+        centerZ: Double,
+    ): Double {
         val dx = point.x() - centerX
         val dz = point.z() - centerZ
         return dx * dx + dz * dz
     }
 }
-

@@ -1,11 +1,13 @@
 package top.ellan.mahjong.table.presentation;
 
+import top.ellan.mahjong.presentation.TableFeedbackPolicy;
 import top.ellan.mahjong.model.MahjongVariant;
 import top.ellan.mahjong.riichi.ReactionResponse;
 import top.ellan.mahjong.riichi.ReactionType;
 import top.ellan.mahjong.table.core.TableSessionContext;
 import top.ellan.mahjong.table.core.round.TableRoundController;
 import java.util.Objects;
+import java.util.UUID;
 import org.bukkit.entity.Player;
 
 public final class TableStateSoundCoordinator {
@@ -16,9 +18,7 @@ public final class TableStateSoundCoordinator {
     }
 
     private final TableSessionContext session;
-    private String lastTurnSoundFingerprint = "";
-    private String lastRiichiSoundFingerprint = "";
-    private String lastResolutionSoundFingerprint = "";
+    private final TableFeedbackPolicy.DeliveryGate deliveryGate = new TableFeedbackPolicy.DeliveryGate();
     private int lastRemainingWallCount = -1;
 
     public TableStateSoundCoordinator(TableSessionContext session) {
@@ -32,7 +32,6 @@ public final class TableStateSoundCoordinator {
         }
         this.syncDrawSound();
         this.syncTurnSound();
-        this.syncRiichiSound();
         this.syncResolutionSound();
     }
 
@@ -53,15 +52,22 @@ public final class TableStateSoundCoordinator {
         this.broadcastSound(this.variantSound("tile_discard"), 0.75F, 1.05F);
     }
 
+    public void playRiichiSound() {
+        this.broadcastSound(sound("riichi"), 0.8F, 1.25F);
+    }
+
     public void reset() {
-        this.lastTurnSoundFingerprint = "";
-        this.lastRiichiSoundFingerprint = "";
-        this.lastResolutionSoundFingerprint = "";
+        this.deliveryGate.clear();
         this.lastRemainingWallCount = -1;
     }
 
     public void resetForRoundStart() {
-        this.lastResolutionSoundFingerprint = Objects.toString(this.session.lastResolution(), "");
+        this.deliveryGate.shouldDeliver(
+            null,
+            TableFeedbackPolicy.Channel.SOUND,
+            "resolution",
+            Objects.toString(this.session.lastResolution(), "")
+        );
         this.lastRemainingWallCount = -1;
     }
 
@@ -70,37 +76,49 @@ public final class TableStateSoundCoordinator {
         int remainingWallCount = controller == null || !controller.started()
             ? -1
             : controller.remainingWallCount();
-        if (remainingWallCount >= 0 && this.lastRemainingWallCount >= 0 && remainingWallCount < this.lastRemainingWallCount) {
+        if (remainingWallCount >= 0
+            && this.lastRemainingWallCount >= 0
+            && remainingWallCount < this.lastRemainingWallCount
+            && this.deliveryGate.shouldDeliver(
+                null,
+                TableFeedbackPolicy.Channel.SOUND,
+                "draw",
+                this.session.currentVariant() + ":" + remainingWallCount
+            )) {
             this.broadcastSound(this.variantSound("tile_draw"), 0.65F, 1.05F);
         }
         this.lastRemainingWallCount = remainingWallCount;
     }
 
     private void syncTurnSound() {
-        String turnFingerprint = this.session.isStarted()
-            ? this.session.currentSeat() + ":" + this.session.remainingWallCount() + ":" + this.session.pendingReactionFingerprint()
+        String turnFingerprint = this.session.isStarted() && this.session.currentSeat() != null
+            ? this.session.currentSeat().name()
             : "";
-        if (!turnFingerprint.isBlank() && !turnFingerprint.equals(this.lastTurnSoundFingerprint)) {
-            this.broadcastSound(this.variantSound("turn_change"), 0.5F, 1.6F);
+        if (this.deliveryGate.shouldDeliver(
+            null,
+            TableFeedbackPolicy.Channel.SOUND,
+            "turn",
+            turnFingerprint
+        )) {
+            UUID currentPlayerId = this.session.playerAt(this.session.currentSeat());
+            Player currentPlayer = currentPlayerId == null ? null : this.session.onlinePlayer(currentPlayerId);
+            if (currentPlayer != null && !this.session.isBot(currentPlayerId)) {
+                currentPlayer.playSound(currentPlayer.getLocation(), this.variantSound("turn_change"), 0.5F, 1.6F);
+            }
         }
-        this.lastTurnSoundFingerprint = turnFingerprint;
-    }
-
-    private void syncRiichiSound() {
-        String riichiFingerprint = this.session.riichiFingerprintValue();
-        if (!riichiFingerprint.equals(this.lastRiichiSoundFingerprint) && !this.lastRiichiSoundFingerprint.isBlank()) {
-            this.broadcastSound(sound("riichi"), 0.8F, 1.25F);
-        }
-        this.lastRiichiSoundFingerprint = riichiFingerprint;
     }
 
     private void syncResolutionSound() {
         String resolutionFingerprint = Objects.toString(this.session.lastResolution(), "");
-        if (!resolutionFingerprint.isBlank() && !resolutionFingerprint.equals(this.lastResolutionSoundFingerprint)) {
+        if (this.deliveryGate.shouldDeliver(
+            null,
+            TableFeedbackPolicy.Channel.SOUND,
+            "resolution",
+            resolutionFingerprint
+        )) {
             boolean isDraw = this.session.lastResolution().getDraw() != null;
             this.broadcastSound(this.variantSound(isDraw ? "round_draw" : "round_win"), 0.9F, 1.0F);
         }
-        this.lastResolutionSoundFingerprint = resolutionFingerprint;
     }
 
     private String variantSound(String baseName) {

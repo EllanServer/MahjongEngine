@@ -116,7 +116,7 @@ public final class TableRenderCoordinator {
         MetricsCollector metrics = this.metrics();
         metrics.incrementCounter("table.render.precompute.started");
         metrics.recordGauge("table.render.precompute.running", 1L);
-        this.session.plugin().async().execute("render-precompute-" + this.session.id(), () -> {
+        this.session.plugin().async().executeCpu("render-precompute-" + this.session.id(), () -> {
             long startedAt = System.nanoTime();
             try {
                 TableRenderPrecomputeResult result = this.session.precomputeRender(snapshot);
@@ -211,6 +211,3 @@ public final class TableRenderCoordinator {
         }
     }
 }
-
-
-

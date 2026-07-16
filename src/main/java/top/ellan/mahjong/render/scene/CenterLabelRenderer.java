@@ -22,12 +22,15 @@ public final class CenterLabelRenderer {
     public static List<Entity> renderCenterLabel(TableRenderSubject session) {
         Location center = TableGeometry.displayCenter(session);
         List<Entity> spawned = new ArrayList<>(2);
-        spawned.add(DisplayEntities.spawnLabel(
-            session.bukkitPlugin(),
-            center.clone().add(0.0D, TableRenderConstants.CENTER_LABEL_Y_OFFSET, 0.0D),
-            Component.text(session.publicCenterText()),
-            TableRenderConstants.CENTER_LABEL_BACKGROUND
-        ));
+        String centerText = session.publicCenterText();
+        if (centerText != null && !centerText.isBlank()) {
+            spawned.add(DisplayEntities.spawnLabel(
+                session.bukkitPlugin(),
+                center.clone().add(0.0D, TableRenderConstants.CENTER_LABEL_Y_OFFSET, 0.0D),
+                Component.text(centerText),
+                TableRenderConstants.CENTER_LABEL_BACKGROUND
+            ));
+        }
         if (session.lastPublicDiscardTile() != null) {
             spawned.add(spawnCenterLastDiscardTile(session, center, session.lastPublicDiscardTile()));
         }
@@ -41,12 +44,14 @@ public final class CenterLabelRenderer {
     ) {
         Location center = TableGeometry.toLocation(session, plan.displayCenter());
         List<Entity> spawned = new ArrayList<>(2);
-        spawned.add(DisplayEntities.spawnLabel(
-            session.bukkitPlugin(),
-            center.clone().add(0.0D, TableRenderConstants.CENTER_LABEL_Y_OFFSET, 0.0D),
-            Component.text(snapshot.publicCenterText()),
-            TableRenderConstants.CENTER_LABEL_BACKGROUND
-        ));
+        if (snapshot.publicCenterText() != null && !snapshot.publicCenterText().isBlank()) {
+            spawned.add(DisplayEntities.spawnLabel(
+                session.bukkitPlugin(),
+                center.clone().add(0.0D, TableRenderConstants.CENTER_LABEL_Y_OFFSET, 0.0D),
+                Component.text(snapshot.publicCenterText()),
+                TableRenderConstants.CENTER_LABEL_BACKGROUND
+            ));
+        }
         if (snapshot.lastPublicDiscardTile() != null) {
             spawned.add(spawnCenterLastDiscardTile(session, center, snapshot.lastPublicDiscardTile()));
         }
@@ -60,11 +65,13 @@ public final class CenterLabelRenderer {
     ) {
         Location center = TableGeometry.toLocation(session, plan.displayCenter());
         List<DisplayEntities.EntitySpec> specs = new ArrayList<>(2);
-        specs.add(DisplayEntities.labelSpec(
-            center.clone().add(0.0D, TableRenderConstants.CENTER_LABEL_Y_OFFSET, 0.0D),
-            Component.text(snapshot.publicCenterText()),
-            TableRenderConstants.CENTER_LABEL_BACKGROUND
-        ));
+        if (snapshot.publicCenterText() != null && !snapshot.publicCenterText().isBlank()) {
+            specs.add(DisplayEntities.labelSpec(
+                center.clone().add(0.0D, TableRenderConstants.CENTER_LABEL_Y_OFFSET, 0.0D),
+                Component.text(snapshot.publicCenterText()),
+                TableRenderConstants.CENTER_LABEL_BACKGROUND
+            ));
+        }
         if (snapshot.lastPublicDiscardTile() != null) {
             specs.add(DisplayEntities.tileDisplay(
                 center.clone().add(0.0D, TableRenderConstants.CENTER_LAST_DISCARD_TILE_Y_OFFSET, 0.0D),
@@ -75,7 +82,7 @@ public final class CenterLabelRenderer {
             )
                 .scale(TableRenderConstants.CENTER_LAST_DISCARD_TILE_SCALE)
                 .glowColor(TableRenderConstants.CENTER_LAST_DISCARD_TILE_GLOW)
-                .billboard(Display.Billboard.CENTER)
+                .billboard(Display.Billboard.VERTICAL)
                 .spec());
         }
         return List.copyOf(specs);
@@ -95,7 +102,7 @@ public final class CenterLabelRenderer {
         )
             .scale(TableRenderConstants.CENTER_LAST_DISCARD_TILE_SCALE)
             .glowColor(TableRenderConstants.CENTER_LAST_DISCARD_TILE_GLOW)
-            .billboard(Display.Billboard.CENTER)
+            .billboard(Display.Billboard.VERTICAL)
             .spawn(session.bukkitPlugin());
     }
 }

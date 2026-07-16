@@ -3,6 +3,7 @@ package top.ellan.mahjong.ui;
 import top.ellan.mahjong.i18n.MessageService;
 import top.ellan.mahjong.compat.PaperCompatibility;
 import top.ellan.mahjong.model.MahjongTile;
+import top.ellan.mahjong.model.MahjongVariant;
 import top.ellan.mahjong.riichi.RoundResolution;
 import top.ellan.mahjong.riichi.model.RankedScoreItem;
 import top.ellan.mahjong.riichi.model.ScoreSettlement;
@@ -144,7 +145,9 @@ public final class SettlementUi {
                 TableFinalStanding standing = finalStanding(session, item.getScoreItem().getStringUUID());
                 if (standing != null) {
                     lore.add(messages.render(locale, "ui.score.place", messages.number(locale, "value", standing.place())));
-                    lore.add(messages.render(locale, "ui.score.majsoul", messages.tag("value", formatGameScore(locale, standing.gameScore()))));
+                    if (shouldShowMahjongSoulGameScore(session)) {
+                        lore.add(messages.render(locale, "ui.score.majsoul", messages.tag("value", formatGameScore(locale, standing.gameScore()))));
+                    }
                 }
             }
             Material material = item.getScoreItem().getScoreChange() > 0
@@ -152,6 +155,10 @@ public final class SettlementUi {
                 : item.getScoreItem().getScoreChange() < 0 ? Material.REDSTONE : Material.NAME_TAG;
             inventory.setItem(slots[i], namedItem(material, Component.text(SettlementPaymentFormatter.displayName(session, item.getScoreItem().getStringUUID())), lore));
         }
+    }
+
+    static boolean shouldShowMahjongSoulGameScore(MahjongTableSession session) {
+        return session != null && session.currentVariant() == MahjongVariant.RIICHI;
     }
 
     private static void placeSettlementDetails(Inventory inventory, Locale locale, MahjongTableSession session, RoundResolution resolution) {
@@ -387,6 +394,3 @@ public final class SettlementUi {
         }
     }
 }
-
-
-

@@ -27,6 +27,9 @@ public final class WallRenderer {
         if (!session.isStarted()) {
             return List.of();
         }
+        if (!TableGeometry.usesDeadWall(session)) {
+            return renderLiveWallWithoutDeadWall(session);
+        }
         return renderWall(session, TableGeometry.computeDeadWallRenderState(session));
     }
 
@@ -34,19 +37,32 @@ public final class WallRenderer {
         if (!session.isStarted()) {
             return List.of();
         }
+        if (!TableGeometry.usesDeadWall(session)) {
+            return renderLiveWallWithoutDeadWall(session);
+        }
         Location center = TableGeometry.displayCenter(session);
         int liveWallCount = session.remainingWallCount();
         int kanCount = deadWallState.kanCount();
         int frontDrawCount = Math.max(0, TableRenderConstants.LIVE_WALL_SIZE - liveWallCount - kanCount);
         List<Entity> spawned = new ArrayList<>(liveWallCount + TableRenderConstants.DEAD_WALL_SIZE - session.doraIndicators().size());
         int breakTileIndex = TableGeometry.wallBreakTileIndex(session);
+        List<Integer> liveWallSlots = new ArrayList<>(liveWallCount);
+        boolean[] occupiedSlots = new boolean[TableRenderConstants.TOTAL_WALL_TILES];
         for (int i = 0; i < liveWallCount; i++) {
             int wallSlot = Math.floorMod(breakTileIndex + frontDrawCount + i, TableRenderConstants.TOTAL_WALL_TILES);
+            liveWallSlots.add(wallSlot);
+            occupiedSlots[wallSlot] = true;
+        }
+        for (int i = 0; i < TableRenderConstants.DEAD_WALL_SIZE; i++) {
+            occupiedSlots[Math.floorMod(
+                breakTileIndex - TableRenderConstants.DEAD_WALL_SIZE + i,
+                TableRenderConstants.TOTAL_WALL_TILES
+            )] = true;
+        }
+        for (int wallSlot : liveWallSlots) {
             SeatWind wind = WallLayout.wallSeat(wallSlot);
             Location tileLocation = TableGeometry.wallSlotLocation(center, wallSlot);
-            if (kanCount % 2 == 1 && i == liveWallCount - 1) {
-                tileLocation.subtract(0.0D, TableRenderConstants.TILE_DEPTH, 0.0D);
-            }
+            settleUnsupportedUpperTile(tileLocation, wallSlot, TableRenderConstants.WALL_TILES_PER_SIDE, occupiedSlots);
             spawned.add(TableGeometry.spawnPublicTile(session, tileLocation, TableGeometry.seatYaw(wind), MahjongTile.UNKNOWN, DisplayEntities.TileRenderPose.FLAT_FACE_DOWN));
         }
 
@@ -58,6 +74,74 @@ public final class WallRenderer {
             spawned.add(TableGeometry.spawnPublicTile(session, placement.location(), placement.yaw(), MahjongTile.UNKNOWN, DisplayEntities.TileRenderPose.FLAT_FACE_DOWN));
         }
         return spawned;
+    }
+
+    private static List<Entity> renderLiveWallWithoutDeadWall(TableRenderSubject session) {
+        Location center = TableGeometry.displayCenter(session);
+        int wallCapacity = TableGeometry.wallCapacity(session);
+        int tilesPerSide = TableGeometry.wallTilesPerSide(session);
+        int remainingWallCount = Math.max(0, Math.min(session.remainingWallCount(), wallCapacity));
+        int supplementDrawCount = Math.min(
+            wallCapacity - remainingWallCount,
+            session.kanCount() + exposedFlowerCount(session)
+        );
+        int frontDrawCount = wallCapacity - remainingWallCount - supplementDrawCount;
+        int breakTileIndex = TableGeometry.wallBreakTileIndex(session);
+        List<Entity> spawned = new ArrayList<>(remainingWallCount);
+        List<Integer> liveWallSlots = new ArrayList<>(remainingWallCount);
+        boolean[] occupiedSlots = new boolean[wallCapacity];
+        for (int i = 0; i < remainingWallCount; i++) {
+            int wallSlot = Math.floorMod(breakTileIndex + frontDrawCount + i, wallCapacity);
+            liveWallSlots.add(wallSlot);
+            occupiedSlots[wallSlot] = true;
+        }
+        for (int wallSlot : liveWallSlots) {
+            SeatWind wind = WallLayout.wallSeat(wallSlot, tilesPerSide);
+            Location tileLocation = TableGeometry.wallSlotLocation(center, wallSlot, tilesPerSide);
+            settleUnsupportedUpperTile(tileLocation, wallSlot, tilesPerSide, occupiedSlots);
+            spawned.add(TableGeometry.spawnPublicTile(
+                session,
+                tileLocation,
+                TableGeometry.seatYaw(wind),
+                MahjongTile.UNKNOWN,
+                DisplayEntities.TileRenderPose.FLAT_FACE_DOWN
+            ));
+        }
+        return spawned;
+    }
+
+    private static void settleUnsupportedUpperTile(
+        Location tileLocation,
+        int wallSlot,
+        int tilesPerSide,
+        boolean[] occupiedSlots
+    ) {
+        if (WallLayout.wallLayer(wallSlot, tilesPerSide) != 1) {
+            return;
+        }
+        int supportingSlot = WallLayout.supportingLowerSlot(wallSlot, tilesPerSide);
+        if (supportingSlot >= 0 && occupiedSlots[supportingSlot]) {
+            return;
+        }
+        tileLocation.subtract(0.0D, TableGeometry.wallLayerYOffset(1), 0.0D);
+    }
+
+    private static int exposedFlowerCount(TableRenderSubject session) {
+        int count = 0;
+        for (SeatWind wind : SeatWind.values()) {
+            java.util.UUID playerId = session.playerAt(wind);
+            if (playerId == null) {
+                continue;
+            }
+            for (MeldView meld : session.fuuro(playerId)) {
+                for (MahjongTile tile : meld.tiles()) {
+                    if (tile != null && tile.isFlower()) {
+                        count++;
+                    }
+                }
+            }
+        }
+        return count;
     }
 
     public static List<Entity> renderWall(TableRenderSubject session, TableRenderLayout.LayoutPlan plan) {
@@ -90,14 +174,14 @@ public final class WallRenderer {
     }
 
     public static List<Entity> renderDora(TableRenderSubject session) {
-        if (!session.isStarted()) {
+        if (!session.isStarted() || !TableGeometry.usesDeadWall(session)) {
             return List.of();
         }
         return renderDora(session, TableGeometry.computeDeadWallRenderState(session));
     }
 
     public static List<Entity> renderDora(TableRenderSubject session, TableGeometry.DeadWallRenderState deadWallState) {
-        if (!session.isStarted()) {
+        if (!session.isStarted() || !TableGeometry.usesDeadWall(session)) {
             return List.of();
         }
         List<MahjongTile> dora = session.doraIndicators();
@@ -140,6 +224,9 @@ public final class WallRenderer {
     public static List<Entity> renderWallAndDora(TableRenderSubject session) {
         if (!session.isStarted()) {
             return List.of();
+        }
+        if (!TableGeometry.usesDeadWall(session)) {
+            return renderLiveWallWithoutDeadWall(session);
         }
         TableGeometry.DeadWallRenderState deadWallState = TableGeometry.computeDeadWallRenderState(session);
         List<Entity> spawned = new ArrayList<>();
