@@ -7,9 +7,9 @@ import top.ellan.mahjong.build.MahjongTaskRegistration
 plugins {
     java
     jacoco
-    kotlin("jvm") version "2.4.0"
-    kotlin("plugin.serialization") version "2.4.0"
-    id("com.gradleup.shadow") version "9.5.1" apply false
+    kotlin("jvm") version "2.4.10"
+    kotlin("plugin.serialization") version "2.4.10"
+    id("com.gradleup.shadow") version "9.6.0" apply false
     id("io.papermc.paperweight.userdev") version "2.0.0-SNAPSHOT"
     id("com.diffplug.spotless") version "8.8.0"
     id("dev.detekt") version "2.0.0-alpha.5"
@@ -39,7 +39,7 @@ val toolchainJavaVersion =
         .gradleProperty("mahjongJavaToolchain")
         .map(String::toInt)
         .orElse(if (Runtime.version().feature() >= javaTargetVersion) Runtime.version().feature() else javaTargetVersion)
-val kotlinRuntimeVersion = "2.4.0"
+val kotlinRuntimeVersion = "2.4.10"
 val kotlinSerializationVersion = "1.11.0"
 val mahjongUtilsVersion = "0.7.7"
 val mariadbVersion = "3.5.9"
@@ -51,9 +51,9 @@ val antiGriefLibVersion = "1.0.14"
 val sparrowHeartVersion = "0.72"
 val sparrowReflectionVersion = "0.33"
 val sparrowYamlVersion = "1.0.7"
-val asmVersion = "9.9.1"
+val asmVersion = "9.10.1"
 val adventureVersion = "4.14.0"
-val junitVersion = "6.1.1"
+val junitVersion = "6.1.2"
 val testcontainersVersion = "1.21.4"
 val generatedResourcesDir = layout.buildDirectory.dir("generated/resources/mahjong")
 val generatedNativeResourcesDir = layout.buildDirectory.dir("generated/resources/native")
