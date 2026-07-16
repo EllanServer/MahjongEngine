@@ -130,6 +130,11 @@ jobs:
             --group "$(id -g)" \
             --mode 0711 \
             "$PERF_RESULTS_ROOT/evidence"
+          sudo install -d \
+            --owner "$(id -u)" \
+            --group "$(id -g)" \
+            --mode 0711 \
+            "$PERF_RESULTS_ROOT/runtime-tmp"
 
       - name: Make wrappers executable
         shell: bash
@@ -229,6 +234,7 @@ jobs:
           sudo -H -u mahjong-benchmark -- test ! -w "$PERF_RESULTS_ROOT/evidence/jars/base-jmh.jar"
           sudo -H -u mahjong-benchmark -- test ! -w "$PERF_RESULTS_ROOT/evidence/jars/candidate-jmh.jar"
           sudo -H -u mahjong-benchmark -- test ! -w "$PERF_RESULTS_ROOT/evidence"
+          sudo -H -u mahjong-benchmark -- test ! -w "$PERF_RESULTS_ROOT/runtime-tmp"
 
       - name: Run A/A drift control
         shell: bash
@@ -256,6 +262,7 @@ jobs:
             --candidate-sha "$CANDIDATE_SHA" \
             --config base/perf/ab/gate-config.json \
             --output-dir "$PERF_RESULTS_ROOT/evidence/aa" \
+            --runtime-temp-root "$PERF_RESULTS_ROOT/runtime-tmp" \
             --java "$JAVA_HOME/bin/java" \
             --candidate-command-prefix-json '["sudo","-H","-u","mahjong-benchmark","--"]' \
             --candidate-file-user mahjong-benchmark \
@@ -288,6 +295,7 @@ jobs:
             --candidate-sha "$CANDIDATE_SHA" \
             --config base/perf/ab/gate-config.json \
             --output-dir "$PERF_RESULTS_ROOT/evidence/ab" \
+            --runtime-temp-root "$PERF_RESULTS_ROOT/runtime-tmp" \
             --java "$JAVA_HOME/bin/java" \
             --candidate-command-prefix-json '["sudo","-H","-u","mahjong-benchmark","--"]' \
             --candidate-file-user mahjong-benchmark \

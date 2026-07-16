@@ -325,6 +325,7 @@ def load_pairs(
 
     by_pair: dict[int, dict[str, dict[str, dict[str, Any]]]] = defaultdict(dict)
     ordered_roles: dict[int, dict[int, str]] = defaultdict(dict)
+    runtime_temp_dirs: set[str] = set()
     for execution in manifest.get("executions", []):
         if execution.get("exit_code") != 0:
             raise ValueError(f"run contains failed execution: {manifest_path}")
@@ -342,8 +343,18 @@ def load_pairs(
             raise ValueError(f"execution jar digest mismatch in pair {pair_index}: {manifest_path}")
         if execution.get("fork_jvm_args_verified") is not True or execution.get("validation_error") is not None:
             raise ValueError(f"execution evidence was not validated in pair {pair_index}: {manifest_path}")
+        runtime_temp_dir = execution.get("runtime_temp_dir")
+        if not isinstance(runtime_temp_dir, str) or not runtime_temp_dir:
+            raise ValueError(f"execution omitted its JMH runtime temp directory in pair {pair_index}")
+        if runtime_temp_dir in runtime_temp_dirs:
+            raise ValueError(f"execution reused JMH runtime temp directory in pair {pair_index}")
+        runtime_temp_dirs.add(runtime_temp_dir)
+        runtime_temp_arg = f"-Djava.io.tmpdir={runtime_temp_dir}"
+        command = execution.get("command", [])
+        command_offset = len(isolation_prefix) if role == "candidate" else 0
+        if command[command_offset + 1 : command_offset + 2] != [runtime_temp_arg]:
+            raise ValueError(f"execution launcher omitted its JMH runtime temp directory in pair {pair_index}")
         if role == "candidate":
-            command = execution.get("command", [])
             if execution.get("isolated_candidate") is not True or command[: len(isolation_prefix)] != isolation_prefix:
                 raise ValueError(f"candidate execution escaped its command prefix in pair {pair_index}")
             if execution.get("result_mode_after_lock") != 0o444:
@@ -353,7 +364,11 @@ def load_pairs(
         if execution.get("log_mode_after_lock") != 0o444:
             raise ValueError(f"JMH log was not locked after pair {pair_index}")
         log_path = manifest_path.parent / execution["log_file"]
-        verify_fork_log(log_path, execution.get("log_sha256"), expected_jvm_args)
+        verify_fork_log(
+            log_path,
+            execution.get("log_sha256"),
+            [*expected_jvm_args, runtime_temp_arg],
+        )
         if role in by_pair[pair_index] or position in ordered_roles[pair_index]:
             raise ValueError(f"duplicate role or position in pair {pair_index}: {manifest_path}")
         by_pair[pair_index][role] = read_jmh_results(
