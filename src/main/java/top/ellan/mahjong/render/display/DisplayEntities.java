@@ -126,6 +126,10 @@ public final class DisplayEntities {
             return List.of();
         }
         DisplayEntityRuntime scopedRuntime = visibilitySnapshotRuntime(runtime);
+        if (specs.size() == 1) {
+            Entity entity = specs.get(0).spawn(scopedRuntime);
+            return entity == null ? List.of() : List.of(entity);
+        }
         List<Entity> spawned = new java.util.ArrayList<>(specs.size());
         for (EntitySpec spec : specs) {
             Entity entity = spec.spawn(scopedRuntime);
