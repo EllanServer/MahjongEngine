@@ -38,8 +38,6 @@ final class SessionActionDeadlineCoordinator {
     private final LongSupplier currentTimeMillis;
     private final Map<UUID, Long> remainingExtraMillis = new HashMap<>();
     private final Map<UUID, ActorDeadline> actorDeadlines = new HashMap<>();
-    private final Map<UUID, SuspendedDeadline> suspendedDeadlines = new HashMap<>();
-    private final Set<UUID> suspendedActors = new HashSet<>();
     private final Map<UUID, Integer> consecutiveAutomaticDiscards = new HashMap<>();
     private final Set<UUID> automaticDiscardActors = new HashSet<>();
     private String armedFingerprint;
@@ -54,10 +52,6 @@ final class SessionActionDeadlineCoordinator {
     }
 
     synchronized void beginRound() {
-        // An overhead river view may legitimately span the short gap between hands.
-        // Reset hand-scoped clocks and idle history without dropping the explicit
-        // suspension; the first action window of the new hand must remain frozen
-        // until the player returns with Shift.
         this.resetRoundState();
         long extraMillis = this.thinkingBudget().extraMillis();
         for (UUID playerId : this.session.players()) {
@@ -121,10 +115,6 @@ final class SessionActionDeadlineCoordinator {
         if (deadline != null) {
             this.consumeExtra(playerId, deadline, now);
         }
-        SuspendedDeadline suspended = this.suspendedDeadlines.remove(playerId);
-        if (suspended != null) {
-            this.consumeExtra(playerId, suspended.deadline(), suspended.suspendedAtMillis());
-        }
         ActionWindow currentWindow = this.captureWindow();
         if (currentWindow == null) {
             this.reset();
@@ -148,91 +138,18 @@ final class SessionActionDeadlineCoordinator {
             return 0L;
         }
         ActorDeadline deadline = this.actorDeadlines.get(playerId);
-        if (deadline != null) {
-            return secondsFromMillis(deadline.deadlineMillis() - this.currentTimeMillis.getAsLong());
-        }
-        SuspendedDeadline suspended = this.suspendedDeadlines.get(playerId);
-        return suspended == null
+        return deadline == null
             ? 0L
-            : secondsFromMillis(suspended.deadline().deadlineMillis() - suspended.suspendedAtMillis());
-    }
-
-    /** Freezes this player's current and subsequent action windows until explicitly resumed. */
-    synchronized void suspend(UUID playerId) {
-        if (playerId == null || !this.suspendedActors.add(playerId)) {
-            return;
-        }
-        ActionWindow window = this.captureWindow();
-        if (window == null) {
-            return;
-        }
-        long now = this.currentTimeMillis.getAsLong();
-        if (!window.fingerprint().equals(this.armedFingerprint)) {
-            this.armWindow(window, now);
-        } else {
-            this.ensureActorDeadlines(window, now);
-        }
-    }
-
-    /** Restores the frozen action with exactly the time that remained on entry. */
-    synchronized void resume(UUID playerId) {
-        if (playerId == null || !this.suspendedActors.remove(playerId)) {
-            return;
-        }
-        long now = this.currentTimeMillis.getAsLong();
-        SuspendedDeadline suspended = this.suspendedDeadlines.remove(playerId);
-        ActionWindow window = this.captureWindow();
-        if (window == null) {
-            return;
-        }
-        if (!window.fingerprint().equals(this.armedFingerprint)) {
-            if (suspended != null) {
-                this.consumeExtra(playerId, suspended.deadline(), suspended.suspendedAtMillis());
-            }
-            this.armWindow(window, now);
-            return;
-        }
-        if (suspended != null
-            && suspended.fingerprint().equals(window.fingerprint())
-            && window.actors().contains(playerId)) {
-            ActorDeadline frozen = suspended.deadline();
-            long elapsedBeforeSuspension = Math.max(0L, suspended.suspendedAtMillis() - frozen.startedAtMillis());
-            long remainingMillis = Math.max(0L, frozen.deadlineMillis() - suspended.suspendedAtMillis());
-            this.actorDeadlines.put(
-                playerId,
-                new ActorDeadline(
-                    Math.max(0L, now - elapsedBeforeSuspension),
-                    frozen.baseMillis(),
-                    frozen.extraAtStartMillis(),
-                    saturatedAdd(now, remainingMillis)
-                )
-            );
-        } else {
-            if (suspended != null) {
-                this.consumeExtra(playerId, suspended.deadline(), suspended.suspendedAtMillis());
-            }
-            this.ensureActorDeadlines(window, now);
-        }
-    }
-
-    /** Drops a frozen action without restoring it, for disconnect/removal/table teardown. */
-    synchronized void discardSuspension(UUID playerId) {
-        if (playerId == null) {
-            return;
-        }
-        this.suspendedActors.remove(playerId);
-        this.suspendedDeadlines.remove(playerId);
+            : secondsFromMillis(deadline.deadlineMillis() - this.currentTimeMillis.getAsLong());
     }
 
     synchronized void reset() {
         this.armedFingerprint = null;
         this.actorDeadlines.clear();
-        this.suspendedDeadlines.clear();
     }
 
     synchronized void clear() {
         this.resetRoundState();
-        this.suspendedActors.clear();
     }
 
     private void resetRoundState() {
@@ -249,12 +166,7 @@ final class SessionActionDeadlineCoordinator {
         for (Map.Entry<UUID, ActorDeadline> entry : List.copyOf(this.actorDeadlines.entrySet())) {
             this.consumeExtra(entry.getKey(), entry.getValue(), now);
         }
-        for (Map.Entry<UUID, SuspendedDeadline> entry : List.copyOf(this.suspendedDeadlines.entrySet())) {
-            SuspendedDeadline suspended = entry.getValue();
-            this.consumeExtra(entry.getKey(), suspended.deadline(), suspended.suspendedAtMillis());
-        }
         this.actorDeadlines.clear();
-        this.suspendedDeadlines.clear();
         this.armedFingerprint = window.fingerprint();
         this.ensureActorDeadlines(window, now);
     }
@@ -271,27 +183,6 @@ final class SessionActionDeadlineCoordinator {
             long extraMillis = window.phase() == ActionPhase.TURN
                 ? 0L
                 : this.remainingExtraMillis.computeIfAbsent(playerId, ignored -> budget.extraMillis());
-            if (this.suspendedActors.contains(playerId)) {
-                ActorDeadline active = this.actorDeadlines.remove(playerId);
-                this.suspendedDeadlines.compute(
-                    playerId,
-                    (ignored, current) -> current != null && current.fingerprint().equals(window.fingerprint())
-                        ? current
-                        : new SuspendedDeadline(
-                            window.fingerprint(),
-                            active == null
-                                ? new ActorDeadline(
-                                    now,
-                                    budget.baseMillis(),
-                                    extraMillis,
-                                    saturatedAdd(now, saturatedAdd(budget.baseMillis(), extraMillis))
-                                )
-                                : active,
-                            now
-                        )
-                );
-                continue;
-            }
             this.actorDeadlines.computeIfAbsent(
                 playerId,
                 ignored -> new ActorDeadline(
@@ -580,13 +471,6 @@ final class SessionActionDeadlineCoordinator {
         long baseMillis,
         long extraAtStartMillis,
         long deadlineMillis
-    ) {
-    }
-
-    private record SuspendedDeadline(
-        String fingerprint,
-        ActorDeadline deadline,
-        long suspendedAtMillis
     ) {
     }
 
