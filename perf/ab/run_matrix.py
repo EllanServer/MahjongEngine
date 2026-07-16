@@ -163,9 +163,35 @@ def candidate_isolation(args: argparse.Namespace) -> tuple[list[str], str | None
 def prepare_untrusted_result(path: pathlib.Path, file_user: str) -> None:
     if path.exists():
         path.unlink()
-    path.touch(mode=0o600)
-    path.chmod(0o600)
-    subprocess.run(["sudo", "chown", "--", file_user, str(path)], check=True)
+    subprocess.run(
+        [
+            "sudo",
+            "install",
+            "--owner",
+            file_user,
+            "--group",
+            file_user,
+            "--mode",
+            "0600",
+            "/dev/null",
+            str(path),
+        ],
+        check=True,
+    )
+    writable = subprocess.run(
+        ["sudo", "-H", "-u", file_user, "--", "test", "-w", str(path)],
+        check=False,
+    )
+    if writable.returncode != 0:
+        diagnostic = subprocess.run(
+            ["namei", "-l", str(path)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        raise RuntimeError(
+            f"candidate user {file_user} cannot write its isolated result\n{diagnostic.stdout}{diagnostic.stderr}"
+        )
 
 
 def reclaim_untrusted_result(path: pathlib.Path, file_user: str) -> None:
