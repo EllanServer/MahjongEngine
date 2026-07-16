@@ -264,19 +264,81 @@ public final class TableRegionFingerprintService {
         private boolean needsSeparator;
 
         private FingerprintBuilder field(Object value) {
-            if (this.needsSeparator) {
-                this.mix(':');
-            }
-            String text = Objects.toString(value, "");
-            for (int index = 0; index < text.length(); index++) {
-                this.mix(text.charAt(index));
-            }
-            this.needsSeparator = true;
-            return this;
+            this.startField();
+            this.mixText(Objects.toString(value, ""));
+            return this.finishField();
+        }
+
+        private FingerprintBuilder field(boolean value) {
+            this.startField();
+            this.mixText(value ? "true" : "false");
+            return this.finishField();
+        }
+
+        private FingerprintBuilder field(char value) {
+            this.startField();
+            this.mix(value);
+            return this.finishField();
+        }
+
+        private FingerprintBuilder field(int value) {
+            this.startField();
+            this.mixDecimal(value);
+            return this.finishField();
+        }
+
+        private FingerprintBuilder field(long value) {
+            this.startField();
+            this.mixDecimal(value);
+            return this.finishField();
         }
 
         private long value() {
             return this.hash;
+        }
+
+        private void startField() {
+            if (this.needsSeparator) {
+                this.mix(':');
+            }
+        }
+
+        private FingerprintBuilder finishField() {
+            this.needsSeparator = true;
+            return this;
+        }
+
+        private void mixText(String value) {
+            for (int index = 0; index < value.length(); index++) {
+                this.mix(value.charAt(index));
+            }
+        }
+
+        private void mixDecimal(long value) {
+            long remaining = value > 0L ? -value : value;
+            long lowDigits = 0L;
+            long highDigits = 0L;
+            int digitCount = 0;
+            do {
+                int digit = (int) -(remaining % 10L);
+                if (digitCount < 16) {
+                    lowDigits |= (long) digit << (digitCount * 4);
+                } else {
+                    highDigits |= (long) digit << ((digitCount - 16) * 4);
+                }
+                digitCount++;
+                remaining /= 10L;
+            } while (remaining != 0L);
+
+            if (value < 0L) {
+                this.mix('-');
+            }
+            for (int index = digitCount - 1; index >= 0; index--) {
+                int digit = index < 16
+                    ? (int) (lowDigits >>> (index * 4)) & 0x0f
+                    : (int) (highDigits >>> ((index - 16) * 4)) & 0x0f;
+                this.mix((char) ('0' + digit));
+            }
         }
 
         private void mix(char value) {
