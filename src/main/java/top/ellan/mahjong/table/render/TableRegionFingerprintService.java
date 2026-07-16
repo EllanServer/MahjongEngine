@@ -14,6 +14,7 @@ public final class TableRegionFingerprintService {
     private static final String REGION_WALL = "wall";
     private static final String REGION_DORA = "dora";
     private static final String REGION_CENTER = "center";
+    private static final SeatRegionKeys[] SEAT_REGION_KEYS = createSeatRegionKeys();
 
     public Map<String, Long> precomputeRegionFingerprints(TableRenderSubject session, TableRenderSnapshot snapshot) {
         Map<String, Long> fingerprints = new HashMap<>();
@@ -23,10 +24,11 @@ public final class TableRegionFingerprintService {
         fingerprints.put(REGION_CENTER, this.centerFingerprint(snapshot));
         for (SeatWind wind : SeatWind.values()) {
             TableSeatRenderSnapshot seat = snapshot.seat(wind);
-            fingerprints.put(this.seatRegionKey("visual", wind), this.seatVisualFingerprint(session, wind));
-            fingerprints.put(this.seatRegionKey("labels", wind), this.seatLabelFingerprint(session, snapshot, seat));
-            fingerprints.put(this.seatRegionKey("sticks", wind), this.stickFingerprint(snapshot, seat));
-            fingerprints.put(this.seatRegionKey("hand-public", wind), this.handPublicFingerprint(snapshot, seat));
+            SeatRegionKeys keys = SEAT_REGION_KEYS[wind.index()];
+            fingerprints.put(keys.visual(), this.seatVisualFingerprint(session, wind));
+            fingerprints.put(keys.labels(), this.seatLabelFingerprint(session, snapshot, seat));
+            fingerprints.put(keys.sticks(), this.stickFingerprint(snapshot, seat));
+            fingerprints.put(keys.handPublic(), this.handPublicFingerprint(snapshot, seat));
         }
         return Map.copyOf(fingerprints);
     }
@@ -250,8 +252,18 @@ public final class TableRegionFingerprintService {
         return builder.value();
     }
 
-    private String seatRegionKey(String region, SeatWind wind) {
-        return region + ":" + wind.name();
+    private static SeatRegionKeys[] createSeatRegionKeys() {
+        SeatWind[] winds = SeatWind.values();
+        SeatRegionKeys[] keys = new SeatRegionKeys[winds.length];
+        for (SeatWind wind : winds) {
+            keys[wind.index()] = new SeatRegionKeys(
+                "visual:" + wind.name(),
+                "labels:" + wind.name(),
+                "sticks:" + wind.name(),
+                "hand-public:" + wind.name()
+            );
+        }
+        return keys;
     }
 
     private static FingerprintBuilder fingerprintBuilder(int capacity) {
@@ -332,5 +344,8 @@ public final class TableRegionFingerprintService {
             this.hash ^= value & 0xffL;
             this.hash *= FNV_PRIME;
         }
+    }
+
+    private record SeatRegionKeys(String visual, String labels, String sticks, String handPublic) {
     }
 }
