@@ -1,12 +1,19 @@
 # GB Mahjong Status And Roadmap
 
-This document tracks the current implementation state of GB Mahjong in the `dev` branch and the most likely follow-up areas.
+This document tracks the current implementation state of GB Mahjong and the most likely follow-up areas.
 
-Reference rules source:
+Normative rules sources:
 
-- <https://github.com/zheng-fan/GB-Mahjong>
-- See also: [gb-mahjong-rules.md](./gb-mahjong-rules.md)
-- JNI implementation notes: [gb-mahjong-jni.md](./gb-mahjong-jni.md)
+- [EMA/WMO Mahjong Competition Rules (Green Book)](https://mahjong-europe.org/portal/images/docs/mcr_EN.pdf)
+- [EMA MCR Regulations](https://mahjong-europe.org/portal/images/docs/mcr_regulations.pdf)
+- See also: [the player-facing GB profile](./gb-mahjong-rules.md) and [the verification matrix](./rule-verification-matrix.zh-CN.md)
+
+Implementation references:
+
+- [zheng-fan/GB-Mahjong](https://github.com/zheng-fan/GB-Mahjong), vendored under its own license
+- [JNI implementation notes](./gb-mahjong-jni.md)
+
+The Green Book and tournament regulations define the target behavior. The vendored project is the evaluator implementation and may be patched locally when a covered result conflicts with that authority.
 
 ## Current Status
 
@@ -17,7 +24,7 @@ What is already landed:
 - table runtime can switch between `RIICHI` and `GB`
 - `MahjongTableSession` delegates round behavior through a round-controller abstraction
 - GB tables use `GbTableRoundController`
-- GB tables support flower tiles and supplement draws
+- GB tables support the Green Book choice to expose a flower and draw a replacement, or retain the flower for a later discard
 - GB reaction windows support chi, pon, open kan, concealed kan, added kan, ron, and tsumo
 - robbing-kong handling is wired into GB reaction flow
 - settlement UI has GB-aware output
@@ -29,9 +36,10 @@ What is already landed:
 
 GB support is live, but it should not be described as “done forever”.
 
-The current implementation deliberately splits ownership like this:
+The current implementation deliberately splits responsibility like this:
 
-- upstream `GB-Mahjong` owns fan counting, ting analysis, and win evaluation rules
+- the EMA/WMO Green Book and EMA regulations own the normative rule definition
+- the vendored `GB-Mahjong` backend performs fan counting, ting analysis, and win evaluation at runtime, subject to local corrections and regression tests when it conflicts with the rule definition
 - MahjongPaper owns table flow, spectator state, rendering, persistence, UI, and region-thread-safe scheduling
 
 That means future work is more about hardening, coverage, and compatibility than about bootstrapping the ruleset from scratch.
@@ -61,14 +69,16 @@ The JNI source and Gradle tasks already exist, but release discipline still matt
 - validate bundled extraction paths on Windows, Linux, and macOS
 - verify that packaged jars include the expected native sidecar files
 
-### 2. Rule Calibration Against More Upstream Cases
+### 2. Rule Calibration Against The Green Book
 
-The implementation direction is locked to `GB-Mahjong`, but complex edge cases still benefit from more parity testing:
+The native architecture remains based on `GB-Mahjong`, but rule parity is measured against the Green Book rather than against unmodified upstream output. Complex edge cases still benefit from more coverage:
 
 - unusual flower-heavy hands
 - multiple simultaneous reactions
 - robbing-kong edge cases
 - low-level flag mapping around last tile / after kong / robbed kong situations
+- fan inclusion and exclusion combinations, including the six-point open-kong plus concealed-kong case
+- formal waits whose alternative tile is physically exhausted
 
 ### 3. Broader Acceptance Coverage
 
@@ -93,7 +103,8 @@ This project is not aiming at a vague “Chinese-style Mahjong” mode with loos
 
 The intended contract is:
 
-- MahjongPaper follows the gameplay/session model of this plugin
-- GB legality and fan behavior are anchored to the upstream `GB-Mahjong` rules engine
+- MahjongPaper follows the gameplay/session model documented for this plugin
+- GB legality, fan behavior, flower choice, payment, dealer rotation, and match structure are anchored to the EMA/WMO Green Book and EMA regulations
+- the vendored `GB-Mahjong` engine supplies the runtime evaluator but is not a second rule authority
 
-If behavior diverges, the preferred fix is usually to examine request mapping, settlement translation, or plugin-side state flow before inventing a new local rule interpretation.
+If behavior diverges, inspect request mapping, the vendored calculation, settlement translation, and plugin-side state flow. Fix the responsible implementation layer and protect the Green Book result with a regression test instead of inventing a new local interpretation or preserving an upstream mismatch.

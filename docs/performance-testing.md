@@ -201,6 +201,11 @@ The helper writes aggregated reports after each benchmark run to:
 - `build/reports/performance/results.md`
 - `build/reports/performance/results.json`
 
+The CI regression gate additionally writes:
+
+- `build/reports/performance/regression.md`
+- `build/reports/performance/regression.json`
+
 ## Run
 
 ```powershell
@@ -214,12 +219,12 @@ $env:GRADLE_USER_HOME='E:\project\majiang\.gradle-home'
 
 - `perfWarmups`
 - `perfIterations`
-- `perfBatchSize`
+- `perfBatchSize` (the default for benchmarks that do not declare a tuned batch size)
 
 Example:
 
 ```powershell
-.\gradlew.bat perfTest -PperfWarmups=8 -PperfIterations=20 -PperfBatchSize=500 --console plain
+.\gradlew.bat perfTest -PperfWarmups=8 -PperfIterations=20 --console plain
 ```
 
 These values are forwarded to the benchmark helper as:
@@ -227,6 +232,42 @@ These values are forwarded to the benchmark helper as:
 - `mahjong.perf.warmupIterations`
 - `mahjong.perf.measurementIterations`
 - `mahjong.perf.batchSize`
+
+Current benchmark entry points use per-benchmark batch sizes, which are included in every report row. `perfBatchSize` therefore only affects new benchmarks that rely on the helper default.
+
+## Regression Gate
+
+The GitHub performance job compares the candidate commit with the pull request base commit (or the previous commit for a branch push) on the **same runner**. It runs three paired samples and alternates their order (`baseline/candidate`, then `candidate/baseline`) to reduce runner drift and order bias. The gate uses the median of the three paired ratios, so one noisy run cannot fail the build.
+
+The default gate covers the CPU-side render hot paths that directly affect table refresh MSPT:
+
+| Benchmark | Maximum paired-median regression |
+| --- | ---: |
+| `render.snapshot.create.started_session` | 25% |
+| `render.region_fingerprints.precompute.started_snapshot` | 25% |
+| `render.layout.precompute.started_snapshot` | 30% |
+
+These are relative limits against code built and measured on the same GitHub runner. They are deliberately not absolute ns/op ceilings tied to one machine.
+
+The comparison task reads one JSON report per paired run from the baseline and candidate directories:
+
+```powershell
+.\gradlew.bat perfRegressionCheck `
+  -PperfBaselineDir=build/perf-comparison/baseline `
+  -PperfCandidateDir=build/perf-comparison/candidate `
+  -PperfRegressionMinRuns=3 `
+  --console plain
+```
+
+Override or add benchmark-specific percentage limits with a semicolon-separated property. Unspecified default limits remain enabled:
+
+```powershell
+.\gradlew.bat perfRegressionCheck `
+  '-PperfRegressionThresholds=render.snapshot.create.started_session=20;custom.hot_path=35' `
+  --console plain
+```
+
+Keep at least three runs. A threshold change should reflect an intentional policy decision, not be used to hide a single noisy result; rerun the job first when the paired results disagree.
 
 ## Current Benchmarks
 
@@ -248,6 +289,7 @@ Use those startup numbers as the baseline before considering JNI "call pool" des
 
 The generated markdown report includes:
 
+- warmup, measurement, and batch counts per benchmark
 - average ns/op
 - median ns/op
 - p90 ns/op
@@ -275,11 +317,11 @@ Treat those entity gauges as leading indicators. Even if benchmark numbers stay 
 
 For a performance-sensitive change:
 
-1. Run `perfTest` on the current baseline
-2. Save `build/reports/performance/results.md`
-3. Apply the optimization
-4. Run the same `perfTest` command again
-5. Compare benchmark names one by one instead of relying on a single global impression
+1. Run `perfTest` at least three times on the current baseline and save each JSON report
+2. Apply the optimization
+3. Run the same `perfTest` command at least three times for the candidate
+4. Run `perfRegressionCheck` against the paired report directories
+5. Inspect both the paired-ratio gate and the raw reports instead of relying on a single run
 
 These benchmarks are intentionally lightweight and developer-friendly. They help catch regressions and compare hot-path changes, but they are not a substitute for full production profiling on a live Paper/Folia server.
 
