@@ -102,8 +102,14 @@ jobs:
         run: |
           set -euo pipefail
           PROBE_ROOT="/tmp/mahjong-performance-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          JAR="$(find build/libs -maxdepth 1 -name '*-jmh.jar' -print -quit)"
-          test -n "$JAR"
+          SOURCE_JAR="$(find build/libs -maxdepth 1 -name '*-jmh.jar' -print -quit)"
+          test -n "$SOURCE_JAR"
+          mkdir -p "$PROBE_ROOT/evidence/jars"
+          cp "$SOURCE_JAR" "$PROBE_ROOT/evidence/jars/infra-jmh.jar"
+          chmod 0444 "$PROBE_ROOT/evidence/jars/infra-jmh.jar"
+          JAR="$PROBE_ROOT/evidence/jars/infra-jmh.jar"
+          sudo -H -u mahjong-probe -- test -r "$JAR"
+          sudo -H -u mahjong-probe -- test ! -w "$JAR"
           python3 perf/ab/run_matrix.py \
             --phase ab \
             --profile infra \
@@ -122,8 +128,17 @@ jobs:
             --measurement-iterations 1 \
             --warmup-time 10ms \
             --measurement-time 10ms
-          mkdir -p build/reports/jmh/lock-regression
-          cp -a "$PROBE_ROOT/evidence/lock-regression/." build/reports/jmh/lock-regression/
+
+      - name: Stage isolated JMH lock evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROBE_ROOT="/tmp/mahjong-performance-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          if [[ -d "$PROBE_ROOT/evidence/lock-regression" ]]; then
+            mkdir -p build/reports/jmh/lock-regression
+            cp -a "$PROBE_ROOT/evidence/lock-regression/." build/reports/jmh/lock-regression/
+          fi
 
       - name: Run one smoke iteration for every protected benchmark
         shell: bash
