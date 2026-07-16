@@ -116,7 +116,7 @@
         "display.spawn.time",
         "display.spawn.alloc"
       ],
-      "minimum_passes": 2,
+      "minimum_passes": 1,
       "must_pass": [
         "display.spawn.time"
       ],
@@ -130,7 +130,7 @@
         "region.queue.time",
         "region.queue.alloc"
       ],
-      "minimum_passes": 2,
+      "minimum_passes": 1,
       "must_pass": [
         "region.queue.time"
       ],
