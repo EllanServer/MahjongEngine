@@ -33,6 +33,7 @@ on:
         options:
           - snapshot
           - gb-bot
+          - region-fingerprint
           - ray-proxy
           - infra
       forks:
@@ -157,6 +158,7 @@ jobs:
           choices = {
               "performance-snapshot": "snapshot",
               "performance-gb-bot": "gb-bot",
+              "performance-region-fingerprint": "region-fingerprint",
               "performance-ray-proxy": "ray-proxy",
           }
           selected = [profile for label, profile in choices.items() if label in labels]
