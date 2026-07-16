@@ -30,21 +30,40 @@ public final class TableRenderSnapshotFactory {
             .map(SerializedViewerId::id)
             .toList();
         Set<UUID> onlineViewerIdSet = new HashSet<>(onlineViewerIds);
+        SeatWind[] seatWinds = SeatWind.values();
+        EnumMap<SeatWind, UUID> seatPlayerIds = new EnumMap<>(SeatWind.class);
+        for (SeatWind wind : seatWinds) {
+            seatPlayerIds.put(wind, session.playerAt(wind));
+        }
         Map<UUID, String> viewerMembershipSignatures = new HashMap<>();
         Map<UUID, List<UUID>> viewerIdsExcluding = new HashMap<>();
-        viewerMembershipSignatures.put(null, this.viewerMembershipSignature(serializedOnlineViewerIds, null));
-        viewerIdsExcluding.put(null, List.copyOf(onlineViewerIds));
-        for (SerializedViewerId viewer : serializedOnlineViewerIds) {
-            UUID viewerId = viewer.id();
+        for (UUID playerId : seatPlayerIds.values()) {
+            if (viewerMembershipSignatures.containsKey(playerId)
+                || playerId != null && !onlineViewerIdSet.contains(playerId)) {
+                continue;
+            }
             viewerMembershipSignatures.put(
-                viewerId,
-                this.viewerMembershipSignature(serializedOnlineViewerIds, viewerId)
+                playerId,
+                this.viewerMembershipSignature(serializedOnlineViewerIds, playerId)
             );
-            viewerIdsExcluding.put(viewerId, this.viewerIdsExcluding(onlineViewerIds, viewerId));
+            viewerIdsExcluding.put(
+                playerId,
+                playerId == null ? List.copyOf(onlineViewerIds) : this.viewerIdsExcluding(onlineViewerIds, playerId)
+            );
         }
         EnumMap<SeatWind, TableSeatRenderSnapshot> seats = new EnumMap<>(SeatWind.class);
-        for (SeatWind wind : SeatWind.values()) {
-            seats.put(wind, this.captureSeatSnapshot(session, wind, onlineViewerIdSet, viewerMembershipSignatures, viewerIdsExcluding));
+        for (SeatWind wind : seatWinds) {
+            seats.put(
+                wind,
+                this.captureSeatSnapshot(
+                    session,
+                    wind,
+                    seatPlayerIds.get(wind),
+                    onlineViewerIdSet,
+                    viewerMembershipSignatures,
+                    viewerIdsExcluding
+                )
+            );
         }
         return new TableRenderSnapshot(
             version,
@@ -111,11 +130,11 @@ public final class TableRenderSnapshotFactory {
     private TableSeatRenderSnapshot captureSeatSnapshot(
         TableRenderSubject session,
         SeatWind wind,
+        UUID playerId,
         Set<UUID> onlineViewerIdSet,
         Map<UUID, String> viewerMembershipSignatures,
         Map<UUID, List<UUID>> viewerIdsExcluding
     ) {
-        UUID playerId = session.playerAt(wind);
         boolean occupied = playerId != null;
         return new TableSeatRenderSnapshot(
             wind,
