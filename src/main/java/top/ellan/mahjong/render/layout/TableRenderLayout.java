@@ -8,6 +8,7 @@ import top.ellan.mahjong.riichi.model.ScoringStick;
 import top.ellan.mahjong.render.snapshot.TableRenderSnapshot;
 import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
@@ -195,11 +196,8 @@ public final class TableRenderLayout {
         }
 
         List<DeadWallPlacement> deadWallPlacements = deadWallPlacements(displayCenter, snapshot);
-        List<TilePlacement> placements = new ArrayList<>(TOTAL_WALL_TILES);
+        List<TilePlacement> placements = Arrays.asList(new TilePlacement[TOTAL_WALL_TILES]);
         boolean[] occupiedSlots = new boolean[TOTAL_WALL_TILES];
-        for (int i = 0; i < TOTAL_WALL_TILES; i++) {
-            placements.add(null);
-        }
         int breakTileIndex = wallBreakTileIndex(snapshot);
         int firstLiveWallSlot = Math.floorMod(breakTileIndex + frontDrawCount, TOTAL_WALL_TILES);
         int wallSlot = firstLiveWallSlot;
@@ -229,7 +227,7 @@ public final class TableRenderLayout {
             Point point = settledWallPoint(placement.point(), placement.wallSlot(), occupiedSlots, WALL_TILES_PER_SIDE);
             placements.set(placement.wallSlot(), new TilePlacement(point, placement.yaw(), MahjongTile.UNKNOWN, DisplayEntities.TileRenderPose.FLAT_FACE_DOWN));
         }
-        return Collections.unmodifiableList(new ArrayList<>(placements));
+        return Collections.unmodifiableList(placements);
     }
 
     private static List<TilePlacement> precomputeLiveWallWithoutDeadWall(Point displayCenter, TableRenderSnapshot snapshot) {
@@ -242,11 +240,8 @@ public final class TableRenderLayout {
         );
         int frontDrawCount = wallCapacity - remainingWallCount - supplementDrawCount;
         int breakTileIndex = wallBreakTileIndex(snapshot);
-        List<TilePlacement> placements = new ArrayList<>(wallCapacity);
+        List<TilePlacement> placements = Arrays.asList(new TilePlacement[wallCapacity]);
         boolean[] occupiedSlots = new boolean[wallCapacity];
-        for (int i = 0; i < wallCapacity; i++) {
-            placements.add(null);
-        }
         int firstLiveWallSlot = Math.floorMod(breakTileIndex + frontDrawCount, wallCapacity);
         int wallSlot = firstLiveWallSlot;
         for (int i = 0; i < remainingWallCount; i++) {
@@ -261,7 +256,7 @@ public final class TableRenderLayout {
             placements.set(wallSlot, new TilePlacement(point, seatYaw(wind), MahjongTile.UNKNOWN, DisplayEntities.TileRenderPose.FLAT_FACE_DOWN));
             wallSlot = nextWallSlot(wallSlot, wallCapacity);
         }
-        return Collections.unmodifiableList(new ArrayList<>(placements));
+        return Collections.unmodifiableList(placements);
     }
 
     private static int exposedFlowerCount(TableRenderSnapshot snapshot) {
