@@ -118,17 +118,13 @@ public final class DisplayEntities {
         }
     }
 
-    /**
-     * Takes the online-player snapshot only if a visibility change actually needs it. Most
-     * reconciles update metadata while retaining the same private-viewer set, so eagerly copying
-     * Bukkit's full player collection here amplified both allocation and packet-side work.
-     */
     private static final class SnapshotDisplayEntityRuntime implements DisplayEntityRuntime {
         private final DisplayEntityRuntime delegate;
         private List<Player> onlinePlayers;
 
-        private SnapshotDisplayEntityRuntime(DisplayEntityRuntime delegate) {
+        private SnapshotDisplayEntityRuntime(DisplayEntityRuntime delegate, boolean snapshotOnlinePlayers) {
             this.delegate = delegate;
+            this.onlinePlayers = snapshotOnlinePlayers ? List.copyOf(delegate.onlinePlayers()) : null;
         }
 
         @Override
@@ -198,7 +194,7 @@ public final class DisplayEntities {
         if (runtime == null || runtime.bukkitPlugin() == null || specs == null || specs.isEmpty()) {
             return List.of();
         }
-        DisplayEntityRuntime scopedRuntime = visibilitySnapshotRuntime(runtime);
+        DisplayEntityRuntime scopedRuntime = visibilitySnapshotRuntime(runtime, true);
         if (specs.size() == 1) {
             Entity entity = specs.get(0).spawn(scopedRuntime);
             return entity == null ? List.of() : List.of(entity);
@@ -221,7 +217,7 @@ public final class DisplayEntities {
         if (runtime == null || runtime.bukkitPlugin() == null || entities == null || specs == null || entities.size() != specs.size()) {
             return false;
         }
-        DisplayEntityRuntime scopedRuntime = visibilitySnapshotRuntime(runtime);
+        DisplayEntityRuntime scopedRuntime = visibilitySnapshotRuntime(runtime, false);
         for (int i = 0; i < specs.size(); i++) {
             Entity entity = entities.get(i);
             EntitySpec spec = specs.get(i);
@@ -1288,11 +1284,14 @@ public final class DisplayEntities {
         return runtime.requiresVisibilityResync();
     }
 
-    private static DisplayEntityRuntime visibilitySnapshotRuntime(DisplayEntityRuntime runtime) {
+    private static DisplayEntityRuntime visibilitySnapshotRuntime(
+        DisplayEntityRuntime runtime,
+        boolean snapshotOnlinePlayers
+    ) {
         if (runtime == null) {
             return null;
         }
-        return new SnapshotDisplayEntityRuntime(runtime);
+        return new SnapshotDisplayEntityRuntime(runtime, snapshotOnlinePlayers);
     }
 
     private static BuiltInSpecSnapshot builtInSpecSnapshot(EntitySpec spec) {

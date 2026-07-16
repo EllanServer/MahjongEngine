@@ -12,7 +12,6 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.bukkit.Location;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -97,9 +96,9 @@ public class TableRegionFingerprintBenchmark {
     }
 
     /**
-     * Re-checks the exact legacy contract outside the timed section before every JMH
-     * iteration. The independent oracle deliberately retains Objects.toString field encoding,
-     * colon separation and per-character FNV mixing.
+     * Re-checks the exact production contract outside the timed section before every JMH
+     * iteration. The independent oracle retains the typed field markers, byte encoding,
+     * separators and FNV mixing used by the production fingerprint builder.
      */
     @Setup(Level.Iteration)
     public void verifyFingerprintContract() {
@@ -177,7 +176,7 @@ public class TableRegionFingerprintBenchmark {
                 checksum = combine(checksum, referenceFingerprint(
                     "hand-private-tile",
                     seat.wind().name(),
-                    Objects.toString(seat.playerId(), "empty"),
+                    seat.playerId(),
                     tileIndex,
                     seat.online(),
                     seat.hand().size(),
@@ -191,7 +190,7 @@ public class TableRegionFingerprintBenchmark {
                 checksum = combine(checksum, referenceFingerprint(
                     "hand-public-tile",
                     seat.wind().name(),
-                    Objects.toString(seat.playerId(), "empty"),
+                    seat.playerId(),
                     tileIndex,
                     this.snapshot.started(),
                     seat.online(),
@@ -200,7 +199,7 @@ public class TableRegionFingerprintBenchmark {
                     Double.doubleToLongBits(point.x()),
                     Double.doubleToLongBits(point.y()),
                     Double.doubleToLongBits(point.z()),
-                    this.snapshot.started() ? "unknown" : seat.hand().get(tileIndex).name()
+                    "unknown"
                 ));
             }
             for (int discardIndex = 0; discardIndex < seatPlan.discardPlacements().size(); discardIndex++) {
@@ -208,7 +207,7 @@ public class TableRegionFingerprintBenchmark {
                 checksum = combine(checksum, referenceFingerprint(
                     "discard-tile",
                     seat.wind().name(),
-                    Objects.toString(seat.playerId(), "empty"),
+                    seat.playerId(),
                     discardIndex,
                     seat.riichiDiscardIndex(),
                     Float.floatToIntBits(placement.yaw()),
@@ -224,7 +223,7 @@ public class TableRegionFingerprintBenchmark {
                 checksum = combine(checksum, referenceFingerprint(
                     "meld-tile",
                     seat.wind().name(),
-                    Objects.toString(seat.playerId(), "empty"),
+                    seat.playerId(),
                     meldIndex,
                     Float.floatToIntBits(placement.yaw()),
                     Double.doubleToLongBits(placement.point().x()),
@@ -299,23 +298,24 @@ public class TableRegionFingerprintBenchmark {
             ));
             expected.put(regionKey("labels", wind), referenceFingerprint(
                 "labels",
-                "depth-v2",
+                "ray-actions-v3",
                 seat.wind().name(),
                 snapshot.currentSeat().name(),
                 snapshot.started(),
                 snapshot.roundStartInProgress(),
-                Objects.toString(seat.playerId(), "empty"),
+                seat.playerId(),
                 seat.displayName(),
                 seat.publicSeatStatus(),
                 seat.riichi(),
                 seat.ready(),
-                seat.queuedToLeave()
+                seat.queuedToLeave(),
+                seat.viewerMembershipSignature()
             ));
 
             List<Object> stickFields = new ArrayList<>();
             stickFields.add("sticks");
             stickFields.add(seat.wind().name());
-            stickFields.add(Objects.toString(seat.playerId(), "empty"));
+            stickFields.add(seat.playerId());
             stickFields.add(snapshot.honbaCount());
             stickFields.add(snapshot.dealerSeat().name());
             if (seat.playerId() != null) {
@@ -328,7 +328,7 @@ public class TableRegionFingerprintBenchmark {
             List<Object> handFields = new ArrayList<>();
             handFields.add("hand-public");
             handFields.add(seat.wind().name());
-            handFields.add(Objects.toString(seat.playerId(), "empty"));
+            handFields.add(seat.playerId());
             if (seat.playerId() != null) {
                 handFields.add(snapshot.started());
                 handFields.add(seat.online());
@@ -342,7 +342,7 @@ public class TableRegionFingerprintBenchmark {
     }
 
     private static TableRenderSubject fixture() {
-        PluginSettings settings = PluginSettings.from(new YamlConfiguration());
+        PluginSettings settings = PluginSettings.defaults();
         List<UUID> playerIds = List.of(
             UUID.fromString("00000000-0000-0000-0000-000000000001"),
             UUID.fromString("00000000-0000-0000-0000-000000000002"),
@@ -454,17 +454,47 @@ public class TableRegionFingerprintBenchmark {
             if (needsSeparator) {
                 hash = mix(hash, ':');
             }
-            String text = Objects.toString(field, "");
-            for (int index = 0; index < text.length(); index++) {
-                hash = mix(hash, text.charAt(index));
+            if (field instanceof UUID uuid) {
+                hash = mix(hash, 'u');
+                hash = mixLong(hash, uuid.getMostSignificantBits());
+                hash = mixLong(hash, uuid.getLeastSignificantBits());
+            } else if (field instanceof Boolean bool) {
+                hash = mix(hash, 'b');
+                hash = mix(hash, bool ? 1 : 0);
+            } else if (field instanceof Integer integer) {
+                hash = mix(hash, 'i');
+                hash = mixInt(hash, integer);
+            } else if (field instanceof Long longValue) {
+                hash = mix(hash, 'l');
+                hash = mixLong(hash, longValue);
+            } else {
+                hash = mix(hash, 'o');
+                String text = Objects.toString(field, "");
+                for (int index = 0; index < text.length(); index++) {
+                    hash = mix(hash, text.charAt(index));
+                }
             }
             needsSeparator = true;
         }
         return hash;
     }
 
-    private static long mix(long hash, char value) {
-        return (hash ^ value) * 0x100000001b3L;
+    private static long mixInt(long hash, int value) {
+        for (int shift = 0; shift < Integer.SIZE; shift += Byte.SIZE) {
+            hash = mix(hash, value >>> shift);
+        }
+        return hash;
+    }
+
+    private static long mixLong(long hash, long value) {
+        for (int shift = 0; shift < Long.SIZE; shift += Byte.SIZE) {
+            hash = mix(hash, (int) (value >>> shift));
+        }
+        return hash;
+    }
+
+    private static long mix(long hash, int value) {
+        return (hash ^ (value & 0xffL)) * 0x100000001b3L;
     }
 
     private static long combine(long checksum, long fingerprint) {

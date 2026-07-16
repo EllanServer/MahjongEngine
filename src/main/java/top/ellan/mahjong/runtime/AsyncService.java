@@ -1,5 +1,6 @@
 package top.ellan.mahjong.runtime;
 
+import java.lang.reflect.Method;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -8,9 +9,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -26,19 +29,47 @@ public final class AsyncService implements AutoCloseable {
 
     public AsyncService(Logger logger) {
         this.logger = logger;
-        this.ioExecutor = Executors.newThreadPerTaskExecutor(
-            Thread.ofVirtual().name("MahjongPaper-IO-", 0L).factory()
-        );
+        this.ioExecutor = createIoExecutor();
         int cpuWorkers = Math.max(1, Math.min(MAX_CPU_WORKERS, Runtime.getRuntime().availableProcessors()));
         this.cpuExecutor = Executors.newFixedThreadPool(
             cpuWorkers,
-            Thread.ofPlatform().daemon(true).name("MahjongPaper-CPU-", 0L).factory()
+            namedDaemonThreadFactory("MahjongPaper-CPU-")
         );
         this.retryScheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "MahjongPaper-Async-Retry");
             thread.setDaemon(true);
             return thread;
         });
+    }
+
+    private static ExecutorService createIoExecutor() {
+        try {
+            Method ofVirtual = Thread.class.getMethod("ofVirtual");
+            Object builder = ofVirtual.invoke(null);
+            Class<?> builderType = ofVirtual.getReturnType();
+            Object namedBuilder = builderType
+                .getMethod("name", String.class, long.class)
+                .invoke(builder, "MahjongPaper-IO-", 0L);
+            ThreadFactory threadFactory = (ThreadFactory) builderType
+                .getMethod("factory")
+                .invoke(namedBuilder);
+            Method newThreadPerTaskExecutor = Executors.class.getMethod(
+                "newThreadPerTaskExecutor",
+                ThreadFactory.class
+            );
+            return (ExecutorService) newThreadPerTaskExecutor.invoke(null, threadFactory);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return Executors.newCachedThreadPool(namedDaemonThreadFactory("MahjongPaper-IO-"));
+        }
+    }
+
+    private static ThreadFactory namedDaemonThreadFactory(String namePrefix) {
+        AtomicLong sequence = new AtomicLong();
+        return runnable -> {
+            Thread thread = new Thread(runnable, namePrefix + sequence.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        };
     }
 
     public void execute(String taskName, Runnable task) {

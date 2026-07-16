@@ -26,11 +26,15 @@ jobs:
           - os: ubuntu-latest
             gradle: ./gradlew
             needs_chmod: true
+            require_native: true
+            native_args: ""
             # Full test suite on Linux (primary platform).
             test_task: test jacocoTestReport
           - os: windows-latest
             gradle: .\gradlew.bat
             needs_chmod: false
+            require_native: false
+            native_args: -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
             # Smoke test only on Windows: run tests but skip native build (CMake
             # toolchain is set up in build.yml). Catches platform-specific
             # regressions like NamespacedKey casing and File.separator usage.
@@ -38,6 +42,8 @@ jobs:
           - os: macos-15-intel
             gradle: ./gradlew
             needs_chmod: true
+            require_native: false
+            native_args: -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
             test_task: test
 
     runs-on: ${{ matrix.os }}
@@ -66,20 +72,20 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Cache native build (CMake)
+        if: runner.os == 'Linux'
         uses: actions/cache@v6
         with:
           path: |
             build/native/gbmahjong
             native/gbmahjong/build
           key: native-cmake-${{ runner.os }}-${{ hashFiles('native/gbmahjong/**/CMakeLists.txt', 'native/gbmahjong/**/*.cpp', 'native/gbmahjong/**/*.h') }}
-          restore-keys: |
-            native-cmake-${{ runner.os }}-
 
       - name: Run tests
         # Pin to the lowest supported Paper baseline so the released jar stays
-        # runtime-compatible with Paper/Folia 1.20.1 -> 26.2. Skip native tasks
-        # on non-Linux runners where the CMake toolchain may not be configured.
-        run: ${{ matrix.gradle }} ${{ matrix.test_task }} "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=21" -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
+        # runtime-compatible with Paper/Folia 1.20.1 -> 26.2. Linux builds and
+        # requires the current native source; other platforms exercise Java
+        # behavior without restoring an unrelated native binary.
+        run: ${{ matrix.gradle }} ${{ matrix.test_task }} "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=21" "-PmahjongRequireNative=${{ matrix.require_native }}" ${{ matrix.native_args }}
 
       - name: Upload test reports
         if: always()
