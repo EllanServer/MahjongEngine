@@ -240,7 +240,13 @@ Current benchmark entry points use per-benchmark batch sizes, which are included
 
 ## Regression Gate
 
-The GitHub performance job compares the candidate commit with the pull request base commit (or the previous commit for a branch push) on the **same runner**. It runs three paired samples and alternates their order (`baseline/candidate`, then `candidate/baseline`) to reduce runner drift and order bias. The gate uses the median of the three paired ratios, so one noisy run cannot fail the build.
+Feature development does not run performance benchmarks in the regular Build or Test workflows.
+Those workflows compile, test, and package the candidate directly. Performance claims are judged
+only by the base-owned `Performance A/B gate`, and only when an optimization PR is explicitly
+labeled `performance-ab` plus exactly one `performance-*` profile label, as described above.
+
+The Gradle `perfRegressionCheck` task remains available as a manual diagnostic for previously
+captured paired reports. Its result is not the authoritative GitHub optimization decision.
 
 The default gate covers the CPU-side render hot paths that directly affect table refresh MSPT:
 
