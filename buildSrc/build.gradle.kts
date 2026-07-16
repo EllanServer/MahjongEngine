@@ -4,4 +4,9 @@ plugins {
 
 repositories {
     mavenCentral()
+    gradlePluginPortal()
+}
+
+dependencies {
+    implementation("me.champeau.jmh:jmh-gradle-plugin:0.7.3")
 }

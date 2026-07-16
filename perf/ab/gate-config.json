@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "matrix": {
+    "repetitions_per_order": 4
+  },
+  "jmh": {
+    "mode": "avgt",
+    "time_unit": "ns",
+    "forks": 1,
+    "warmup_iterations": 5,
+    "measurement_iterations": 8,
+    "warmup_time": "1s",
+    "measurement_time": "1s",
+    "force_gc": true,
+    "profilers": [
+      "gc"
+    ],
+    "jvm_args": [
+      "-Xms1g",
+      "-Xmx1g",
+      "-XX:+UseG1GC",
+      "-XX:+AlwaysPreTouch",
+      "-Dfile.encoding=UTF-8"
+    ]
+  },
+  "bootstrap": {
+    "samples": 50000,
+    "seed": 1592639710,
+    "confidence": 0.95
+  },
+  "decision": {
+    "minimum_pairs": 8,
+    "minimum_median_improvement_fraction": 0.03,
+    "minimum_ci_lower_improvement_fraction": 0.0,
+    "minimum_wins": 6,
+    "minimum_effect_to_mad_ratio": 2.0,
+    "maximum_log_mad": 0.06,
+    "maximum_secondary_regression_fraction": 0.05,
+    "failure_median_regression_fraction": 0.02,
+    "failure_maximum_win_rate": 0.25
+  },
+  "aa_drift": {
+    "maximum_abs_median_log_ratio": 0.03,
+    "maximum_log_mad": 0.06,
+    "maximum_ci_width": 0.10,
+    "require_ci_contains_zero": true
+  },
+  "profiles": {
+    "infra": {
+      "include": "^top\\.ellan\\.mahjong\\.perf\\.DelimitedFingerprintBuilderBenchmark\\.buildRepresentativeFingerprint$",
+      "benchmark_ids": [
+        "infra.fingerprint.time"
+      ],
+      "minimum_passes": 1,
+      "must_pass": [
+        "infra.fingerprint.time"
+      ],
+      "required_classes": []
+    },
+    "snapshot": {
+      "include": "^top\\.ellan\\.mahjong\\.perf\\.RenderSnapshotViewerBenchmark\\.snapshotWith(?:4|32|128)Viewers$",
+      "benchmark_ids": [
+        "snapshot.viewers4.time",
+        "snapshot.viewers4.alloc",
+        "snapshot.viewers32.time",
+        "snapshot.viewers32.alloc",
+        "snapshot.viewers128.time",
+        "snapshot.viewers128.alloc"
+      ],
+      "minimum_passes": 2,
+      "must_pass": [
+        "snapshot.viewers128.time"
+      ],
+      "required_classes": [
+        "top/ellan/mahjong/table/render/TableRenderSnapshotFactory.class"
+      ]
+    },
+    "gb-bot": {
+      "include": "^top\\.ellan\\.mahjong\\.table\\.core\\.round\\.GbBotDecisionBenchmark\\.(?:duplicateHand|mixedHand|uniqueHand)$",
+      "benchmark_ids": [
+        "gb.duplicate.time",
+        "gb.duplicate.alloc",
+        "gb.mixed.time",
+        "gb.mixed.alloc",
+        "gb.unique.time",
+        "gb.unique.alloc"
+      ],
+      "minimum_passes": 2,
+      "must_pass": [
+        "gb.duplicate.time"
+      ],
+      "required_classes": [
+        "top/ellan/mahjong/table/core/round/GbBotDecisionService.class"
+      ]
+    },
+    "ray-proxy": {
+      "include": "^top\\.ellan\\.mahjong\\.perf\\.RayProxyCoordinatorBenchmark\\.proxyPlan(?:1Viewer|4Viewers|32Viewers)$",
+      "benchmark_ids": [
+        "ray.viewers1.time",
+        "ray.viewers1.alloc",
+        "ray.viewers4.time",
+        "ray.viewers4.alloc",
+        "ray.viewers32.time",
+        "ray.viewers32.alloc"
+      ],
+      "minimum_passes": 2,
+      "must_pass": [
+        "ray.viewers32.time"
+      ],
+      "required_classes": [
+        "top/ellan/mahjong/table/render/SparrowRayInteractionProxyCoordinator.class",
+        "top/ellan/mahjong/render/display/DisplayInteractionRayRegistry$RayInteraction.class"
+      ]
+    }
+  },
+  "benchmarks": [
+    {
+      "id": "infra.fingerprint.time",
+      "benchmark": "top.ellan.mahjong.perf.DelimitedFingerprintBuilderBenchmark.buildRepresentativeFingerprint",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "snapshot.viewers4.time",
+      "benchmark": "top.ellan.mahjong.perf.RenderSnapshotViewerBenchmark.snapshotWith4Viewers",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "snapshot.viewers4.alloc",
+      "benchmark": "top.ellan.mahjong.perf.RenderSnapshotViewerBenchmark.snapshotWith4Viewers",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "snapshot.viewers32.time",
+      "benchmark": "top.ellan.mahjong.perf.RenderSnapshotViewerBenchmark.snapshotWith32Viewers",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "snapshot.viewers32.alloc",
+      "benchmark": "top.ellan.mahjong.perf.RenderSnapshotViewerBenchmark.snapshotWith32Viewers",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "snapshot.viewers128.time",
+      "benchmark": "top.ellan.mahjong.perf.RenderSnapshotViewerBenchmark.snapshotWith128Viewers",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "snapshot.viewers128.alloc",
+      "benchmark": "top.ellan.mahjong.perf.RenderSnapshotViewerBenchmark.snapshotWith128Viewers",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "gb.duplicate.time",
+      "benchmark": "top.ellan.mahjong.table.core.round.GbBotDecisionBenchmark.duplicateHand",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "gb.duplicate.alloc",
+      "benchmark": "top.ellan.mahjong.table.core.round.GbBotDecisionBenchmark.duplicateHand",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "gb.mixed.time",
+      "benchmark": "top.ellan.mahjong.table.core.round.GbBotDecisionBenchmark.mixedHand",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "gb.mixed.alloc",
+      "benchmark": "top.ellan.mahjong.table.core.round.GbBotDecisionBenchmark.mixedHand",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "gb.unique.time",
+      "benchmark": "top.ellan.mahjong.table.core.round.GbBotDecisionBenchmark.uniqueHand",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "gb.unique.alloc",
+      "benchmark": "top.ellan.mahjong.table.core.round.GbBotDecisionBenchmark.uniqueHand",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "ray.viewers1.time",
+      "benchmark": "top.ellan.mahjong.perf.RayProxyCoordinatorBenchmark.proxyPlan1Viewer",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "ray.viewers1.alloc",
+      "benchmark": "top.ellan.mahjong.perf.RayProxyCoordinatorBenchmark.proxyPlan1Viewer",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "ray.viewers4.time",
+      "benchmark": "top.ellan.mahjong.perf.RayProxyCoordinatorBenchmark.proxyPlan4Viewers",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "ray.viewers4.alloc",
+      "benchmark": "top.ellan.mahjong.perf.RayProxyCoordinatorBenchmark.proxyPlan4Viewers",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "ray.viewers32.time",
+      "benchmark": "top.ellan.mahjong.perf.RayProxyCoordinatorBenchmark.proxyPlan32Viewers",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "ray.viewers32.alloc",
+      "benchmark": "top.ellan.mahjong.perf.RayProxyCoordinatorBenchmark.proxyPlan32Viewers",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    }
+  ],
+  "protected_paths": [
+    ".github/workflows/performance-ab.yml",
+    "build.gradle",
+    "build.gradle.kts",
+    "settings.gradle",
+    "settings.gradle.kts",
+    "gradle.lockfile",
+    "gradle.properties",
+    "gradlew",
+    "gradlew.bat",
+    "gradle",
+    "buildSrc",
+    "src/perfTest",
+    "perf/ab"
+  ]
+}

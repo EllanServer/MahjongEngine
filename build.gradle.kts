@@ -64,7 +64,8 @@ val nativeTasks =
         project,
         generatedNativeResourcesDir,
     )
-MahjongTaskRegistration.registerPerfTestTask(project)
+MahjongTaskRegistration.registerPerformanceTasks(project, minimumPaperDevBundleVersion)
+MahjongTaskRegistration.configureVerificationTasks(project, javaTargetVersion)
 
 dependencies {
     paperweight.paperDevBundle(paperDevBundleVersion)
@@ -175,28 +176,6 @@ tasks {
             )
         }
     }
-
-    test {
-        useJUnitPlatform {
-            excludeTags("perf")
-        }
-        jvmArgs("-Dnet.bytebuddy.experimental=true")
-        systemProperty("mahjong.test.expectedClassfileMajor", javaTargetVersion + 44)
-        finalizedBy(jacocoTestReport)
-    }
-
-    jacocoTestReport {
-        dependsOn(test)
-        reports {
-            xml.required.set(true)
-            html.required.set(true)
-            csv.required.set(false)
-        }
-    }
-
-    check {
-        dependsOn(jacocoTestReport, "verifyMahjongTileResources", "generateCraftEngineBundle", "spotlessCheck", "detekt")
-    }
 }
 
 spotless {
@@ -210,7 +189,7 @@ spotless {
         ktlint()
     }
     java {
-        target("src/main/java/**/*.java", "src/test/java/**/*.java")
+        target("src/main/java/**/*.java", "src/test/java/**/*.java", "src/perfTest/java/**/*.java")
         trimTrailingWhitespace()
         endWithNewline()
     }

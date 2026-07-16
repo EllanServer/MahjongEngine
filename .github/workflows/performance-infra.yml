@@ -1,0 +1,101 @@
+name: Performance infrastructure
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/performance-*.yml"
+      - "build.gradle.kts"
+      - "buildSrc/**"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradle/**"
+      - "src/perfTest/**"
+      - "perf/ab/**"
+      - "docs/performance-testing.md"
+  push:
+    branches:
+      - dev
+    paths:
+      - ".github/workflows/performance-*.yml"
+      - "build.gradle.kts"
+      - "buildSrc/**"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradle/**"
+      - "src/perfTest/**"
+      - "perf/ab/**"
+      - "docs/performance-testing.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25.0.2+10"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-disabled: true
+
+      - name: Validate statistics and order balancing
+        run: python3 -m unittest discover -s perf/ab/tests -v
+
+      - name: Probe unprivileged candidate evidence isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo useradd \
+            --system \
+            --user-group \
+            --no-create-home \
+            --shell /usr/sbin/nologin \
+            mahjong-probe
+          python3 perf/ab/tests/isolation_probe.py \
+            --user mahjong-probe \
+            --output-dir build/reports/jmh/isolation-probe
+
+      - name: Build isolated JMH harness
+        run: >-
+          ./gradlew jmhJar --console plain --no-daemon
+          -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
+          "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT"
+          "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=17"
+
+      - name: Run one smoke iteration for every protected benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/reports/jmh
+          JAR="$(find build/libs -maxdepth 1 -name '*-jmh.jar' -print -quit)"
+          java -Xms256m -Xmx256m -jar "$JAR" \
+            '^top\.ellan\.mahjong\..*Benchmark\..*$' \
+            -bm avgt -tu ns -f 1 -wi 1 -i 1 -w 10ms -r 10ms \
+            -prof gc -foe true -rf json -rff build/reports/jmh/infra-smoke.json
+
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: performance-infrastructure-smoke
+          path: build/reports/jmh/**
+          if-no-files-found: error
+          retention-days: 14
