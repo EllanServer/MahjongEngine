@@ -3,11 +3,17 @@ package top.ellan.mahjong.render.layout;
 import top.ellan.mahjong.model.SeatWind;
 
 public final class WallLayout {
+    private static final int DEFAULT_TILES_PER_SIDE = 34;
+    private static final int DEFAULT_WALL_CAPACITY = DEFAULT_TILES_PER_SIDE * 4;
+
     private WallLayout() {
     }
 
     public static SeatWind wallSeat(int tileIndex) {
-        return wallSeat(tileIndex, 34);
+        if (tileIndex >= 0 && tileIndex < DEFAULT_WALL_CAPACITY) {
+            return SeatWind.fromIndex(tileIndex / DEFAULT_TILES_PER_SIDE);
+        }
+        return wallSeat(tileIndex, DEFAULT_TILES_PER_SIDE);
     }
 
     public static SeatWind wallSeat(int tileIndex, int tilesPerSide) {
@@ -17,7 +23,10 @@ public final class WallLayout {
     }
 
     public static int wallColumn(int tileIndex) {
-        return wallColumn(tileIndex, 34);
+        if (tileIndex >= 0 && tileIndex < DEFAULT_WALL_CAPACITY) {
+            return (tileIndex / 2) % (DEFAULT_TILES_PER_SIDE / 2);
+        }
+        return wallColumn(tileIndex, DEFAULT_TILES_PER_SIDE);
     }
 
     public static int wallColumn(int tileIndex, int tilesPerSide) {
@@ -26,7 +35,10 @@ public final class WallLayout {
     }
 
     public static int wallLayer(int tileIndex) {
-        return wallLayer(tileIndex, 34);
+        if (tileIndex >= 0 && tileIndex < DEFAULT_WALL_CAPACITY) {
+            return 1 - tileIndex % 2;
+        }
+        return wallLayer(tileIndex, DEFAULT_TILES_PER_SIDE);
     }
 
     public static int wallLayer(int tileIndex, int tilesPerSide) {

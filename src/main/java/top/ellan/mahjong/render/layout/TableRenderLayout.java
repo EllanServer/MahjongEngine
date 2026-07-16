@@ -204,7 +204,7 @@ public final class TableRenderLayout {
         for (int i = 0; i < liveWallCount; i++) {
             int wallSlot = Math.floorMod(breakTileIndex + frontDrawCount + i, TOTAL_WALL_TILES);
             SeatWind wind = WallLayout.wallSeat(wallSlot);
-            Point point = wallSlotPoint(displayCenter, wallSlot);
+            Point point = wallSlotPoint(displayCenter, wallSlot, wind, WALL_TILES_PER_SIDE);
             occupiedSlots[wallSlot] = true;
             placements.set(wallSlot, new TilePlacement(point, seatYaw(wind), MahjongTile.UNKNOWN, DisplayEntities.TileRenderPose.FLAT_FACE_DOWN));
         }
@@ -241,7 +241,7 @@ public final class TableRenderLayout {
         for (int i = 0; i < remainingWallCount; i++) {
             int wallSlot = Math.floorMod(breakTileIndex + frontDrawCount + i, wallCapacity);
             SeatWind wind = WallLayout.wallSeat(wallSlot, tilesPerSide);
-            Point point = wallSlotPoint(displayCenter, wallSlot, tilesPerSide);
+            Point point = wallSlotPoint(displayCenter, wallSlot, wind, tilesPerSide);
             occupiedSlots[wallSlot] = true;
             placements.set(wallSlot, new TilePlacement(point, seatYaw(wind), MahjongTile.UNKNOWN, DisplayEntities.TileRenderPose.FLAT_FACE_DOWN));
         }
@@ -498,17 +498,13 @@ public final class TableRenderLayout {
         throw new IllegalStateException("Missing meld start for display direction: " + direction);
     }
 
-    private static Point wallSlotPoint(Point center, int wallSlot) {
-        return wallSlotPoint(center, wallSlot, WALL_TILES_PER_SIDE);
-    }
-
-    private static Point wallSlotPoint(Point center, int wallSlot, int tilesPerSide) {
-        SeatWind wind = WallLayout.wallSeat(wallSlot, tilesPerSide);
-        int stackIndex = WallLayout.wallColumn(wallSlot, tilesPerSide);
+    private static Point wallSlotPoint(Point center, int wallSlot, SeatWind wind, int tilesPerSide) {
+        int sideOffset = wallSlot % tilesPerSide;
+        int stackIndex = sideOffset / 2;
         double stackWidth = stackIndex * WALL_TILE_STEP;
         int stackCount = (tilesPerSide + 1) / 2;
         double startingPos = (stackCount * TILE_WIDTH) / 2.0D - TILE_HEIGHT;
-        double yOffset = FLAT_TILE_Y + wallLayerYOffset(WallLayout.wallLayer(wallSlot, tilesPerSide));
+        double yOffset = FLAT_TILE_Y + wallLayerYOffset(1 - sideOffset % 2);
         return switch (displayDirection(wind)) {
             case EAST -> center.add(WALL_DIRECTION_OFFSET, yOffset, -startingPos + stackWidth);
             case SOUTH -> center.add(startingPos - stackWidth, yOffset, WALL_DIRECTION_OFFSET);
@@ -529,10 +525,14 @@ public final class TableRenderLayout {
         double upperLayerOffset = wallLayerYOffset(1);
         for (int wallSlot = 0; wallSlot < placements.size(); wallSlot++) {
             TilePlacement placement = placements.get(wallSlot);
-            if (placement == null || WallLayout.wallLayer(wallSlot, tilesPerSide) != 1) {
+            if (placement == null) {
                 continue;
             }
-            int supportingSlot = WallLayout.supportingLowerSlot(wallSlot, tilesPerSide);
+            int sideOffset = wallSlot % tilesPerSide;
+            if ((sideOffset & 1) != 0) {
+                continue;
+            }
+            int supportingSlot = sideOffset + 1 < tilesPerSide ? wallSlot + 1 : -1;
             if (supportingSlot >= 0 && occupiedSlots[supportingSlot]) {
                 continue;
             }
@@ -555,7 +555,7 @@ public final class TableRenderLayout {
                 wallSlot,
                 face,
                 seatYaw(face),
-                add(wallSlotPoint(center, wallSlot), deadWallGapOffset(face))
+                add(wallSlotPoint(center, wallSlot, face, WALL_TILES_PER_SIDE), deadWallGapOffset(face))
             ));
         }
 
