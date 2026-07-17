@@ -1,0 +1,12 @@
+.github.com	TRUE	/	TRUE	1817079999	_octo	GH1.1.500426361.1772520236
+.github.com	TRUE	/	FALSE	1817079999	_device_id	a7b1286eb4f1495fc78ca0b3e75ad886
+.github.com	TRUE	/	FALSE	1806558419	_qimei_fingerprint	0cd861c0d10123ff2667d4670d6290cf
+.github.com	TRUE	/	FALSE	1803829963	GHCC	Required:1-Analytics:1-SocialMedia:1-Advertising:1
+.github.com	TRUE	/	FALSE	1806558304	dotcom_user	Arbousier1
+.github.com	TRUE	/	FALSE	1803829963	logged_in	yes
+github.com	FALSE	/	TRUE	1785534419	__Host-user_session_same_site	AVVPlZBmA8TT3Tl53W_2ZJ0J1tVjCo2m23lRarPD8MozvhSw
+github.com	FALSE	/	TRUE	0	_gh_sess	V1UbTPCz9Kbv1s2WFIJ9wU47EsSEGF%2BvzvOLus6aP8iQokZKp9k3M6sxFqR70LpHaX%2BfNAP9VeWl38r4ApVFkF%2FcmPF1yq7XC2DnQ9ZuahynLS6fgPfNpY73UBPC4zq6ER5KLuZcZ5IVVsC%2Fv2MUs8hrMutx2lKNGPib3yUtqBX2pvm9V5lDT22c5xhbvP02woLRq3NtGPOWsYTucb06yLxiaZP%2Bndup8kfA%2FdAayaenCWgcGc0axpz8ALaTt%2Fl8w%2FvJybe%2FQGp%2BezAuc9FtRXt7pM4Vnz9ekYOv%2BOWwd4VcE0WljTXFJv0co4zG5PuB27hX4whBnFcHL6qRCt0dzCuIfKNNbmdPXZv%2BpKHIlEPfisNfa1jLJu%2FQyWJNh5QYyfIM8iRZnxO%2Bcp1ZPfj9gRk43c%2BhLyhYSqCriybYOn%2F2oyk4FitUw8RByivA%2Bz1bHru23Uyc8OgUG2Kr--mlBeAEpqjYU0TS4v--pjXF%2FCC3oNi1Rxj0UY0WQQ%3D%3D
+github.com	FALSE	/	FALSE	1785534419	user_session	AVVPlZBmA8TT3Tl53W_2ZJ0J1tVjCo2m23lRarPD8MozvhSw
+github.com	FALSE	/	FALSE	0	tz	Asia%2FTaipei
+github.com	FALSE	/	FALSE	0	color_mode	%7B%22color_mode%22%3A%22auto%22%2C%22light_theme%22%3A%7B%22name%22%3A%22light%22%2C%22color_mode%22%3A%22light%22%7D%2C%22dark_theme%22%3A%7B%22name%22%3A%22dark%22%2C%22color_mode%22%3A%22dark%22%7D%7D
+github.com	FALSE	/	FALSE	0	preferred_color_mode	dark
