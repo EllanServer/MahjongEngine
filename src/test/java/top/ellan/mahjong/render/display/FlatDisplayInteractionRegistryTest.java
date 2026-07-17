@@ -3,6 +3,7 @@ package top.ellan.mahjong.render.display;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 import java.util.List;
 import java.util.UUID;
@@ -130,6 +131,109 @@ final class DisplayInteractionRayRegistryTest {
         assertEquals(List.of(action, tile), DisplayInteractionRayRegistry.snapshot(VIEWER_ID));
         DisplayInteractionRayRegistry.clearRegion(VIEWER_ID, "table-a", "viewer-actions");
         assertEquals(List.of(tile), DisplayInteractionRayRegistry.snapshot(VIEWER_ID));
+    }
+
+    @Test
+    void identicalRegionReplacementKeepsTheExistingSnapshotAndActionChangesStillApply() {
+        DisplayInteractionRayRegistry.RayInteraction first = interaction(
+            0.0D,
+            3.0D,
+            1.0D,
+            0.0D,
+            action("first")
+        );
+        DisplayInteractionRayRegistry.replaceRegion(
+            VIEWER_ID,
+            "table-a",
+            "viewer-actions",
+            List.of(first)
+        );
+        List<DisplayInteractionRayRegistry.RayInteraction> firstSnapshot =
+            DisplayInteractionRayRegistry.snapshot(VIEWER_ID);
+
+        DisplayInteractionRayRegistry.replaceRegion(
+            VIEWER_ID,
+            "table-a",
+            "viewer-actions",
+            List.of(first)
+        );
+
+        assertSame(firstSnapshot, DisplayInteractionRayRegistry.snapshot(VIEWER_ID));
+
+        DisplayInteractionRayRegistry.RayInteraction changed = interaction(
+            0.0D,
+            3.0D,
+            1.0D,
+            0.0D,
+            action("second")
+        );
+        DisplayInteractionRayRegistry.replaceRegion(
+            VIEWER_ID,
+            "table-a",
+            "viewer-actions",
+            List.of(changed)
+        );
+
+        assertEquals(List.of(changed), DisplayInteractionRayRegistry.snapshot(VIEWER_ID));
+    }
+
+    @Test
+    void identicalPublicJoinReplacementKeepsTheExistingFlattenedSnapshot() {
+        DisplayInteractionRayRegistry.RayInteraction join = interaction(
+            0.0D,
+            3.0D,
+            1.0D,
+            0.0D,
+            DisplayClickAction.joinSeat("table-a", SeatWind.EAST)
+        );
+        DisplayInteractionRayRegistry.RayInteraction privateDecision = interaction(
+            0.0D,
+            4.0D,
+            1.0D,
+            0.0D,
+            action("private")
+        );
+        List<DisplayInteractionRayRegistry.RayInteraction> input = List.of(join, privateDecision);
+
+        DisplayInteractionRayRegistry.replacePublicJoinRegion("table-a", "seat-label:EAST", input);
+        List<DisplayInteractionRayRegistry.RayInteraction> firstSnapshot =
+            DisplayInteractionRayRegistry.publicJoinSnapshot();
+
+        DisplayInteractionRayRegistry.replacePublicJoinRegion("table-a", "seat-label:EAST", input);
+
+        assertSame(firstSnapshot, DisplayInteractionRayRegistry.publicJoinSnapshot());
+        assertEquals(List.of(join), firstSnapshot);
+    }
+
+    @Test
+    void replacingPublicJoinActionStillUpdatesTheFlattenedSnapshot() {
+        DisplayInteractionRayRegistry.RayInteraction east = interaction(
+            0.0D,
+            3.0D,
+            1.0D,
+            0.0D,
+            DisplayClickAction.joinSeat("table-a", SeatWind.EAST)
+        );
+        DisplayInteractionRayRegistry.RayInteraction south = interaction(
+            0.0D,
+            3.0D,
+            1.0D,
+            0.0D,
+            DisplayClickAction.joinSeat("table-a", SeatWind.SOUTH)
+        );
+
+        DisplayInteractionRayRegistry.replacePublicJoinRegion(
+            "table-a",
+            "seat-label:EAST",
+            List.of(east)
+        );
+        DisplayInteractionRayRegistry.replacePublicJoinRegion(
+            "table-a",
+            "seat-label:EAST",
+            List.of(south)
+        );
+
+        assertEquals(List.of(south), DisplayInteractionRayRegistry.publicJoinSnapshot());
     }
 
     @Test
