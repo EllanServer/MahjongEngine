@@ -62,6 +62,9 @@ final class SparrowRayInteractionProxyCoordinator {
         }
 
         Map<UUID, ActiveProxies> previous = this.regions.getOrDefault(regionKey, Map.of());
+        if (this.canReuseRegion(previous, interactionsByViewer)) {
+            return;
+        }
         Map<UUID, ActiveProxies> next = new LinkedHashMap<>();
         List<PendingSpawn> pendingSpawns = new ArrayList<>();
         try {
@@ -130,6 +133,31 @@ final class SparrowRayInteractionProxyCoordinator {
                 return;
             }
         }
+    }
+
+    private boolean canReuseRegion(
+        Map<UUID, ActiveProxies> previous,
+        Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> interactionsByViewer
+    ) {
+        int reusableViewers = 0;
+        for (Map.Entry<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> entry
+            : interactionsByViewer.entrySet()) {
+            UUID viewerId = entry.getKey();
+            List<DisplayInteractionRayRegistry.RayInteraction> interactions = entry.getValue();
+            if (viewerId == null || interactions == null || interactions.isEmpty()) {
+                continue;
+            }
+            Player viewer = this.session.onlinePlayer(viewerId);
+            if (viewer == null || !viewer.isOnline()) {
+                continue;
+            }
+            ActiveProxies active = previous.get(viewerId);
+            if (!this.canReuse(viewerId, viewer, active, interactions)) {
+                return false;
+            }
+            reusableViewers++;
+        }
+        return reusableViewers == previous.size();
     }
 
     private boolean canReuse(

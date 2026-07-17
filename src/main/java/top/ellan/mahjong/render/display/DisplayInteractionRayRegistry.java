@@ -46,15 +46,19 @@ public final class DisplayInteractionRayRegistry {
             return;
         }
         VIEWER_INTERACTIONS.compute(viewerId, (ignored, current) -> {
-            if (current != null && !tableId.equals(current.tableId())) {
-                return interactions == null || interactions.isEmpty()
-                    ? current
-                    : ViewerInteractions.single(tableId, regionKey, interactions);
+            boolean empty = interactions == null || interactions.isEmpty();
+            if (current == null) {
+                return empty ? null : ViewerInteractions.single(tableId, regionKey, interactions);
             }
-            Map<String, List<RayInteraction>> regions = current == null
-                ? new LinkedHashMap<>()
-                : new LinkedHashMap<>(current.regions());
-            if (interactions == null || interactions.isEmpty()) {
+            if (!tableId.equals(current.tableId())) {
+                return empty ? current : ViewerInteractions.single(tableId, regionKey, interactions);
+            }
+            List<RayInteraction> previous = current.regions().get(regionKey);
+            if ((empty && previous == null) || (!empty && Objects.equals(previous, interactions))) {
+                return current;
+            }
+            Map<String, List<RayInteraction>> regions = new LinkedHashMap<>(current.regions());
+            if (empty) {
                 regions.remove(regionKey);
             } else {
                 regions.put(regionKey, List.copyOf(interactions));
@@ -129,11 +133,11 @@ public final class DisplayInteractionRayRegistry {
             return;
         }
         PublicRegionKey key = new PublicRegionKey(tableId, regionKey);
-        List<RayInteraction> publicJoins = interactions == null
-            ? List.of()
-            : interactions.stream()
-                .filter(interaction -> isPublicJoinForTable(interaction, tableId))
-                .toList();
+        List<RayInteraction> previous = PUBLIC_JOIN_REGIONS.get(key);
+        if (samePublicJoinInteractions(previous, tableId, interactions)) {
+            return;
+        }
+        List<RayInteraction> publicJoins = filterPublicJoinInteractions(tableId, interactions);
         if (publicJoins.isEmpty()) {
             PUBLIC_JOIN_REGIONS.remove(key);
         } else {
@@ -209,6 +213,44 @@ public final class DisplayInteractionRayRegistry {
         List<RayInteraction> flattened = new ArrayList<>();
         PUBLIC_JOIN_REGIONS.values().forEach(flattened::addAll);
         publicJoinInteractions = List.copyOf(flattened);
+    }
+
+    private static boolean samePublicJoinInteractions(
+        List<RayInteraction> previous,
+        String tableId,
+        List<RayInteraction> interactions
+    ) {
+        int previousIndex = 0;
+        if (interactions != null) {
+            for (RayInteraction interaction : interactions) {
+                if (!isPublicJoinForTable(interaction, tableId)) {
+                    continue;
+                }
+                if (previous == null
+                    || previousIndex >= previous.size()
+                    || !Objects.equals(previous.get(previousIndex), interaction)) {
+                    return false;
+                }
+                previousIndex++;
+            }
+        }
+        return previous == null ? previousIndex == 0 : previousIndex == previous.size();
+    }
+
+    private static List<RayInteraction> filterPublicJoinInteractions(
+        String tableId,
+        List<RayInteraction> interactions
+    ) {
+        if (interactions == null || interactions.isEmpty()) {
+            return List.of();
+        }
+        List<RayInteraction> publicJoins = new ArrayList<>(interactions.size());
+        for (RayInteraction interaction : interactions) {
+            if (isPublicJoinForTable(interaction, tableId)) {
+                publicJoins.add(interaction);
+            }
+        }
+        return publicJoins.isEmpty() ? List.of() : List.copyOf(publicJoins);
     }
 
     private static boolean isPublicJoinForTable(RayInteraction interaction, String tableId) {
