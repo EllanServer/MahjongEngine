@@ -42,6 +42,7 @@ public final class TableRenderLayout {
     private static final int DEAD_WALL_SIZE = 14;
     private static final int LIVE_WALL_SIZE = TOTAL_WALL_TILES - DEAD_WALL_SIZE;
     private static final int DISCARDS_PER_ROW = 6;
+    private static final SeatWind[] SEAT_WINDS = SeatWind.values();
 
     private TableRenderLayout() {
     }
@@ -53,9 +54,12 @@ public final class TableRenderLayout {
         Point tableVisualAnchor = new Point(tableCenter.x(), tableCenter.y() + TABLE_VISUAL_Y_OFFSET, tableCenter.z());
         double borderSpanX = bounds.width() + TABLE_TOP_SIZE_EXPANSION + TABLE_BORDER_THICKNESS;
         double borderSpanZ = bounds.depth() + TABLE_TOP_SIZE_EXPANSION + TABLE_BORDER_THICKNESS;
+        List<DeadWallPlacement> deadWallPlacements = snapshot.started() && snapshot.usesDeadWall()
+            ? deadWallPlacements(displayCenter, snapshot)
+            : List.of();
 
         EnumMap<SeatWind, SeatLayoutPlan> seats = new EnumMap<>(SeatWind.class);
-        for (SeatWind wind : SeatWind.values()) {
+        for (SeatWind wind : SEAT_WINDS) {
             TableSeatRenderSnapshot seat = snapshot.seat(wind);
             seats.put(wind, precomputeSeat(displayCenter, snapshot, seat));
         }
@@ -67,8 +71,8 @@ public final class TableRenderLayout {
             borderSpanX,
             borderSpanZ,
             seats,
-            precomputeWall(displayCenter, snapshot),
-            precomputeDora(displayCenter, snapshot)
+            precomputeWall(displayCenter, snapshot, deadWallPlacements),
+            precomputeDora(snapshot, deadWallPlacements)
         );
     }
 
@@ -115,12 +119,18 @@ public final class TableRenderLayout {
             );
         }
 
-        List<Point> publicHandPoints = new ArrayList<>(seat.hand().size());
-        List<Point> privateHandPoints = new ArrayList<>(seat.hand().size());
+        int handSize = seat.hand().size();
+        List<Point> publicHandPoints = new ArrayList<>(handSize);
+        List<Point> privateHandPoints = new ArrayList<>(handSize);
         List<Integer> selectedHandTileIndices = seat.selectedHandTileIndices();
-        for (int tileIndex = 0; tileIndex < seat.hand().size(); tileIndex++) {
-            publicHandPoints.add(handTilePoint(displayCenter, seat, wind, tileIndex, false));
-            privateHandPoints.add(handTilePoint(displayCenter, seat, wind, tileIndex, selectedHandTileIndices.contains(tileIndex)));
+        double startingPos = handStartingPosition(seat, handSize);
+        SeatWind direction = displayDirection(wind);
+        for (int tileIndex = 0; tileIndex < handSize; tileIndex++) {
+            Point publicPoint = handTilePoint(handBase, direction, handSize, startingPos, tileIndex, false);
+            publicHandPoints.add(publicPoint);
+            privateHandPoints.add(selectedHandTileIndices.contains(tileIndex)
+                ? handTilePoint(handBase, direction, handSize, startingPos, tileIndex, true)
+                : publicPoint);
         }
 
         return new SeatLayoutPlan(
@@ -130,8 +140,8 @@ public final class TableRenderLayout {
             playerNameLocation,
             interactionLocation,
             yaw,
-            List.copyOf(publicHandPoints),
-            List.copyOf(privateHandPoints),
+            immutableList(publicHandPoints),
+            immutableList(privateHandPoints),
             precomputeDiscards(displayCenter, seat, snapshot.openDoorSeat()),
             precomputeMelds(displayCenter, seat),
             precomputeSticks(displayCenter, seat)
@@ -157,10 +167,20 @@ public final class TableRenderLayout {
                 List.of()
             );
         }
-        List<Point> privateHandPoints = new ArrayList<>(seat.hand().size());
+        int handSize = seat.hand().size();
+        List<Point> privateHandPoints = new ArrayList<>(handSize);
         List<Integer> selectedHandTileIndices = seat.selectedHandTileIndices();
-        for (int tileIndex = 0; tileIndex < seat.hand().size(); tileIndex++) {
-            privateHandPoints.add(handTilePoint(displayCenter, seat, wind, tileIndex, selectedHandTileIndices.contains(tileIndex)));
+        double startingPos = handStartingPosition(seat, handSize);
+        SeatWind direction = displayDirection(wind);
+        for (int tileIndex = 0; tileIndex < handSize; tileIndex++) {
+            privateHandPoints.add(handTilePoint(
+                handBase,
+                direction,
+                handSize,
+                startingPos,
+                tileIndex,
+                selectedHandTileIndices.contains(tileIndex)
+            ));
         }
         return new SeatLayoutPlan(
             wind,
@@ -170,14 +190,18 @@ public final class TableRenderLayout {
             handBase,
             yaw,
             List.of(),
-            List.copyOf(privateHandPoints),
+            immutableList(privateHandPoints),
             List.of(),
             List.of(),
             List.of()
         );
     }
 
-    private static List<TilePlacement> precomputeWall(Point displayCenter, TableRenderSnapshot snapshot) {
+    private static List<TilePlacement> precomputeWall(
+        Point displayCenter,
+        TableRenderSnapshot snapshot,
+        List<DeadWallPlacement> deadWallPlacements
+    ) {
         if (!snapshot.started()) {
             return List.of();
         }
@@ -195,7 +219,6 @@ public final class TableRenderLayout {
             }
         }
 
-        List<DeadWallPlacement> deadWallPlacements = deadWallPlacements(displayCenter, snapshot);
         List<TilePlacement> placements = Arrays.asList(new TilePlacement[TOTAL_WALL_TILES]);
         boolean[] occupiedSlots = new boolean[TOTAL_WALL_TILES];
         int breakTileIndex = wallBreakTileIndex(snapshot);
@@ -261,7 +284,7 @@ public final class TableRenderLayout {
 
     private static int exposedFlowerCount(TableRenderSnapshot snapshot) {
         int count = 0;
-        for (SeatWind wind : SeatWind.values()) {
+        for (SeatWind wind : SEAT_WINDS) {
             TableSeatRenderSnapshot seat = snapshot.seat(wind);
             if (seat == null) {
                 continue;
@@ -277,17 +300,19 @@ public final class TableRenderLayout {
         return count;
     }
 
-    private static List<TilePlacement> precomputeDora(Point displayCenter, TableRenderSnapshot snapshot) {
+    private static List<TilePlacement> precomputeDora(
+        TableRenderSnapshot snapshot,
+        List<DeadWallPlacement> deadWallPlacements
+    ) {
         if (!snapshot.started() || !snapshot.usesDeadWall()) {
             return List.of();
         }
-        List<DeadWallPlacement> deadWallPlacements = deadWallPlacements(displayCenter, snapshot);
         List<TilePlacement> placements = new ArrayList<>(snapshot.doraIndicators().size());
         for (int i = 0; i < snapshot.doraIndicators().size(); i++) {
             DeadWallPlacement placement = deadWallPlacements.get(doraIndicatorDeadWallIndex(snapshot.kanCount(), i));
             placements.add(new TilePlacement(placement.point(), placement.yaw(), snapshot.doraIndicators().get(i), DisplayEntities.TileRenderPose.FLAT_FACE_UP));
         }
-        return List.copyOf(placements);
+        return immutableList(placements);
     }
 
     private static List<StickPlacement> precomputeSticks(Point displayCenter, TableSeatRenderSnapshot seat) {
@@ -301,7 +326,7 @@ public final class TableRenderLayout {
         if (seat.riichi()) {
             placements.add(new StickPlacement(riichiStickCenter(displayCenter, seat.wind()), riichiStickLongOnX(seat.wind()), ScoringStick.P1000));
         }
-        return List.copyOf(placements);
+        return immutableList(placements);
     }
 
     private static List<TilePlacement> precomputeDiscards(
@@ -350,7 +375,7 @@ public final class TableRenderLayout {
                 DisplayEntities.TileRenderPose.FLAT_FACE_UP
             ));
         }
-        return List.copyOf(placements);
+        return immutableList(placements);
     }
 
     private static List<TilePlacement> precomputeMelds(Point displayCenter, TableSeatRenderSnapshot seat) {
@@ -440,27 +465,31 @@ public final class TableRenderLayout {
                 lastTileWasHorizontal = false;
             }
         }
-        return List.copyOf(placements);
+        return immutableList(placements);
     }
 
-    private static Point handTilePoint(
-        Point displayCenter,
-        TableSeatRenderSnapshot seat,
-        SeatWind wind,
-        int tileIndex,
-        boolean selected
-    ) {
-        Point handBase = handDirectionBase(displayCenter, wind);
-        int handSize = seat.hand().size();
+    private static double handStartingPosition(TableSeatRenderSnapshot seat, int handSize) {
         int meldCount = seat.melds().size();
         double fuuroOffset = meldCount < 3 ? 0.0D : (meldCount - 2.0D) * TILE_WIDTH;
         int stickCount = seat.stickLayoutCount();
         double sticksOffset = stickCount < 3 ? 0.0D : (stickCount - 2.0D) * STICK_DEPTH;
-        double startingPos = (handSize * TILE_WIDTH + Math.max(0, handSize - 1) * TILE_PADDING) / 2.0D + fuuroOffset + sticksOffset;
+        return (handSize * TILE_WIDTH + Math.max(0, handSize - 1) * TILE_PADDING) / 2.0D
+            + fuuroOffset
+            + sticksOffset;
+    }
+
+    private static Point handTilePoint(
+        Point handBase,
+        SeatWind direction,
+        int handSize,
+        double startingPos,
+        int tileIndex,
+        boolean selected
+    ) {
         double drawGap = tileIndex == handSize - 1 && handSize % 3 == 2 ? TILE_PADDING * 15.0D : 0.0D;
         double stackOffset = tileIndex * (TILE_WIDTH + TILE_PADDING) + drawGap;
         double tileYOffset = selected ? SELECTED_HAND_TILE_Y_OFFSET : 0.0D;
-        return switch (displayDirection(wind)) {
+        return switch (direction) {
             case EAST -> handBase.add(0.0D, UPRIGHT_TILE_Y + tileYOffset, startingPos - stackOffset);
             case SOUTH -> handBase.add(-startingPos + stackOffset, UPRIGHT_TILE_Y + tileYOffset, 0.0D);
             case WEST -> handBase.add(0.0D, UPRIGHT_TILE_Y + tileYOffset, -startingPos + stackOffset);
@@ -468,8 +497,12 @@ public final class TableRenderLayout {
         };
     }
 
+    private static <T> List<T> immutableList(List<T> values) {
+        return values.isEmpty() ? List.of() : Collections.unmodifiableList(values);
+    }
+
     private static int wallBreakTileIndex(TableRenderSnapshot snapshot) {
-        int seatCount = SeatWind.values().length;
+        int seatCount = SEAT_WINDS.length;
         int dicePoints = snapshot.dicePoints();
         int breakDice = snapshot.breakDicePoints();
         int openDoorIndex = Math.floorMod(snapshot.dealerSeat().index() + dicePoints - 1, seatCount);
@@ -500,7 +533,7 @@ public final class TableRenderLayout {
     }
 
     private static Point meldStartByDisplayDirection(Point center, SeatWind direction) {
-        for (SeatWind wind : SeatWind.values()) {
+        for (SeatWind wind : SEAT_WINDS) {
             if (displayDirection(wind) == direction) {
                 return meldStart(center, wind);
             }
