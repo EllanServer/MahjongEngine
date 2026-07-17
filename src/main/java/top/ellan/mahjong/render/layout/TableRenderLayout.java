@@ -115,12 +115,40 @@ public final class TableRenderLayout {
             );
         }
 
-        List<Point> publicHandPoints = new ArrayList<>(seat.hand().size());
-        List<Point> privateHandPoints = new ArrayList<>(seat.hand().size());
+        int handSize = seat.hand().size();
+        int meldCount = seat.melds().size();
+        int stickCount = seat.stickLayoutCount();
+        double fuuroOffset = meldCount < 3 ? 0.0D : (meldCount - 2.0D) * TILE_WIDTH;
+        double sticksOffset = stickCount < 3 ? 0.0D : (stickCount - 2.0D) * STICK_DEPTH;
+        double startingPos = (handSize * TILE_WIDTH + Math.max(0, handSize - 1) * TILE_PADDING) / 2.0D + fuuroOffset + sticksOffset;
+        SeatWind displayDirection = displayDirection(wind);
+
+        List<Point> publicHandPoints = new ArrayList<>(handSize);
+        List<Point> privateHandPoints = new ArrayList<>(handSize);
         List<Integer> selectedHandTileIndices = seat.selectedHandTileIndices();
-        for (int tileIndex = 0; tileIndex < seat.hand().size(); tileIndex++) {
-            publicHandPoints.add(handTilePoint(displayCenter, seat, wind, tileIndex, false));
-            privateHandPoints.add(handTilePoint(displayCenter, seat, wind, tileIndex, selectedHandTileIndices.contains(tileIndex)));
+        double hbx = handBase.x();
+        double hby = handBase.y();
+        double hbz = handBase.z();
+        double publicBaseY = hby + UPRIGHT_TILE_Y;
+        for (int tileIndex = 0; tileIndex < handSize; tileIndex++) {
+            double drawGap = tileIndex == handSize - 1 && handSize % 3 == 2 ? TILE_PADDING * 15.0D : 0.0D;
+            double stackOffset = tileIndex * (TILE_WIDTH + TILE_PADDING) + drawGap;
+            boolean selected = selectedHandTileIndices.contains(tileIndex);
+            Point publicPoint = switch (displayDirection) {
+                case EAST -> new Point(hbx, publicBaseY, hbz + startingPos - stackOffset);
+                case SOUTH -> new Point(hbx - startingPos + stackOffset, publicBaseY, hbz);
+                case WEST -> new Point(hbx, publicBaseY, hbz - startingPos + stackOffset);
+                case NORTH -> new Point(hbx + startingPos - stackOffset, publicBaseY, hbz);
+            };
+            double privateY = selected ? publicBaseY + SELECTED_HAND_TILE_Y_OFFSET : publicBaseY;
+            Point privatePoint = switch (displayDirection) {
+                case EAST -> new Point(hbx, privateY, hbz + startingPos - stackOffset);
+                case SOUTH -> new Point(hbx - startingPos + stackOffset, privateY, hbz);
+                case WEST -> new Point(hbx, privateY, hbz - startingPos + stackOffset);
+                case NORTH -> new Point(hbx + startingPos - stackOffset, privateY, hbz);
+            };
+            publicHandPoints.add(publicPoint);
+            privateHandPoints.add(privatePoint);
         }
 
         return new SeatLayoutPlan(
@@ -157,10 +185,31 @@ public final class TableRenderLayout {
                 List.of()
             );
         }
-        List<Point> privateHandPoints = new ArrayList<>(seat.hand().size());
+        int handSize = seat.hand().size();
+        int meldCount = seat.melds().size();
+        int stickCount = seat.stickLayoutCount();
+        double fuuroOffset = meldCount < 3 ? 0.0D : (meldCount - 2.0D) * TILE_WIDTH;
+        double sticksOffset = stickCount < 3 ? 0.0D : (stickCount - 2.0D) * STICK_DEPTH;
+        double startingPos = (handSize * TILE_WIDTH + Math.max(0, handSize - 1) * TILE_PADDING) / 2.0D + fuuroOffset + sticksOffset;
+        SeatWind displayDirection = displayDirection(wind);
+        double hbx = handBase.x();
+        double hby = handBase.y();
+        double hbz = handBase.z();
+        double baseY = hby + UPRIGHT_TILE_Y;
+        List<Point> privateHandPoints = new ArrayList<>(handSize);
         List<Integer> selectedHandTileIndices = seat.selectedHandTileIndices();
-        for (int tileIndex = 0; tileIndex < seat.hand().size(); tileIndex++) {
-            privateHandPoints.add(handTilePoint(displayCenter, seat, wind, tileIndex, selectedHandTileIndices.contains(tileIndex)));
+        for (int tileIndex = 0; tileIndex < handSize; tileIndex++) {
+            double drawGap = tileIndex == handSize - 1 && handSize % 3 == 2 ? TILE_PADDING * 15.0D : 0.0D;
+            double stackOffset = tileIndex * (TILE_WIDTH + TILE_PADDING) + drawGap;
+            boolean selected = selectedHandTileIndices.contains(tileIndex);
+            double py = selected ? baseY + SELECTED_HAND_TILE_Y_OFFSET : baseY;
+            Point point = switch (displayDirection) {
+                case EAST -> new Point(hbx, py, hbz + startingPos - stackOffset);
+                case SOUTH -> new Point(hbx - startingPos + stackOffset, py, hbz);
+                case WEST -> new Point(hbx, py, hbz - startingPos + stackOffset);
+                case NORTH -> new Point(hbx + startingPos - stackOffset, py, hbz);
+            };
+            privateHandPoints.add(point);
         }
         return new SeatLayoutPlan(
             wind,
@@ -294,12 +343,15 @@ public final class TableRenderLayout {
         if (seat.playerId() == null) {
             return List.of();
         }
-        List<StickPlacement> placements = new ArrayList<>(seat.cornerSticks().size() + (seat.riichi() ? 1 : 0));
-        for (int i = 0; i < seat.cornerSticks().size(); i++) {
-            placements.add(new StickPlacement(cornerStickCenter(displayCenter, seat.wind(), i), cornerStickLongOnX(seat.wind()), seat.cornerSticks().get(i)));
+        SeatWind wind = seat.wind();
+        List<ScoringStick> cornerSticks = seat.cornerSticks();
+        List<StickPlacement> placements = new ArrayList<>(cornerSticks.size() + (seat.riichi() ? 1 : 0));
+        boolean longOnX = cornerStickLongOnX(wind);
+        for (int i = 0; i < cornerSticks.size(); i++) {
+            placements.add(new StickPlacement(cornerStickCenter(displayCenter, wind, i), longOnX, cornerSticks.get(i)));
         }
         if (seat.riichi()) {
-            placements.add(new StickPlacement(riichiStickCenter(displayCenter, seat.wind()), riichiStickLongOnX(seat.wind()), ScoringStick.P1000));
+            placements.add(new StickPlacement(riichiStickCenter(displayCenter, wind), riichiStickLongOnX(wind), ScoringStick.P1000));
         }
         return List.copyOf(placements);
     }
@@ -312,12 +364,19 @@ public final class TableRenderLayout {
         if (seat.playerId() == null) {
             return List.of();
         }
-        List<TilePlacement> placements = new ArrayList<>(seat.discards().size());
-        Point start = discardStart(displayCenter, seat.wind());
+        SeatWind wind = seat.wind();
+        int discardCount = seat.discards().size();
+        List<TilePlacement> placements = new ArrayList<>(discardCount);
+        Point start = discardStart(displayCenter, wind);
         Point cursor = start;
-        boolean openDoorSeatMatches = openDoorSeat == seat.wind();
+        boolean openDoorSeatMatches = openDoorSeat == wind;
+        Offset lo = lineOffset(wind);
+        Offset to = tileOffset(wind);
+        Offset rto = riichiTileOffset(wind);
+        Offset sgo = smallGapOffset(wind);
+        Offset negTo = negate(to);
 
-        for (int discardIndex = 0; discardIndex < seat.discards().size(); discardIndex++) {
+        for (int discardIndex = 0; discardIndex < discardCount; discardIndex++) {
             int lineCount = discardIndex / DISCARDS_PER_ROW;
             int column = discardIndex % DISCARDS_PER_ROW;
             boolean firstTileInRow = column == 0;
@@ -325,27 +384,22 @@ public final class TableRenderLayout {
             boolean previousWasRiichi = discardIndex > 0 && discardIndex - 1 == seat.riichiDiscardIndex();
 
             if (lineCount > 0 && firstTileInRow && !(openDoorSeatMatches && discardIndex >= DISCARDS_PER_ROW * 3)) {
-                cursor = start;
-                for (int i = 0; i < lineCount; i++) {
-                    cursor = add(cursor, lineOffset(seat.wind()));
-                }
+                cursor = new Point(start.x() + lo.x() * lineCount, start.y(), start.z() + lo.z() * lineCount);
             }
 
             if (firstTileInRow) {
                 if (riichiTile) {
-                    cursor = add(cursor, riichiTileOffset(seat.wind()));
-                    cursor = add(cursor, negate(tileOffset(seat.wind())));
+                    cursor = add(cursor, rto);
+                    cursor = add(cursor, negTo);
                 }
             } else {
-                cursor = riichiTile || previousWasRiichi
-                    ? add(cursor, riichiTileOffset(seat.wind()))
-                    : add(cursor, tileOffset(seat.wind()));
-                cursor = add(cursor, smallGapOffset(seat.wind()));
+                cursor = add(cursor, riichiTile || previousWasRiichi ? rto : to);
+                cursor = add(cursor, sgo);
             }
 
             placements.add(new TilePlacement(
                 cursor.add(0.0D, FLAT_TILE_Y, 0.0D),
-                DiscardLayout.discardYaw(seat.wind(), riichiTile),
+                DiscardLayout.discardYaw(wind, riichiTile),
                 seat.discards().get(discardIndex),
                 DisplayEntities.TileRenderPose.FLAT_FACE_UP
             ));
@@ -358,13 +412,19 @@ public final class TableRenderLayout {
             return List.of();
         }
 
-        float yaw = seatYaw(seat.wind());
+        SeatWind wind = seat.wind();
+        float yaw = seatYaw(wind);
         List<TilePlacement> placements = new ArrayList<>();
-        Point cursor = meldStart(displayCenter, seat.wind());
+        Point cursor = meldStart(displayCenter, wind);
         int stickCount = seat.stickLayoutCount();
         if (stickCount > 0) {
-            cursor = add(cursor, cornerStickMeldOffset(seat.wind(), Math.min(stickCount, STICKS_PER_STACK)));
+            cursor = add(cursor, cornerStickMeldOffset(wind, Math.min(stickCount, STICKS_PER_STACK)));
         }
+        Offset halfVert = halfVerticalTileOffset(wind);
+        Offset halfHoriz = halfHorizontalTileOffset(wind);
+        Offset vert = verticalTileOffset(wind);
+        Offset horiz = horizontalTileOffset(wind);
+        Offset horizGrav = horizontalTileGravityOffset(wind);
         boolean lastTileWasHorizontal = false;
         int placedTileCount = 0;
 
@@ -376,11 +436,11 @@ public final class TableRenderLayout {
             if (concealedKan) {
                 for (int i = 0; i < meld.tiles().size(); i++) {
                     if (placedTileCount == 0) {
-                        cursor = add(cursor, halfVerticalTileOffset(seat.wind()));
+                        cursor = add(cursor, halfVert);
                     } else if (lastTileWasHorizontal) {
-                        cursor = add(cursor, add(halfHorizontalTileOffset(seat.wind()), halfVerticalTileOffset(seat.wind())));
+                        cursor = add(cursor, add(halfHoriz, halfVert));
                     } else {
-                        cursor = add(cursor, verticalTileOffset(seat.wind()));
+                        cursor = add(cursor, vert);
                     }
                     placements.add(new TilePlacement(
                         cursor.add(0.0D, FLAT_TILE_Y, 0.0D),
@@ -397,16 +457,16 @@ public final class TableRenderLayout {
             for (int i = 0; i < meld.tiles().size(); i++) {
                 boolean claimTile = meld.hasClaimTile() && i == meld.claimTileIndex();
                 if (placedTileCount == 0) {
-                    cursor = add(cursor, claimTile ? halfHorizontalTileOffset(seat.wind()) : halfVerticalTileOffset(seat.wind()));
+                    cursor = add(cursor, claimTile ? halfHoriz : halfVert);
                 } else if (claimTile || lastTileWasHorizontal) {
                     cursor = claimTile && lastTileWasHorizontal
-                        ? add(cursor, horizontalTileOffset(seat.wind()))
-                        : add(cursor, add(halfHorizontalTileOffset(seat.wind()), halfVerticalTileOffset(seat.wind())));
+                        ? add(cursor, horiz)
+                        : add(cursor, add(halfHoriz, halfVert));
                 } else {
-                    cursor = add(cursor, verticalTileOffset(seat.wind()));
+                    cursor = add(cursor, vert);
                 }
 
-                Point basePoint = claimTile ? add(cursor, horizontalTileGravityOffset(seat.wind())) : cursor;
+                Point basePoint = claimTile ? add(cursor, horizGrav) : cursor;
                 if (firstTileBase == null) {
                     firstTileBase = basePoint;
                 }
@@ -417,7 +477,6 @@ public final class TableRenderLayout {
                     meld.tiles().get(i),
                     meld.faceDownAt(i) ? DisplayEntities.TileRenderPose.FLAT_FACE_DOWN : DisplayEntities.TileRenderPose.FLAT_FACE_UP
                 ));
-                // Added-kan tile should follow the target (claimed) tile position.
                 if (claimTile) {
                     kakanStackBase = basePoint;
                     kakanStackYaw = tileYaw;
@@ -432,7 +491,7 @@ public final class TableRenderLayout {
             }
             if (meld.hasAddedKanTile() && kakanStackBase != null) {
                 placements.add(new TilePlacement(
-                    add(kakanStackBase, offsetTowardTableCenter(seat.wind(), TILE_WIDTH + TILE_PADDING)).add(0.0D, FLAT_TILE_Y, 0.0D),
+                    add(kakanStackBase, offsetTowardTableCenter(wind, TILE_WIDTH + TILE_PADDING)).add(0.0D, FLAT_TILE_Y, 0.0D),
                     kakanStackYaw,
                     meld.addedKanTile(),
                     DisplayEntities.TileRenderPose.FLAT_FACE_UP
@@ -441,31 +500,6 @@ public final class TableRenderLayout {
             }
         }
         return List.copyOf(placements);
-    }
-
-    private static Point handTilePoint(
-        Point displayCenter,
-        TableSeatRenderSnapshot seat,
-        SeatWind wind,
-        int tileIndex,
-        boolean selected
-    ) {
-        Point handBase = handDirectionBase(displayCenter, wind);
-        int handSize = seat.hand().size();
-        int meldCount = seat.melds().size();
-        double fuuroOffset = meldCount < 3 ? 0.0D : (meldCount - 2.0D) * TILE_WIDTH;
-        int stickCount = seat.stickLayoutCount();
-        double sticksOffset = stickCount < 3 ? 0.0D : (stickCount - 2.0D) * STICK_DEPTH;
-        double startingPos = (handSize * TILE_WIDTH + Math.max(0, handSize - 1) * TILE_PADDING) / 2.0D + fuuroOffset + sticksOffset;
-        double drawGap = tileIndex == handSize - 1 && handSize % 3 == 2 ? TILE_PADDING * 15.0D : 0.0D;
-        double stackOffset = tileIndex * (TILE_WIDTH + TILE_PADDING) + drawGap;
-        double tileYOffset = selected ? SELECTED_HAND_TILE_Y_OFFSET : 0.0D;
-        return switch (displayDirection(wind)) {
-            case EAST -> handBase.add(0.0D, UPRIGHT_TILE_Y + tileYOffset, startingPos - stackOffset);
-            case SOUTH -> handBase.add(-startingPos + stackOffset, UPRIGHT_TILE_Y + tileYOffset, 0.0D);
-            case WEST -> handBase.add(0.0D, UPRIGHT_TILE_Y + tileYOffset, -startingPos + stackOffset);
-            case NORTH -> handBase.add(startingPos - stackOffset, UPRIGHT_TILE_Y + tileYOffset, 0.0D);
-        };
     }
 
     private static int wallBreakTileIndex(TableRenderSnapshot snapshot) {
@@ -500,12 +534,13 @@ public final class TableRenderLayout {
     }
 
     private static Point meldStartByDisplayDirection(Point center, SeatWind direction) {
-        for (SeatWind wind : SeatWind.values()) {
-            if (displayDirection(wind) == direction) {
-                return meldStart(center, wind);
-            }
-        }
-        throw new IllegalStateException("Missing meld start for display direction: " + direction);
+        SeatWind wind = switch (direction) {
+            case EAST -> SeatWind.EAST;
+            case SOUTH -> SeatWind.NORTH;
+            case WEST -> SeatWind.WEST;
+            case NORTH -> SeatWind.SOUTH;
+        };
+        return meldStart(center, wind);
     }
 
     private static Point wallSlotPoint(

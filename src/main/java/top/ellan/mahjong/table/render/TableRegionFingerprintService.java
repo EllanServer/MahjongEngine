@@ -265,12 +265,31 @@ public final class TableRegionFingerprintService {
         private long hash = FNV_OFFSET_BASIS;
         private boolean needsSeparator;
 
+        private FingerprintBuilder field(String value) {
+            this.startField('o');
+            if (value != null) {
+                long h = this.hash;
+                for (int i = 0, len = value.length(); i < len; i++) {
+                    h ^= value.charAt(i) & 0xffL;
+                    h *= FNV_PRIME;
+                }
+                this.hash = h;
+            }
+            return this;
+        }
+
         private FingerprintBuilder field(Object value) {
+            if (value instanceof String s) {
+                return this.field(s);
+            }
             this.startField('o');
             String text = Objects.toString(value, "");
-            for (int index = 0; index < text.length(); index++) {
-                this.mix(text.charAt(index));
+            long h = this.hash;
+            for (int i = 0, len = text.length(); i < len; i++) {
+                h ^= text.charAt(i) & 0xffL;
+                h *= FNV_PRIME;
             }
+            this.hash = h;
             return this;
         }
 
@@ -279,29 +298,59 @@ public final class TableRegionFingerprintService {
                 return this.field((Object) null);
             }
             this.startField('u');
-            this.mixLong(value.getMostSignificantBits());
-            this.mixLong(value.getLeastSignificantBits());
+            long h = this.hash;
+            long msb = value.getMostSignificantBits();
+            h ^= msb & 0xffL; h *= FNV_PRIME;
+            h ^= (msb >>> 8) & 0xffL; h *= FNV_PRIME;
+            h ^= (msb >>> 16) & 0xffL; h *= FNV_PRIME;
+            h ^= (msb >>> 24) & 0xffL; h *= FNV_PRIME;
+            h ^= (msb >>> 32) & 0xffL; h *= FNV_PRIME;
+            h ^= (msb >>> 40) & 0xffL; h *= FNV_PRIME;
+            h ^= (msb >>> 48) & 0xffL; h *= FNV_PRIME;
+            h ^= (msb >>> 56) & 0xffL; h *= FNV_PRIME;
+            long lsb = value.getLeastSignificantBits();
+            h ^= lsb & 0xffL; h *= FNV_PRIME;
+            h ^= (lsb >>> 8) & 0xffL; h *= FNV_PRIME;
+            h ^= (lsb >>> 16) & 0xffL; h *= FNV_PRIME;
+            h ^= (lsb >>> 24) & 0xffL; h *= FNV_PRIME;
+            h ^= (lsb >>> 32) & 0xffL; h *= FNV_PRIME;
+            h ^= (lsb >>> 40) & 0xffL; h *= FNV_PRIME;
+            h ^= (lsb >>> 48) & 0xffL; h *= FNV_PRIME;
+            h ^= (lsb >>> 56) & 0xffL; h *= FNV_PRIME;
+            this.hash = h;
             return this;
         }
 
         private FingerprintBuilder field(boolean value) {
             this.startField('b');
-            this.mix(value ? 1 : 0);
+            this.hash ^= value ? 1L : 0L;
+            this.hash *= FNV_PRIME;
             return this;
         }
 
         private FingerprintBuilder field(int value) {
             this.startField('i');
-            this.mix(value);
-            this.mix(value >>> 8);
-            this.mix(value >>> 16);
-            this.mix(value >>> 24);
+            long h = this.hash;
+            h ^= value & 0xffL; h *= FNV_PRIME;
+            h ^= (value >>> 8) & 0xffL; h *= FNV_PRIME;
+            h ^= (value >>> 16) & 0xffL; h *= FNV_PRIME;
+            h ^= (value >>> 24) & 0xffL; h *= FNV_PRIME;
+            this.hash = h;
             return this;
         }
 
         private FingerprintBuilder field(long value) {
             this.startField('l');
-            this.mixLong(value);
+            long h = this.hash;
+            h ^= value & 0xffL; h *= FNV_PRIME;
+            h ^= (value >>> 8) & 0xffL; h *= FNV_PRIME;
+            h ^= (value >>> 16) & 0xffL; h *= FNV_PRIME;
+            h ^= (value >>> 24) & 0xffL; h *= FNV_PRIME;
+            h ^= (value >>> 32) & 0xffL; h *= FNV_PRIME;
+            h ^= (value >>> 40) & 0xffL; h *= FNV_PRIME;
+            h ^= (value >>> 48) & 0xffL; h *= FNV_PRIME;
+            h ^= (value >>> 56) & 0xffL; h *= FNV_PRIME;
+            this.hash = h;
             return this;
         }
 
@@ -310,27 +359,15 @@ public final class TableRegionFingerprintService {
         }
 
         private void startField(char type) {
+            long h = this.hash;
             if (this.needsSeparator) {
-                this.mix(':');
+                h ^= ':' & 0xffL;
+                h *= FNV_PRIME;
             }
-            this.mix(type);
+            h ^= type & 0xffL;
+            h *= FNV_PRIME;
+            this.hash = h;
             this.needsSeparator = true;
-        }
-
-        private void mixLong(long value) {
-            this.mix((int) value);
-            this.mix((int) (value >>> 8));
-            this.mix((int) (value >>> 16));
-            this.mix((int) (value >>> 24));
-            this.mix((int) (value >>> 32));
-            this.mix((int) (value >>> 40));
-            this.mix((int) (value >>> 48));
-            this.mix((int) (value >>> 56));
-        }
-
-        private void mix(int value) {
-            this.hash ^= value & 0xffL;
-            this.hash *= FNV_PRIME;
         }
     }
 }
