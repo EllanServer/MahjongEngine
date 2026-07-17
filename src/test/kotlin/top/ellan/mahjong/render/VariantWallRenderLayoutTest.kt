@@ -17,8 +17,11 @@ import java.util.EnumMap
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class VariantWallRenderLayoutTest {
@@ -64,6 +67,31 @@ class VariantWallRenderLayoutTest {
         assertNotNull(plan.wallTiles()[86])
         assertNull(plan.wallTiles()[4])
         assertNull(plan.wallTiles()[87])
+    }
+
+    @Test
+    fun `unselected private hand points reuse public coordinates and layout lists remain immutable`() {
+        val plan =
+            TableRenderLayout.precompute(
+                snapshot(
+                    MahjongVariant.GB,
+                    remainingWallCount = 91,
+                    eastHand = listOf(MahjongTile.M1, MahjongTile.M2, MahjongTile.M3),
+                    eastSelectedHandTileIndices = listOf(1),
+                ),
+            )
+        val east = plan.seat(SeatWind.EAST)
+
+        assertSame(east.publicHandPoints()[0], east.privateHandPoints()[0])
+        assertNotSame(east.publicHandPoints()[1], east.privateHandPoints()[1])
+        assertEquals(
+            east.publicHandPoints()[1].y() + 0.06,
+            east.privateHandPoints()[1].y(),
+            1.0e-9,
+        )
+        assertFailsWith<UnsupportedOperationException> {
+            east.publicHandPoints().add(east.publicHandPoints()[0])
+        }
     }
 
     @Test
@@ -157,6 +185,8 @@ class VariantWallRenderLayoutTest {
         kanCount: Int = 0,
         dora: List<MahjongTile> = emptyList(),
         eastFlowers: List<MahjongTile> = emptyList(),
+        eastHand: List<MahjongTile> = emptyList(),
+        eastSelectedHandTileIndices: List<Int> = emptyList(),
         dealerSeat: SeatWind = SeatWind.EAST,
         roundIndex: Int = 0,
         dicePoints: Int = 3,
@@ -183,11 +213,11 @@ class VariantWallRenderLayoutTest {
                     true,
                     "",
                     -1,
-                    emptyList(),
+                    if (wind == SeatWind.EAST) eastSelectedHandTileIndices else emptyList(),
                     -1,
                     0,
                     emptyList(),
-                    emptyList(),
+                    if (wind == SeatWind.EAST) eastHand else emptyList(),
                     emptyList(),
                     melds,
                     emptyList(),
