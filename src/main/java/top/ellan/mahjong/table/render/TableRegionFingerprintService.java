@@ -1,6 +1,8 @@
 package top.ellan.mahjong.table.render;
 
+import top.ellan.mahjong.model.MahjongTile;
 import top.ellan.mahjong.model.SeatWind;
+import top.ellan.mahjong.riichi.model.ScoringStick;
 import top.ellan.mahjong.render.TableRenderSubject;
 import top.ellan.mahjong.render.layout.TableRenderLayout;
 import top.ellan.mahjong.render.snapshot.TableRenderSnapshot;
@@ -15,18 +17,37 @@ public final class TableRegionFingerprintService {
     private static final String REGION_DORA = "dora";
     private static final String REGION_CENTER = "center";
 
+    private static final String[][] SEAT_REGION_KEYS = createSeatRegionKeys();
+    private static final int SEAT_KEY_VISUAL = 0;
+    private static final int SEAT_KEY_LABELS = 1;
+    private static final int SEAT_KEY_STICKS = 2;
+    private static final int SEAT_KEY_HAND_PUBLIC = 3;
+
+    private static String[][] createSeatRegionKeys() {
+        SeatWind[] winds = SeatWind.values();
+        String[][] keys = new String[4][winds.length];
+        String[] prefixes = {"visual", "labels", "sticks", "hand-public"};
+        for (int region = 0; region < prefixes.length; region++) {
+            for (SeatWind wind : winds) {
+                keys[region][wind.index()] = prefixes[region] + ":" + wind.name();
+            }
+        }
+        return keys;
+    }
+
     public Map<String, Long> precomputeRegionFingerprints(TableRenderSubject session, TableRenderSnapshot snapshot) {
-        Map<String, Long> fingerprints = new HashMap<>();
+        Map<String, Long> fingerprints = new HashMap<>(32);
         fingerprints.put(REGION_TABLE, this.tableFingerprint(session, snapshot));
         fingerprints.put(REGION_WALL, this.wallFingerprint(snapshot));
         fingerprints.put(REGION_DORA, this.doraFingerprint(snapshot));
         fingerprints.put(REGION_CENTER, this.centerFingerprint(snapshot));
         for (SeatWind wind : SeatWind.values()) {
+            int idx = wind.index();
             TableSeatRenderSnapshot seat = snapshot.seat(wind);
-            fingerprints.put(this.seatRegionKey("visual", wind), this.seatVisualFingerprint(session, wind));
-            fingerprints.put(this.seatRegionKey("labels", wind), this.seatLabelFingerprint(session, snapshot, seat));
-            fingerprints.put(this.seatRegionKey("sticks", wind), this.stickFingerprint(snapshot, seat));
-            fingerprints.put(this.seatRegionKey("hand-public", wind), this.handPublicFingerprint(snapshot, seat));
+            fingerprints.put(SEAT_REGION_KEYS[SEAT_KEY_VISUAL][idx], this.seatVisualFingerprint(session, wind));
+            fingerprints.put(SEAT_REGION_KEYS[SEAT_KEY_LABELS][idx], this.seatLabelFingerprint(session, snapshot, seat));
+            fingerprints.put(SEAT_REGION_KEYS[SEAT_KEY_STICKS][idx], this.stickFingerprint(snapshot, seat));
+            fingerprints.put(SEAT_REGION_KEYS[SEAT_KEY_HAND_PUBLIC][idx], this.handPublicFingerprint(snapshot, seat));
         }
         return Map.copyOf(fingerprints);
     }
@@ -154,7 +175,9 @@ public final class TableRegionFingerprintService {
             .field("dora")
             .field(snapshot.started())
             .field(snapshot.doraIndicators().size());
-        snapshot.doraIndicators().forEach(tile -> builder.field(tile.name()));
+        for (MahjongTile tile : snapshot.doraIndicators()) {
+            builder.field(tile.name());
+        }
         return builder.value();
     }
 
@@ -214,7 +237,9 @@ public final class TableRegionFingerprintService {
             .field(seat.online())
             .field(seat.viewerMembershipSignature())
             .field(seat.stickLayoutCount());
-        seat.hand().forEach(tile -> builder.field(tile.name()));
+        for (MahjongTile tile : seat.hand()) {
+            builder.field(tile.name());
+        }
         return builder.value();
     }
 
@@ -245,18 +270,23 @@ public final class TableRegionFingerprintService {
             return builder.value();
         }
         builder.field(seat.riichi());
-        seat.scoringSticks().forEach(stick -> builder.field(stick.name()));
-        seat.cornerSticks().forEach(stick -> builder.field(stick.name()));
+        for (ScoringStick stick : seat.scoringSticks()) {
+            builder.field(stick.name());
+        }
+        for (ScoringStick stick : seat.cornerSticks()) {
+            builder.field(stick.name());
+        }
         return builder.value();
     }
 
-    private String seatRegionKey(String region, SeatWind wind) {
-        return region + ":" + wind.name();
+    private static FingerprintBuilder fingerprintBuilder(int capacity) {
+        FingerprintBuilder builder = BUILDER_CACHE.get();
+        builder.reset();
+        return builder;
     }
 
-    private static FingerprintBuilder fingerprintBuilder(int capacity) {
-        return new FingerprintBuilder();
-    }
+    private static final ThreadLocal<FingerprintBuilder> BUILDER_CACHE =
+        ThreadLocal.withInitial(FingerprintBuilder::new);
 
     private static final class FingerprintBuilder {
         private static final long FNV_OFFSET_BASIS = 0xcbf29ce484222325L;
@@ -264,6 +294,11 @@ public final class TableRegionFingerprintService {
 
         private long hash = FNV_OFFSET_BASIS;
         private boolean needsSeparator;
+
+        private void reset() {
+            this.hash = FNV_OFFSET_BASIS;
+            this.needsSeparator = false;
+        }
 
         private FingerprintBuilder field(Object value) {
             this.startField('o');
