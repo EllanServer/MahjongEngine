@@ -194,12 +194,13 @@ public final class DisplayEntities {
         if (runtime == null || runtime.bukkitPlugin() == null || specs == null || specs.isEmpty()) {
             return List.of();
         }
-        DisplayEntityRuntime scopedRuntime = visibilitySnapshotRuntime(runtime, true);
-        if (specs.size() == 1) {
-            Entity entity = specs.get(0).spawn(scopedRuntime);
+        int size = specs.size();
+        if (size == 1) {
+            Entity entity = specs.get(0).spawn(runtime);
             return entity == null ? List.of() : List.of(entity);
         }
-        List<Entity> spawned = new java.util.ArrayList<>(specs.size());
+        DisplayEntityRuntime scopedRuntime = visibilitySnapshotRuntime(runtime, true);
+        List<Entity> spawned = new java.util.ArrayList<>(size);
         for (EntitySpec spec : specs) {
             Entity entity = spec.spawn(scopedRuntime);
             if (entity != null) {
