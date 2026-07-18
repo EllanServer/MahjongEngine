@@ -90,6 +90,8 @@ public final class ServerScheduler {
     };
 
     private final Plugin plugin;
+    private volatile Object cachedGlobalRegionScheduler;
+    private volatile Object cachedRegionScheduler;
 
     public ServerScheduler(Plugin plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
@@ -313,11 +315,27 @@ public final class ServerScheduler {
     }
 
     private Object globalRegionScheduler() {
-        return this.invokeNoArgs(this.plugin.getServer(), GET_GLOBAL_REGION_SCHEDULER);
+        Object cached = this.cachedGlobalRegionScheduler;
+        if (cached != null) {
+            return cached;
+        }
+        Object resolved = this.invokeNoArgs(this.plugin.getServer(), GET_GLOBAL_REGION_SCHEDULER);
+        if (resolved != null) {
+            this.cachedGlobalRegionScheduler = resolved;
+        }
+        return resolved;
     }
 
     private Object regionScheduler() {
-        return this.invokeNoArgs(this.plugin.getServer(), GET_REGION_SCHEDULER);
+        Object cached = this.cachedRegionScheduler;
+        if (cached != null) {
+            return cached;
+        }
+        Object resolved = this.invokeNoArgs(this.plugin.getServer(), GET_REGION_SCHEDULER);
+        if (resolved != null) {
+            this.cachedRegionScheduler = resolved;
+        }
+        return resolved;
     }
 
     private Object entityScheduler(Entity entity) {
