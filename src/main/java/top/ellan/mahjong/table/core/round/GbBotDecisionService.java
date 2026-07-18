@@ -30,8 +30,7 @@ final class GbBotDecisionService {
         if (hand == null || hand.isEmpty()) {
             return -1;
         }
-        DiscardChoice best = this.bestDiscardChoice(hand, melds, tingEvaluator);
-        return best == null ? hand.size() - 1 : best.index();
+        return this.bestDiscardIndex(hand, melds, tingEvaluator);
     }
 
     ReactionResponse suggestedReaction(
@@ -176,6 +175,54 @@ final class GbBotDecisionService {
     ) {
         DiscardChoice best = this.bestDiscardChoice(hand, melds, tingEvaluator);
         return best == null ? 0 : best.readyScore();
+    }
+
+    /**
+     * Index-only variant of {@link #bestDiscardChoice} for the
+     * {@link #suggestedDiscardIndex} hot path. Avoids allocating a
+     * {@link DiscardChoice} record per call when the caller only needs the
+     * discard index. The loop body is identical; only the return shape
+     * differs (primitive {@code int} vs record).
+     */
+    private int bestDiscardIndex(
+        List<MahjongTile> hand,
+        List<GbMeldState> melds,
+        TingEvaluator tingEvaluator
+    ) {
+        int bestIndex = -1;
+        long bestReadyScore = 0;
+        int bestDiscardPreference = 0;
+        GbTingResponse[] tingMemo = new GbTingResponse[TILE_KIND_COUNT];
+        MahjongTile previousDiscarded = null;
+        int previousDiscardPreference = 0;
+        for (int i = 0; i < hand.size(); i++) {
+            MahjongTile discarded = hand.get(i);
+            int discardedOrdinal = discarded.ordinal();
+            GbTingResponse ting = tingMemo[discardedOrdinal];
+            boolean tingMemoHit = ting != null;
+            if (ting == null) {
+                List<MahjongTile> remaining = new ArrayList<>(hand);
+                remaining.remove(i);
+                ting = tingEvaluator.evaluate(remaining, melds);
+                if (ting != null) {
+                    tingMemo[discardedOrdinal] = ting;
+                }
+            }
+            long candidateReadyScore = readyScore(ting);
+            int candidateDiscardPreference = tingMemoHit && discarded == previousDiscarded
+                ? previousDiscardPreference
+                : discardPreference(hand, discarded);
+            previousDiscarded = discarded;
+            previousDiscardPreference = candidateDiscardPreference;
+            if (bestIndex < 0
+                || candidateReadyScore > bestReadyScore
+                || (candidateReadyScore == bestReadyScore && candidateDiscardPreference > bestDiscardPreference)) {
+                bestIndex = i;
+                bestReadyScore = candidateReadyScore;
+                bestDiscardPreference = candidateDiscardPreference;
+            }
+        }
+        return bestIndex < 0 ? hand.size() - 1 : bestIndex;
     }
 
     private DiscardChoice bestDiscardChoice(
