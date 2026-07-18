@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Objects;
 
 public final class TableRenderLayout {
     private static final double ONE_SIXTEENTH = 1.0D / 16.0D;
@@ -74,6 +75,122 @@ public final class TableRenderLayout {
             precomputeWall(displayCenter, snapshot, deadWallPlacements),
             precomputeDora(snapshot, deadWallPlacements)
         );
+    }
+
+    /** Reuses immutable center, seat and wall geometry from the immediately preceding layout. */
+    public static LayoutPlan precompute(
+        TableRenderSnapshot snapshot,
+        TableRenderSnapshot previousSnapshot,
+        LayoutPlan previousLayout
+    ) {
+        if (previousSnapshot == null || previousLayout == null) {
+            return precompute(snapshot);
+        }
+        boolean reusableCenter = sameCenter(snapshot, previousSnapshot);
+        Point displayCenter;
+        Point tableCenter;
+        Point tableVisualAnchor;
+        double borderSpanX;
+        double borderSpanZ;
+        if (reusableCenter) {
+            displayCenter = previousLayout.displayCenter();
+            tableCenter = previousLayout.tableCenter();
+            tableVisualAnchor = previousLayout.tableVisualAnchor();
+            borderSpanX = previousLayout.borderSpanX();
+            borderSpanZ = previousLayout.borderSpanZ();
+        } else {
+            displayCenter = new Point(snapshot.centerX(), snapshot.centerY() + DISPLAY_CENTER_Y_OFFSET, snapshot.centerZ());
+            TableBounds bounds = tableBoundsFromTiles(displayCenter);
+            tableCenter = new Point(bounds.centerX(), displayCenter.y(), bounds.centerZ());
+            tableVisualAnchor = new Point(tableCenter.x(), tableCenter.y() + TABLE_VISUAL_Y_OFFSET, tableCenter.z());
+            borderSpanX = bounds.width() + TABLE_TOP_SIZE_EXPANSION + TABLE_BORDER_THICKNESS;
+            borderSpanZ = bounds.depth() + TABLE_TOP_SIZE_EXPANSION + TABLE_BORDER_THICKNESS;
+        }
+
+        EnumMap<SeatWind, SeatLayoutPlan> seats = new EnumMap<>(SeatWind.class);
+        for (SeatWind wind : SEAT_WINDS) {
+            TableSeatRenderSnapshot seat = snapshot.seat(wind);
+            if (reusableCenter && sameSeatLayoutInputs(snapshot, previousSnapshot, wind)) {
+                seats.put(wind, previousLayout.seat(wind));
+            } else {
+                seats.put(wind, precomputeSeat(displayCenter, snapshot, seat));
+            }
+        }
+
+        List<TilePlacement> wallTiles;
+        List<TilePlacement> doraTiles;
+        if (reusableCenter && sameWallLayoutInputs(snapshot, previousSnapshot)) {
+            wallTiles = previousLayout.wallTiles();
+            doraTiles = previousLayout.doraTiles();
+        } else {
+            List<DeadWallPlacement> deadWallPlacements = snapshot.started() && snapshot.usesDeadWall()
+                ? deadWallPlacements(displayCenter, snapshot)
+                : List.of();
+            wallTiles = precomputeWall(displayCenter, snapshot, deadWallPlacements);
+            doraTiles = precomputeDora(snapshot, deadWallPlacements);
+        }
+
+        return new LayoutPlan(
+            displayCenter,
+            tableCenter,
+            tableVisualAnchor,
+            borderSpanX,
+            borderSpanZ,
+            seats,
+            wallTiles,
+            doraTiles
+        );
+    }
+
+    private static boolean sameCenter(TableRenderSnapshot left, TableRenderSnapshot right) {
+        return Double.doubleToLongBits(left.centerX()) == Double.doubleToLongBits(right.centerX())
+            && Double.doubleToLongBits(left.centerY()) == Double.doubleToLongBits(right.centerY())
+            && Double.doubleToLongBits(left.centerZ()) == Double.doubleToLongBits(right.centerZ());
+    }
+
+    private static boolean sameSeatLayoutInputs(
+        TableRenderSnapshot leftSnapshot,
+        TableRenderSnapshot rightSnapshot,
+        SeatWind wind
+    ) {
+        TableSeatRenderSnapshot left = leftSnapshot.seat(wind);
+        TableSeatRenderSnapshot right = rightSnapshot.seat(wind);
+        boolean leftOccupied = left.playerId() != null;
+        boolean rightOccupied = right.playerId() != null;
+        if (leftOccupied != rightOccupied) {
+            return false;
+        }
+        if (!leftOccupied) {
+            return true;
+        }
+        return left.hand().size() == right.hand().size()
+            && left.selectedHandTileIndices().equals(right.selectedHandTileIndices())
+            && left.riichiDiscardIndex() == right.riichiDiscardIndex()
+            && left.stickLayoutCount() == right.stickLayoutCount()
+            && left.discards().equals(right.discards())
+            && left.melds().equals(right.melds())
+            && left.cornerSticks().equals(right.cornerSticks())
+            && left.riichi() == right.riichi()
+            && leftSnapshot.openDoorSeat() == rightSnapshot.openDoorSeat();
+    }
+
+    private static boolean sameWallLayoutInputs(TableRenderSnapshot left, TableRenderSnapshot right) {
+        if (left.started() != right.started()
+            || left.remainingWallCount() != right.remainingWallCount()
+            || left.kanCount() != right.kanCount()
+            || left.dicePoints() != right.dicePoints()
+            || left.breakDicePoints() != right.breakDicePoints()
+            || left.dealerSeat() != right.dealerSeat()
+            || left.variant() != right.variant()
+            || !left.doraIndicators().equals(right.doraIndicators())) {
+            return false;
+        }
+        for (SeatWind wind : SEAT_WINDS) {
+            if (!Objects.equals(left.seat(wind).melds(), right.seat(wind).melds())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static SeatLayoutPlan precomputeSeatOnly(TableRenderSnapshot snapshot, SeatWind wind) {
