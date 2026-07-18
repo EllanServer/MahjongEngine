@@ -9,24 +9,12 @@ import top.ellan.mahjong.riichi.ReactionOptions;
 import top.ellan.mahjong.riichi.ReactionResponse;
 import top.ellan.mahjong.riichi.ReactionResponses;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import kotlin.Pair;
 
 final class GbBotDecisionService {
     private static final int TILE_KIND_COUNT = MahjongTile.values().length;
-
-    /**
-     * Per-thread reuse buffer for the {@code tingMemo} array used by
-     * {@link #bestDiscardChoice}. The array is indexed by tile ordinal and is
-     * fully cleared ({@link Arrays#fill}) at the start of every call, so no
-     * state leaks across invocations. Reuse eliminates a 45-element heap
-     * allocation on every discard decision, which is the dominant allocation
-     * on the duplicate-hand hot path measured by {@code GbBotDecisionBenchmark}.
-     */
-    private static final ThreadLocal<GbTingResponse[]> TING_MEMO_BUFFER =
-        ThreadLocal.withInitial(() -> new GbTingResponse[TILE_KIND_COUNT]);
 
     private final int minimumFan;
 
@@ -201,8 +189,7 @@ final class GbBotDecisionService {
         int bestIndex = -1;
         long bestReadyScore = 0;
         int bestDiscardPreference = 0;
-        GbTingResponse[] tingMemo = TING_MEMO_BUFFER.get();
-        Arrays.fill(tingMemo, null);
+        GbTingResponse[] tingMemo = new GbTingResponse[TILE_KIND_COUNT];
         MahjongTile previousDiscarded = null;
         int previousDiscardPreference = 0;
         for (int i = 0; i < hand.size(); i++) {
