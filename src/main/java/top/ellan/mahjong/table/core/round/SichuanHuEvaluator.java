@@ -2,49 +2,50 @@ package top.ellan.mahjong.table.core.round;
 
 import top.ellan.mahjong.model.MahjongTile;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.EnumSet;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 final class SichuanHuEvaluator {
-    private static final List<MahjongTile> SICHUAN_TILES = List.of(
+    private static final MahjongTile[] SICHUAN_TILES = {
         MahjongTile.M1, MahjongTile.M2, MahjongTile.M3, MahjongTile.M4, MahjongTile.M5, MahjongTile.M6, MahjongTile.M7, MahjongTile.M8, MahjongTile.M9,
         MahjongTile.P1, MahjongTile.P2, MahjongTile.P3, MahjongTile.P4, MahjongTile.P5, MahjongTile.P6, MahjongTile.P7, MahjongTile.P8, MahjongTile.P9,
         MahjongTile.S1, MahjongTile.S2, MahjongTile.S3, MahjongTile.S4, MahjongTile.S5, MahjongTile.S6, MahjongTile.S7, MahjongTile.S8, MahjongTile.S9
-    );
+    };
+    private static final int[] TILE_INDEX_BY_ORDINAL = createTileIndexLookup();
 
     private SichuanHuEvaluator() {
     }
 
     static boolean canWin(List<MahjongTile> concealedHand, MahjongTile winningTile, int fixedMeldCount) {
-        return evaluate(concealedHand, winningTile, fixedMeldCount).valid();
+        int requiredMelds = requiredMelds(concealedHand, fixedMeldCount);
+        if (requiredMelds < 0) {
+            return false;
+        }
+        int[] counts = buildCounts(concealedHand);
+        int winningIndex = tileIndex(winningTile);
+        if (counts == null || winningIndex < 0 || counts[winningIndex] >= 4) {
+            return false;
+        }
+        counts[winningIndex]++;
+        return isWinningCounts(counts, requiredMelds, fixedMeldCount == 0);
     }
 
     static Result evaluate(List<MahjongTile> concealedHand, MahjongTile winningTile, int fixedMeldCount) {
-        if (winningTile == null || concealedHand == null) {
-            return Result.invalid();
-        }
-        int requiredMelds = 4 - fixedMeldCount;
+        int requiredMelds = requiredMelds(concealedHand, fixedMeldCount);
         if (requiredMelds < 0) {
             return Result.invalid();
         }
-        int expectedTileCount = requiredMelds * 3 + 2;
-        if (concealedHand.size() + 1 != expectedTileCount) {
+        int[] counts = buildCounts(concealedHand);
+        int winningIndex = tileIndex(winningTile);
+        if (counts == null || winningIndex < 0 || counts[winningIndex] >= 4) {
             return Result.invalid();
         }
-        List<MahjongTile> totalTiles = new ArrayList<>(concealedHand.size() + 1);
-        totalTiles.addAll(concealedHand);
-        totalTiles.add(winningTile);
-        int[] counts = buildCounts(totalTiles);
-        if (counts == null) {
-            return Result.invalid();
-        }
-        if (fixedMeldCount == 0 && totalTiles.size() == 14 && isSevenPairs(counts)) {
+        counts[winningIndex]++;
+        if (fixedMeldCount == 0 && isSevenPairs(counts)) {
             return new Result(true, true, List.of());
         }
-        List<List<MeldShape>> winningShapes = new ArrayList<>();
+        List<MeldShape> bestShape = null;
+        int bestSequenceCount = Integer.MAX_VALUE;
         for (int index = 0; index < counts.length; index++) {
             if (counts[index] < 2) {
                 continue;
@@ -53,40 +54,54 @@ final class SichuanHuEvaluator {
             List<MeldShape> melds = new ArrayList<>();
             if (collectMelds(counts, requiredMelds, melds)) {
                 counts[index] += 2;
-                winningShapes.add(List.copyOf(melds));
+                int sequenceCount = sequenceCount(melds);
+                if (sequenceCount < bestSequenceCount) {
+                    bestSequenceCount = sequenceCount;
+                    bestShape = List.copyOf(melds);
+                }
                 continue;
             }
             counts[index] += 2;
         }
-        return winningShapes.stream()
-            .min(Comparator.comparingInt(SichuanHuEvaluator::sequenceCount))
-            .map(shape -> new Result(true, false, shape))
-            .orElseGet(Result::invalid);
+        return bestShape == null ? Result.invalid() : new Result(true, false, bestShape);
     }
 
     static List<MahjongTile> waitingTiles(List<MahjongTile> concealedHand, int fixedMeldCount) {
-        if (concealedHand == null) {
-            return List.of();
-        }
-        int requiredMelds = 4 - fixedMeldCount;
+        int requiredMelds = requiredMelds(concealedHand, fixedMeldCount);
         if (requiredMelds < 0) {
             return List.of();
         }
-        int expectedConcealedCount = requiredMelds * 3 + 1;
-        if (concealedHand.size() != expectedConcealedCount) {
+        int[] counts = buildCounts(concealedHand);
+        if (counts == null) {
             return List.of();
         }
-        EnumSet<MahjongTile> waits = EnumSet.noneOf(MahjongTile.class);
-        for (MahjongTile wait : SICHUAN_TILES) {
-            if (canWin(concealedHand, wait, fixedMeldCount)) {
-                waits.add(wait);
+        List<MahjongTile> waits = new ArrayList<>();
+        for (int index = 0; index < SICHUAN_TILES.length; index++) {
+            if (counts[index] >= 4) {
+                continue;
             }
+            counts[index]++;
+            if (isWinningCounts(counts, requiredMelds, fixedMeldCount == 0)) {
+                waits.add(SICHUAN_TILES[index]);
+            }
+            counts[index]--;
         }
         return List.copyOf(waits);
     }
 
+    private static int requiredMelds(List<MahjongTile> concealedHand, int fixedMeldCount) {
+        if (concealedHand == null) {
+            return -1;
+        }
+        int requiredMelds = 4 - fixedMeldCount;
+        if (requiredMelds < 0 || concealedHand.size() + 1 != requiredMelds * 3 + 2) {
+            return -1;
+        }
+        return requiredMelds;
+    }
+
     private static int[] buildCounts(List<MahjongTile> tiles) {
-        int[] counts = new int[SICHUAN_TILES.size()];
+        int[] counts = new int[SICHUAN_TILES.length];
         for (MahjongTile tile : tiles) {
             MahjongTile base = normalize(tile);
             int index = tileIndex(base);
@@ -117,25 +132,19 @@ final class SichuanHuEvaluator {
     }
 
     private static int tileIndex(MahjongTile tile) {
-        if (tile == null || tile.isFlower() || GbRoundSupport.isHonor(tile)) {
-            return -1;
+        return tile == null ? -1 : TILE_INDEX_BY_ORDINAL[tile.ordinal()];
+    }
+
+    private static int[] createTileIndexLookup() {
+        int[] indexes = new int[MahjongTile.values().length];
+        Arrays.fill(indexes, -1);
+        for (int index = 0; index < SICHUAN_TILES.length; index++) {
+            indexes[SICHUAN_TILES[index].ordinal()] = index;
         }
-        String name = tile.name();
-        if (name.length() < 2) {
-            return -1;
-        }
-        char suit = name.charAt(0);
-        int number = Character.digit(name.charAt(1), 10);
-        if (number < 1 || number > 9) {
-            return -1;
-        }
-        int suitOffset = switch (suit) {
-            case 'M' -> 0;
-            case 'P' -> 9;
-            case 'S' -> 18;
-            default -> -1;
-        };
-        return suitOffset < 0 ? -1 : suitOffset + (number - 1);
+        indexes[MahjongTile.M5_RED.ordinal()] = indexes[MahjongTile.M5.ordinal()];
+        indexes[MahjongTile.P5_RED.ordinal()] = indexes[MahjongTile.P5.ordinal()];
+        indexes[MahjongTile.S5_RED.ordinal()] = indexes[MahjongTile.S5.ordinal()];
+        return indexes;
     }
 
     private static boolean isSevenPairs(int[] counts) {
@@ -152,7 +161,25 @@ final class SichuanHuEvaluator {
         return pairs == 7;
     }
 
-    private static boolean canFormMelds(int[] counts, int requiredMelds, Map<String, Boolean> memo) {
+    private static boolean isWinningCounts(int[] counts, int requiredMelds, boolean allowSevenPairs) {
+        if (allowSevenPairs && isSevenPairs(counts)) {
+            return true;
+        }
+        for (int index = 0; index < counts.length; index++) {
+            if (counts[index] < 2) {
+                continue;
+            }
+            counts[index] -= 2;
+            boolean winning = canFormMelds(counts, requiredMelds);
+            counts[index] += 2;
+            if (winning) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean canFormMelds(int[] counts, int requiredMelds) {
         if (requiredMelds == 0) {
             for (int count : counts) {
                 if (count != 0) {
@@ -161,21 +188,14 @@ final class SichuanHuEvaluator {
             }
             return true;
         }
-        String key = encodeState(counts, requiredMelds);
-        Boolean cached = memo.get(key);
-        if (cached != null) {
-            return cached;
-        }
         int first = firstNonZero(counts);
         if (first < 0) {
-            memo.put(key, false);
             return false;
         }
         if (counts[first] >= 3) {
             counts[first] -= 3;
-            if (canFormMelds(counts, requiredMelds - 1, memo)) {
+            if (canFormMelds(counts, requiredMelds - 1)) {
                 counts[first] += 3;
-                memo.put(key, true);
                 return true;
             }
             counts[first] += 3;
@@ -186,18 +206,16 @@ final class SichuanHuEvaluator {
             counts[first]--;
             counts[first + 1]--;
             counts[first + 2]--;
-            if (canFormMelds(counts, requiredMelds - 1, memo)) {
+            if (canFormMelds(counts, requiredMelds - 1)) {
                 counts[first]++;
                 counts[first + 1]++;
                 counts[first + 2]++;
-                memo.put(key, true);
                 return true;
             }
             counts[first]++;
             counts[first + 1]++;
             counts[first + 2]++;
         }
-        memo.put(key, false);
         return false;
     }
 
@@ -262,15 +280,6 @@ final class SichuanHuEvaluator {
             }
         }
         return -1;
-    }
-
-    private static String encodeState(int[] counts, int requiredMelds) {
-        StringBuilder builder = new StringBuilder(32);
-        builder.append(requiredMelds).append(':');
-        for (int count : counts) {
-            builder.append((char) ('0' + count));
-        }
-        return builder.toString();
     }
 
     enum MeldShape {
