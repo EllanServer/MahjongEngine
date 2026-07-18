@@ -45,7 +45,7 @@ public final class TableViewerSnapshotFactory {
         Locale locale = this.session.plugin().messages().resolveLocale(player);
         UUID viewerId = player.getUniqueId();
         PlayerActionSnapshot actionSnapshot = this.actionSnapshotFactory.capture(viewerId);
-        ViewerSummarySnapshot summary = this.captureViewerSummarySnapshot(locale, viewerId, actionSnapshot, false);
+        ViewerSummarySnapshot summary = this.captureViewerSummarySnapshot(locale, viewerId, actionSnapshot, true);
         return this.session.plugin().messages().render(
             player,
             "command.rule_summary",
