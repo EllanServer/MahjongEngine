@@ -1635,10 +1635,11 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     public TableRenderPrecomputeResult precomputeRender(TableRenderSnapshot snapshot) {
+        TableRenderLayout.LayoutPlan layout = TableRenderLayout.precompute(snapshot);
         return new TableRenderPrecomputeResult(
             snapshot,
-            this.regionFingerprintService.precomputeRegionFingerprints(this, snapshot),
-            TableRenderLayout.precompute(snapshot)
+            this.regionFingerprintService.precomputeRegionFingerprints(this, snapshot, layout),
+            layout
         );
     }
 

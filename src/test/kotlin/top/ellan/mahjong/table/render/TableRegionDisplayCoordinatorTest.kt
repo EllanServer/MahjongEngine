@@ -6,6 +6,7 @@ import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.`when`
+import top.ellan.mahjong.config.PluginSettings
 import top.ellan.mahjong.metrics.InMemoryMetricsCollector
 import top.ellan.mahjong.model.MahjongTile
 import top.ellan.mahjong.model.SeatWind
@@ -273,7 +274,17 @@ class TableRegionDisplayCoordinatorTest {
         assertEquals(16L, metrics.counterValue("table.render.region.apply.processed"))
         assertEquals(1L, metrics.counterValue("table.render.region.apply.deferred"))
         assertTrue(metrics.gaugeValue("table.render.region.queue.size") >= 16L)
+        assertTrue(metrics.timerCount("table.render.region.plan.nanos") >= 1L)
         assertTrue(metrics.timerCount("table.render.region.apply.nanos") >= 1L)
+
+        assertFalse(coordinator.applyRenderPrecompute(precomputeResult()))
+        assertEquals(listOf("hand:private", "background:visual:NORTH"), calls.takeLast(2))
+        assertEquals(18, calls.size, "Only the private ray and deferred region should render on the retry tick.")
+        assertEquals(33L, metrics.counterValue("table.render.region.apply.processed"))
+        assertEquals(15L, metrics.counterValue("table.render.region.apply.skipped"))
+        assertEquals(1L, metrics.counterValue("table.render.region.apply.deferred"))
+        assertEquals(0L, metrics.gaugeValue("table.render.region.queue.remaining"))
+        assertTrue(metrics.timerCount("table.render.region.plan.nanos") >= 2L)
     }
 
     @Test
@@ -341,6 +352,89 @@ class TableRegionDisplayCoordinatorTest {
         assertEquals(17L, metrics.gaugeValue("table.render.region.active_regions"))
         assertEquals(0L, metrics.gaugeValue("table.render.region.viewer_overlay_regions"))
         assertEquals(0L, metrics.gaugeValue("table.render.region.viewer_overlay_entities"))
+    }
+
+    @Test
+    fun `complete async fingerprint map preserves exact per-region values`() {
+        val session = mock(MahjongTableSession::class.java)
+        `when`(session.settings()).thenReturn(PluginSettings.defaults())
+        val service = TableRegionFingerprintService()
+        val basic = precomputeResult()
+        val east = basic.layout().seat(SeatWind.EAST)
+        val discardPlacement =
+            TableRenderLayout.TilePlacement(
+                point(),
+                0.0F,
+                MahjongTile.EAST,
+                DisplayEntities.TileRenderPose.FLAT_FACE_UP,
+            )
+        val meldPlacement =
+            TableRenderLayout.TilePlacement(
+                point(),
+                90.0F,
+                MahjongTile.P2,
+                DisplayEntities.TileRenderPose.FLAT_FACE_UP,
+            )
+        val wallPlacement =
+            TableRenderLayout.TilePlacement(
+                point(),
+                180.0F,
+                MahjongTile.UNKNOWN,
+                DisplayEntities.TileRenderPose.FLAT_FACE_DOWN,
+            )
+        val seatPlans = EnumMap(basic.layout().seats())
+        seatPlans[SeatWind.EAST] =
+            TableRenderLayout.SeatLayoutPlan(
+                east.wind(),
+                east.handBase(),
+                east.statusLabelLocation(),
+                east.playerNameLocation(),
+                east.interactionLocation(),
+                east.yaw(),
+                east.publicHandPoints(),
+                east.privateHandPoints(),
+                listOf(discardPlacement),
+                listOf(meldPlacement),
+                east.stickPlacements(),
+            )
+        val layout =
+            TableRenderLayout.LayoutPlan(
+                basic.layout().displayCenter(),
+                basic.layout().tableCenter(),
+                basic.layout().tableVisualAnchor(),
+                basic.layout().borderSpanX(),
+                basic.layout().borderSpanZ(),
+                seatPlans,
+                listOf(wallPlacement),
+                basic.layout().doraTiles(),
+            )
+
+        val coarse = service.precomputeRegionFingerprints(session, basic.snapshot())
+        val complete = service.precomputeRegionFingerprints(session, basic.snapshot(), layout)
+        coarse.forEach { (key, value) -> assertEquals(value, complete[key], key) }
+
+        val eastSnapshot = basic.snapshot().seat(SeatWind.EAST)
+        assertEquals(
+            service.handPublicTileFingerprint(basic.snapshot(), eastSnapshot, layout.seat(SeatWind.EAST), 0),
+            complete[TableRegionDisplayCoordinator.handPublicRegionKey(SeatWind.EAST, 0)],
+        )
+        assertEquals(
+            service.handPrivateTileFingerprint(eastSnapshot, layout.seat(SeatWind.EAST), 0),
+            complete[TableRegionDisplayCoordinator.handPrivateRegionKey(SeatWind.EAST, 0)],
+        )
+        assertEquals(
+            service.discardTileFingerprint(eastSnapshot, layout.seat(SeatWind.EAST), 0),
+            complete[TableRegionDisplayCoordinator.discardRegionKey(SeatWind.EAST, 0)],
+        )
+        assertEquals(
+            service.meldTileFingerprint(eastSnapshot, layout.seat(SeatWind.EAST), 0),
+            complete[TableRegionDisplayCoordinator.meldRegionKey(SeatWind.EAST, 0)],
+        )
+        assertEquals(
+            service.wallTileFingerprint(layout, 0),
+            complete[TableRegionDisplayCoordinator.wallRegionKey(0)],
+        )
+        assertEquals(coarse.size + 5, complete.size)
     }
 
     private fun precomputeResult(): TableRenderPrecomputeResult {

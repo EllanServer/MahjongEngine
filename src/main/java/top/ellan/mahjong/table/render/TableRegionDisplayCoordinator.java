@@ -41,7 +41,8 @@ public final class TableRegionDisplayCoordinator {
     private static final int MAX_HAND_TILE_REGIONS = 14;
     private static final int MAX_DISCARD_TILE_REGIONS = 24;
     private static final int MAX_MELD_TILE_REGIONS = 20;
-    private static final int SEAT_COUNT = SeatWind.values().length;
+    private static final SeatWind[] SEAT_WINDS = SeatWind.values();
+    private static final int SEAT_COUNT = SEAT_WINDS.length;
     private static final int DEFAULT_MAX_REGION_UPDATES_PER_APPLY = 64;
     private static final int DEFAULT_MAX_ENTITY_SPAWNS_PER_APPLY = 192;
     private static final String[] VISUAL_REGION_KEYS = createSeatRegionKeys("visual");
@@ -115,66 +116,17 @@ public final class TableRegionDisplayCoordinator {
         TableRenderSnapshot snapshot = result.snapshot();
         TableRenderLayout.LayoutPlan plan = result.layout();
         Map<String, Long> fingerprints = result.regionFingerprints();
-        RegionUpdateQueue queue = new RegionUpdateQueue();
+        long planStartedAt = System.nanoTime();
+        int plannedUpdates = this.prepareRegionUpdates(snapshot, plan);
+        metrics.recordTimerNanos("table.render.region.plan.nanos", System.nanoTime() - planStartedAt);
+        metrics.recordGauge("table.render.region.queue.size", plannedUpdates);
 
-        this.enqueue(queue, BUCKET_BOARD, () -> this.updateStaticRegion(
-            REGION_TABLE,
-            fingerprintOf(fingerprints, REGION_TABLE),
-            budget,
-            () -> this.session.renderer().renderTableStructure(this.session, plan)
-        ));
-        this.enqueueWallRegionUpdates(plan, budget, queue);
-        this.enqueue(queue, BUCKET_BOARD, () -> this.updateRegionWithSpecs(
-            REGION_DORA,
-            fingerprintOf(fingerprints, REGION_DORA),
-            budget,
-            () -> this.session.renderer().renderDoraSpecs(this.session, plan)
-        ));
-        this.enqueue(queue, BUCKET_REACTION_PROMPT, () -> this.updateRegionWithSpecs(
-            REGION_CENTER,
-            fingerprintOf(fingerprints, REGION_CENTER),
-            budget,
-            () -> this.session.renderer().renderCenterLabelSpecs(this.session, snapshot, plan)
-        ));
-
-        for (SeatWind wind : SeatWind.values()) {
-            TableSeatRenderSnapshot seat = snapshot.seat(wind);
-            TableRenderLayout.SeatLayoutPlan seatPlan = plan.seat(wind);
-            String visualRegionKey = this.seatRegionKey("visual", wind);
-            String labelsRegionKey = this.seatRegionKey("labels", wind);
-            String sticksRegionKey = this.seatRegionKey("sticks", wind);
-            this.enqueue(queue, BUCKET_BACKGROUND, () -> this.updateStaticRegion(
-                visualRegionKey,
-                fingerprintOf(fingerprints, visualRegionKey),
-                budget,
-                () -> this.session.renderer().renderSeatVisual(this.session, wind)
-            ));
-            this.enqueue(queue, BUCKET_REACTION_PROMPT, () -> this.updateSeatLabelRegion(
-                labelsRegionKey,
-                fingerprintOf(fingerprints, labelsRegionKey),
-                budget,
-                snapshot,
-                seat,
-                seatPlan
-            ));
-            this.enqueue(queue, BUCKET_TURN_STATE, () -> this.updateRegion(
-                sticksRegionKey,
-                fingerprintOf(fingerprints, sticksRegionKey),
-                budget,
-                () -> this.session.renderer().renderSticks(this.session, seat, seatPlan)
-            ));
-            this.enqueuePublicHandRegionUpdates(snapshot, seat, seatPlan, budget, queue);
-            this.enqueuePrivateHandRegionUpdates(seat, seatPlan, budget, queue);
-            this.enqueueDiscardRegionUpdates(seat, seatPlan, budget, queue);
-            this.enqueueMeldRegionUpdates(seat, seatPlan, budget, queue);
-        }
-
-        metrics.recordGauge("table.render.region.queue.size", queue.size());
-        QueueExecution execution = this.applyQueue(queue);
+        QueueExecution execution = this.applyDirect(snapshot, plan, fingerprints, budget);
         metrics.incrementCounter("table.render.region.apply.processed", execution.processedUpdates());
+        metrics.incrementCounter("table.render.region.apply.skipped", budget.skippedRegionUpdates());
         if (execution.deferred()) {
             metrics.incrementCounter("table.render.region.apply.deferred");
-            metrics.recordGauge("table.render.region.queue.remaining", queue.size() - execution.processedUpdates());
+            metrics.recordGauge("table.render.region.queue.remaining", plannedUpdates - execution.processedUpdates());
         } else {
             metrics.recordGauge("table.render.region.queue.remaining", 0L);
         }
@@ -474,6 +426,281 @@ public final class TableRegionDisplayCoordinator {
         return false;
     }
 
+    /** Preserves eager clears while avoiding action objects and bucket lists. */
+    int prepareRegionUpdates(TableRenderSnapshot snapshot, TableRenderLayout.LayoutPlan plan) {
+        int plannedUpdates = 3;
+        this.clearRegion(REGION_WALL);
+        int wallTileCount = boundedCount(plan.wallTiles().size(), MAX_WALL_TILE_REGIONS);
+        plannedUpdates += wallTileCount;
+        for (int wallIndex = wallTileCount; wallIndex < MAX_WALL_TILE_REGIONS; wallIndex++) {
+            this.clearRegion(wallRegionKey(wallIndex));
+        }
+
+        for (SeatWind wind : SEAT_WINDS) {
+            TableSeatRenderSnapshot seat = snapshot.seat(wind);
+            TableRenderLayout.SeatLayoutPlan seatPlan = plan.seat(wind);
+            this.clearRegion(seatRegionKey("hand-public", wind));
+            this.clearRegion(seatRegionKey("hand-private", wind));
+            this.clearRegion(seatRegionKey("discards", wind));
+            this.clearRegion(seatRegionKey("melds", wind));
+
+            int handSize = seat.playerId() == null ? 0 : boundedCount(seat.hand().size(), MAX_HAND_TILE_REGIONS);
+            int discardCount = seat.playerId() == null
+                ? 0
+                : boundedCount(seatPlan.discardPlacements().size(), MAX_DISCARD_TILE_REGIONS);
+            int meldCount = seat.playerId() == null
+                ? 0
+                : boundedCount(seatPlan.meldPlacements().size(), MAX_MELD_TILE_REGIONS);
+            plannedUpdates += 3 + handSize * 2 + discardCount + meldCount;
+
+            for (int tileIndex = handSize; tileIndex < MAX_HAND_TILE_REGIONS; tileIndex++) {
+                this.clearRegion(handPublicRegionKey(wind, tileIndex));
+                this.clearRegion(handPrivateRegionKey(wind, tileIndex));
+            }
+            for (int discardIndex = discardCount; discardIndex < MAX_DISCARD_TILE_REGIONS; discardIndex++) {
+                this.clearRegion(discardRegionKey(wind, discardIndex));
+            }
+            for (int meldIndex = meldCount; meldIndex < MAX_MELD_TILE_REGIONS; meldIndex++) {
+                this.clearRegion(meldRegionKey(wind, meldIndex));
+            }
+        }
+        return plannedUpdates;
+    }
+
+    private QueueExecution applyDirect(
+        TableRenderSnapshot snapshot,
+        TableRenderLayout.LayoutPlan plan,
+        Map<String, Long> fingerprints,
+        ApplyBudget budget
+    ) {
+        ApplyProgress progress = new ApplyProgress();
+        if (!this.applyReactionPromptUpdates(snapshot, plan, fingerprints, budget, progress)
+            || !this.applyHandUpdates(snapshot, plan, fingerprints, budget, progress)
+            || !this.applyTurnStateUpdates(snapshot, plan, fingerprints, budget, progress)
+            || !this.applyBoardUpdates(snapshot, plan, fingerprints, budget, progress)
+            || !this.applyBackgroundUpdates(snapshot, plan, fingerprints, budget, progress)) {
+            return new QueueExecution(true, progress.processedUpdates);
+        }
+        return new QueueExecution(false, progress.processedUpdates);
+    }
+
+    private boolean applyReactionPromptUpdates(
+        TableRenderSnapshot snapshot,
+        TableRenderLayout.LayoutPlan plan,
+        Map<String, Long> fingerprints,
+        ApplyBudget budget,
+        ApplyProgress progress
+    ) {
+        if (!recordApplied(this.updateRegionWithSpecs(
+            REGION_CENTER,
+            fingerprintOf(fingerprints, REGION_CENTER),
+            budget,
+            () -> this.session.renderer().renderCenterLabelSpecs(this.session, snapshot, plan)
+        ), progress)) {
+            return false;
+        }
+        for (SeatWind wind : SEAT_WINDS) {
+            TableSeatRenderSnapshot seat = snapshot.seat(wind);
+            TableRenderLayout.SeatLayoutPlan seatPlan = plan.seat(wind);
+            String labelsRegionKey = seatRegionKey("labels", wind);
+            if (!recordApplied(this.updateSeatLabelRegion(
+                labelsRegionKey,
+                fingerprintOf(fingerprints, labelsRegionKey),
+                budget,
+                snapshot,
+                seat,
+                seatPlan
+            ), progress)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean applyHandUpdates(
+        TableRenderSnapshot snapshot,
+        TableRenderLayout.LayoutPlan plan,
+        Map<String, Long> fingerprints,
+        ApplyBudget budget,
+        ApplyProgress progress
+    ) {
+        for (SeatWind wind : SEAT_WINDS) {
+            TableSeatRenderSnapshot seat = snapshot.seat(wind);
+            TableRenderLayout.SeatLayoutPlan seatPlan = plan.seat(wind);
+            int handSize = seat.playerId() == null ? 0 : boundedCount(seat.hand().size(), MAX_HAND_TILE_REGIONS);
+            for (int tileIndex = 0; tileIndex < handSize; tileIndex++) {
+                int index = tileIndex;
+                String regionKey = handPublicRegionKey(wind, index);
+                Long prepared = fingerprints.get(regionKey);
+                long fingerprint = prepared == null
+                    ? this.fingerprintService.handPublicTileFingerprint(snapshot, seat, seatPlan, index)
+                    : prepared;
+                if (!recordApplied(this.updateRegionWithSpecs(
+                    regionKey,
+                    fingerprint,
+                    budget,
+                    () -> this.session.renderer().renderHandPublicTileSpecs(this.session, snapshot, seat, seatPlan, index)
+                ), progress)) {
+                    return false;
+                }
+            }
+            for (int tileIndex = 0; tileIndex < handSize; tileIndex++) {
+                int index = tileIndex;
+                String regionKey = handPrivateRegionKey(wind, index);
+                Long prepared = fingerprints.get(regionKey);
+                long fingerprint = prepared == null
+                    ? this.fingerprintService.handPrivateTileFingerprint(seat, seatPlan, index)
+                    : prepared;
+                if (!recordApplied(this.updatePrivateHandTileRegion(
+                    regionKey,
+                    fingerprint,
+                    budget,
+                    seat,
+                    seatPlan,
+                    index
+                ), progress)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private boolean applyTurnStateUpdates(
+        TableRenderSnapshot snapshot,
+        TableRenderLayout.LayoutPlan plan,
+        Map<String, Long> fingerprints,
+        ApplyBudget budget,
+        ApplyProgress progress
+    ) {
+        for (SeatWind wind : SEAT_WINDS) {
+            TableSeatRenderSnapshot seat = snapshot.seat(wind);
+            TableRenderLayout.SeatLayoutPlan seatPlan = plan.seat(wind);
+            String sticksRegionKey = seatRegionKey("sticks", wind);
+            if (!recordApplied(this.updateRegion(
+                sticksRegionKey,
+                fingerprintOf(fingerprints, sticksRegionKey),
+                budget,
+                () -> this.session.renderer().renderSticks(this.session, seat, seatPlan)
+            ), progress)) {
+                return false;
+            }
+
+            int discardCount = seat.playerId() == null
+                ? 0
+                : boundedCount(seatPlan.discardPlacements().size(), MAX_DISCARD_TILE_REGIONS);
+            for (int discardIndex = 0; discardIndex < discardCount; discardIndex++) {
+                int index = discardIndex;
+                String regionKey = discardRegionKey(wind, index);
+                Long prepared = fingerprints.get(regionKey);
+                long fingerprint = prepared == null
+                    ? this.fingerprintService.discardTileFingerprint(seat, seatPlan, index)
+                    : prepared;
+                if (!recordApplied(this.updateRegionWithSpecs(
+                    regionKey,
+                    fingerprint,
+                    budget,
+                    () -> this.session.renderer().renderDiscardTileSpecs(this.session, seat, seatPlan, index)
+                ), progress)) {
+                    return false;
+                }
+            }
+
+            int meldCount = seat.playerId() == null
+                ? 0
+                : boundedCount(seatPlan.meldPlacements().size(), MAX_MELD_TILE_REGIONS);
+            for (int meldIndex = 0; meldIndex < meldCount; meldIndex++) {
+                int index = meldIndex;
+                String regionKey = meldRegionKey(wind, index);
+                Long prepared = fingerprints.get(regionKey);
+                long fingerprint = prepared == null
+                    ? this.fingerprintService.meldTileFingerprint(seat, seatPlan, index)
+                    : prepared;
+                if (!recordApplied(this.updateRegionWithSpecs(
+                    regionKey,
+                    fingerprint,
+                    budget,
+                    () -> this.session.renderer().renderMeldTileSpecs(this.session, seat, seatPlan, index)
+                ), progress)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private boolean applyBoardUpdates(
+        TableRenderSnapshot snapshot,
+        TableRenderLayout.LayoutPlan plan,
+        Map<String, Long> fingerprints,
+        ApplyBudget budget,
+        ApplyProgress progress
+    ) {
+        if (!recordApplied(this.updateStaticRegion(
+            REGION_TABLE,
+            fingerprintOf(fingerprints, REGION_TABLE),
+            budget,
+            () -> this.session.renderer().renderTableStructure(this.session, plan)
+        ), progress)) {
+            return false;
+        }
+        return recordApplied(this.updateRegionWithSpecs(
+            REGION_DORA,
+            fingerprintOf(fingerprints, REGION_DORA),
+            budget,
+            () -> this.session.renderer().renderDoraSpecs(this.session, plan)
+        ), progress);
+    }
+
+    private boolean applyBackgroundUpdates(
+        TableRenderSnapshot snapshot,
+        TableRenderLayout.LayoutPlan plan,
+        Map<String, Long> fingerprints,
+        ApplyBudget budget,
+        ApplyProgress progress
+    ) {
+        int wallTileCount = boundedCount(plan.wallTiles().size(), MAX_WALL_TILE_REGIONS);
+        for (int wallIndex = 0; wallIndex < wallTileCount; wallIndex++) {
+            int index = wallIndex;
+            String regionKey = wallRegionKey(index);
+            Long prepared = fingerprints.get(regionKey);
+            long fingerprint = prepared == null
+                ? this.fingerprintService.wallTileFingerprint(plan, index)
+                : prepared;
+            if (!recordApplied(this.updateRegionWithSpecs(
+                regionKey,
+                fingerprint,
+                budget,
+                () -> this.session.renderer().renderWallTileSpecs(this.session, plan, index)
+            ), progress)) {
+                return false;
+            }
+        }
+        for (SeatWind wind : SEAT_WINDS) {
+            String visualRegionKey = seatRegionKey("visual", wind);
+            if (!recordApplied(this.updateStaticRegion(
+                visualRegionKey,
+                fingerprintOf(fingerprints, visualRegionKey),
+                budget,
+                () -> this.session.renderer().renderSeatVisual(this.session, wind)
+            ), progress)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static int boundedCount(int count, int maximum) {
+        return Math.max(0, Math.min(count, maximum));
+    }
+
+    private static boolean recordApplied(boolean applied, ApplyProgress progress) {
+        if (applied) {
+            progress.processedUpdates++;
+        }
+        return applied;
+    }
+
     private QueueExecution applyQueue(RegionUpdateQueue updates) {
         int processed = 0;
         for (int bucketIndex = 0; bucketIndex < updates.bucketCount(); bucketIndex++) {
@@ -685,6 +912,7 @@ public final class TableRegionDisplayCoordinator {
             && previousFingerprint == fingerprint
             && (currentEntities != null || this.regionFingerprints.containsKey(regionKey))
             && (!requiresRayInteractions || this.rayInteractionsCurrent(regionKey))) {
+            budget.recordSkippedRegionUpdate();
             return true;
         }
         if (!budget.canConsumeRegionUpdate(1)) {
@@ -816,6 +1044,7 @@ public final class TableRegionDisplayCoordinator {
             currentEntities = null;
         }
         if (previousFingerprint != null && previousFingerprint == fingerprint && (currentEntities != null || this.regionFingerprints.containsKey(regionKey))) {
+            budget.recordSkippedRegionUpdate();
             return true;
         }
         if (!budget.tryConsumeRegionUpdate(1)) {
@@ -834,6 +1063,7 @@ public final class TableRegionDisplayCoordinator {
         List<Entity> currentEntities = this.regionDisplays.get(regionKey);
         if (!this.hasInvalidDisplayEntity(currentEntities) && currentEntities != null) {
             this.regionFingerprints.put(regionKey, fingerprint);
+            budget.recordSkippedRegionUpdate();
             return true;
         }
         return this.updateRegion(regionKey, fingerprint, budget, renderer);
@@ -848,6 +1078,7 @@ public final class TableRegionDisplayCoordinator {
             currentEntities = null;
         }
         if (previousFingerprint != null && previousFingerprint == fingerprint && (currentEntities != null || this.regionFingerprints.containsKey(regionKey))) {
+            budget.recordSkippedRegionUpdate();
             return true;
         }
         if (!budget.canConsumeRegionUpdate(1)) {
@@ -1016,7 +1247,7 @@ public final class TableRegionDisplayCoordinator {
         return runtime.totalMemory() - runtime.freeMemory();
     }
 
-    private String seatRegionKey(String region, SeatWind wind) {
+    static String seatRegionKey(String region, SeatWind wind) {
         if ("visual".equals(region)) {
             return VISUAL_REGION_KEYS[wind.index()];
         }
@@ -1041,35 +1272,35 @@ public final class TableRegionDisplayCoordinator {
         return region + ":" + wind.name();
     }
 
-    private String handPrivateRegionKey(SeatWind wind, int tileIndex) {
+    static String handPrivateRegionKey(SeatWind wind, int tileIndex) {
         if (tileIndex >= 0 && tileIndex < MAX_HAND_TILE_REGIONS) {
             return HAND_PRIVATE_TILE_REGION_KEYS[wind.index()][tileIndex];
         }
-        return this.seatRegionKey("hand-private-" + tileIndex, wind);
+        return seatRegionKey("hand-private-" + tileIndex, wind);
     }
 
-    private String handPublicRegionKey(SeatWind wind, int tileIndex) {
+    static String handPublicRegionKey(SeatWind wind, int tileIndex) {
         if (tileIndex >= 0 && tileIndex < MAX_HAND_TILE_REGIONS) {
             return HAND_PUBLIC_TILE_REGION_KEYS[wind.index()][tileIndex];
         }
-        return this.seatRegionKey("hand-public-" + tileIndex, wind);
+        return seatRegionKey("hand-public-" + tileIndex, wind);
     }
 
-    private String discardRegionKey(SeatWind wind, int discardIndex) {
+    static String discardRegionKey(SeatWind wind, int discardIndex) {
         if (discardIndex >= 0 && discardIndex < MAX_DISCARD_TILE_REGIONS) {
             return DISCARD_TILE_REGION_KEYS[wind.index()][discardIndex];
         }
-        return this.seatRegionKey("discards-" + discardIndex, wind);
+        return seatRegionKey("discards-" + discardIndex, wind);
     }
 
-    private String meldRegionKey(SeatWind wind, int meldIndex) {
+    static String meldRegionKey(SeatWind wind, int meldIndex) {
         if (meldIndex >= 0 && meldIndex < MAX_MELD_TILE_REGIONS) {
             return MELD_TILE_REGION_KEYS[wind.index()][meldIndex];
         }
-        return this.seatRegionKey("melds-" + meldIndex, wind);
+        return seatRegionKey("melds-" + meldIndex, wind);
     }
 
-    private String wallRegionKey(int wallIndex) {
+    static String wallRegionKey(int wallIndex) {
         if (wallIndex >= 0 && wallIndex < MAX_WALL_TILE_REGIONS) {
             return WALL_TILE_REGION_KEYS[wallIndex];
         }
@@ -1132,6 +1363,7 @@ public final class TableRegionDisplayCoordinator {
     private static final class ApplyBudget {
         private int remainingRegionUpdates;
         private int remainingEntitySpawns;
+        private int skippedRegionUpdates;
 
         private ApplyBudget(int remainingRegionUpdates, int remainingEntitySpawns) {
             this.remainingRegionUpdates = remainingRegionUpdates;
@@ -1173,6 +1405,18 @@ public final class TableRegionDisplayCoordinator {
         void consumeEntitySpawns(int amount) {
             this.remainingEntitySpawns -= amount;
         }
+
+        void recordSkippedRegionUpdate() {
+            this.skippedRegionUpdates++;
+        }
+
+        int skippedRegionUpdates() {
+            return this.skippedRegionUpdates;
+        }
+    }
+
+    private static final class ApplyProgress {
+        private int processedUpdates;
     }
 
     private static final class RegionUpdateQueue {

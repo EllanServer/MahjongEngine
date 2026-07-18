@@ -5,6 +5,7 @@ import top.ellan.mahjong.render.TableRenderSubject;
 import top.ellan.mahjong.render.layout.TableRenderLayout;
 import top.ellan.mahjong.render.snapshot.TableRenderSnapshot;
 import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -14,9 +15,19 @@ public final class TableRegionFingerprintService {
     private static final String REGION_WALL = "wall";
     private static final String REGION_DORA = "dora";
     private static final String REGION_CENTER = "center";
+    private static final int BASE_REGION_COUNT = 4 + SeatWind.values().length * 4;
 
     public Map<String, Long> precomputeRegionFingerprints(TableRenderSubject session, TableRenderSnapshot snapshot) {
-        Map<String, Long> fingerprints = new HashMap<>();
+        Map<String, Long> fingerprints = new HashMap<>(hashMapCapacity(BASE_REGION_COUNT));
+        this.populateBaseRegionFingerprints(fingerprints, session, snapshot);
+        return Map.copyOf(fingerprints);
+    }
+
+    private void populateBaseRegionFingerprints(
+        Map<String, Long> fingerprints,
+        TableRenderSubject session,
+        TableRenderSnapshot snapshot
+    ) {
         fingerprints.put(REGION_TABLE, this.tableFingerprint(session, snapshot));
         fingerprints.put(REGION_WALL, this.wallFingerprint(snapshot));
         fingerprints.put(REGION_DORA, this.doraFingerprint(snapshot));
@@ -28,7 +39,74 @@ public final class TableRegionFingerprintService {
             fingerprints.put(this.seatRegionKey("sticks", wind), this.stickFingerprint(snapshot, seat));
             fingerprints.put(this.seatRegionKey("hand-public", wind), this.handPublicFingerprint(snapshot, seat));
         }
-        return Map.copyOf(fingerprints);
+    }
+
+    /** Precomputes every active tile fingerprint while still on the async render thread. */
+    public Map<String, Long> precomputeRegionFingerprints(
+        TableRenderSubject session,
+        TableRenderSnapshot snapshot,
+        TableRenderLayout.LayoutPlan layout
+    ) {
+        int exactRegionCount = layout.wallTiles().size();
+        for (SeatWind wind : SeatWind.values()) {
+            TableSeatRenderSnapshot seat = snapshot.seat(wind);
+            TableRenderLayout.SeatLayoutPlan seatPlan = layout.seat(wind);
+            if (seat.playerId() != null) {
+                exactRegionCount += Math.min(
+                    seat.hand().size(),
+                    Math.min(seatPlan.publicHandPoints().size(), seatPlan.privateHandPoints().size())
+                ) * 2;
+                exactRegionCount += seatPlan.discardPlacements().size();
+                exactRegionCount += seatPlan.meldPlacements().size();
+            }
+        }
+        Map<String, Long> fingerprints = new HashMap<>(hashMapCapacity(BASE_REGION_COUNT + exactRegionCount));
+        this.populateBaseRegionFingerprints(fingerprints, session, snapshot);
+        for (SeatWind wind : SeatWind.values()) {
+            TableSeatRenderSnapshot seat = snapshot.seat(wind);
+            TableRenderLayout.SeatLayoutPlan seatPlan = layout.seat(wind);
+            int handSize = seat.playerId() == null
+                ? 0
+                : Math.min(seat.hand().size(), Math.min(seatPlan.publicHandPoints().size(), seatPlan.privateHandPoints().size()));
+            for (int tileIndex = 0; tileIndex < handSize; tileIndex++) {
+                fingerprints.put(
+                    TableRegionDisplayCoordinator.handPublicRegionKey(wind, tileIndex),
+                    this.handPublicTileFingerprint(snapshot, seat, seatPlan, tileIndex)
+                );
+                fingerprints.put(
+                    TableRegionDisplayCoordinator.handPrivateRegionKey(wind, tileIndex),
+                    this.handPrivateTileFingerprint(seat, seatPlan, tileIndex)
+                );
+            }
+            int discardCount = seat.playerId() == null ? 0 : seatPlan.discardPlacements().size();
+            for (int discardIndex = 0; discardIndex < discardCount; discardIndex++) {
+                fingerprints.put(
+                    TableRegionDisplayCoordinator.discardRegionKey(wind, discardIndex),
+                    this.discardTileFingerprint(seat, seatPlan, discardIndex)
+                );
+            }
+            int meldCount = seat.playerId() == null ? 0 : seatPlan.meldPlacements().size();
+            for (int meldIndex = 0; meldIndex < meldCount; meldIndex++) {
+                fingerprints.put(
+                    TableRegionDisplayCoordinator.meldRegionKey(wind, meldIndex),
+                    this.meldTileFingerprint(seat, seatPlan, meldIndex)
+                );
+            }
+        }
+        for (int wallIndex = 0; wallIndex < layout.wallTiles().size(); wallIndex++) {
+            fingerprints.put(
+                TableRegionDisplayCoordinator.wallRegionKey(wallIndex),
+                this.wallTileFingerprint(layout, wallIndex)
+            );
+        }
+        // The backing map is method-local and never escapes independently, so the read-only view
+        // avoids duplicating every entry after async precomputation while remaining immutable to
+        // render consumers.
+        return Collections.unmodifiableMap(fingerprints);
+    }
+
+    private static int hashMapCapacity(int entryCount) {
+        return Math.max(16, (int) Math.ceil(entryCount / 0.75D));
     }
 
     public long handPrivateTileFingerprint(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan, int tileIndex) {
