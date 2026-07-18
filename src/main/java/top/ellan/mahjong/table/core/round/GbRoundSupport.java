@@ -118,15 +118,55 @@ final class GbRoundSupport {
         return leftBase == rightBase;
     }
 
+    // Precomputed lookup tables indexed by MahjongTile.ordinal(). Eliminates the
+    // per-call String allocation (name().substring(1,2)) and Integer.parseInt
+    // parsing inside hot loops such as GbBotDecisionService.discardPreference.
+    private static final int[] TILE_NUMBERS = buildTileNumbers();
+    private static final boolean[] TILE_HONORS = buildTileHonors();
+
+    private static int[] buildTileNumbers() {
+        MahjongTile[] values = MahjongTile.values();
+        int[] numbers = new int[values.length];
+        int east = MahjongTile.EAST.ordinal();
+        int redDragon = MahjongTile.RED_DRAGON.ordinal();
+        for (MahjongTile tile : values) {
+            int ord = tile.ordinal();
+            if (tile.isFlower() || (ord >= east && ord <= redDragon)) {
+                numbers[ord] = 0;
+                continue;
+            }
+            // UNKNOWN and any other non-suited tile would fail parseInt; leave 0.
+            // Callers never pass such tiles to tileNumber() (they guard with
+            // isFlower()/isHonor() or only pass suited tiles from hands/walls).
+            try {
+                numbers[ord] = Integer.parseInt(tile.name().substring(1, 2));
+            } catch (NumberFormatException ignored) {
+                numbers[ord] = 0;
+            }
+        }
+        return numbers;
+    }
+
+    private static boolean[] buildTileHonors() {
+        MahjongTile[] values = MahjongTile.values();
+        boolean[] honors = new boolean[values.length];
+        int east = MahjongTile.EAST.ordinal();
+        int redDragon = MahjongTile.RED_DRAGON.ordinal();
+        for (int i = 0; i < values.length; i++) {
+            honors[i] = i >= east && i <= redDragon;
+        }
+        return honors;
+    }
+
     static boolean isHonor(MahjongTile tile) {
-        return tile.ordinal() >= MahjongTile.EAST.ordinal() && tile.ordinal() <= MahjongTile.RED_DRAGON.ordinal();
+        return TILE_HONORS[tile.ordinal()];
     }
 
     static int tileNumber(MahjongTile tile) {
         if (tile == null || tile.isFlower() || isHonor(tile)) {
             return 0;
         }
-        return Integer.parseInt(tile.name().substring(1, 2));
+        return TILE_NUMBERS[tile.ordinal()];
     }
 
     static MahjongTile offsetTile(MahjongTile tile, int delta) {
