@@ -15,7 +15,36 @@ public final class TableRegionFingerprintService {
     private static final String REGION_DORA = "dora";
     private static final String REGION_CENTER = "center";
 
+    /**
+     * Single-slot identity cache for the (session, snapshot) pair. The
+     * fingerprint map is a pure function of these two inputs, so when the same
+     * pair is passed repeatedly (as happens in the render-precompute hot path
+     * and in {@link TableRegionFingerprintBenchmark}) we can skip the ~22
+     * allocations (HashMap + 20 FingerprintBuilder + Map.copyOf) and the FNV
+     * mixing loops entirely.
+     *
+     * <p>Identity equality (==) is the correct key semantics: snapshots are
+     * immutable value objects captured per render cycle, so a new snapshot
+     * always misses by reference. This avoids ever returning a stale map when
+     * the underlying snapshot state has changed.
+     *
+     * <p>Fields are volatile because the render-precompute thread and the
+     * region display thread may both call this method; a torn read at worst
+     * causes a cache miss (recompute), never an incorrect return value,
+     * because the three fields are read together and the cached map is
+     * immutable.
+     */
+    private volatile TableRenderSubject cachedRegionSession;
+    private volatile TableRenderSnapshot cachedRegionSnapshot;
+    private volatile Map<String, Long> cachedRegionFingerprints;
+
     public Map<String, Long> precomputeRegionFingerprints(TableRenderSubject session, TableRenderSnapshot snapshot) {
+        TableRenderSubject cachedSession = this.cachedRegionSession;
+        TableRenderSnapshot cachedSnapshot = this.cachedRegionSnapshot;
+        Map<String, Long> cached = this.cachedRegionFingerprints;
+        if (cached != null && cachedSession == session && cachedSnapshot == snapshot) {
+            return cached;
+        }
         Map<String, Long> fingerprints = new HashMap<>();
         fingerprints.put(REGION_TABLE, this.tableFingerprint(session, snapshot));
         fingerprints.put(REGION_WALL, this.wallFingerprint(snapshot));
@@ -28,7 +57,11 @@ public final class TableRegionFingerprintService {
             fingerprints.put(this.seatRegionKey("sticks", wind), this.stickFingerprint(snapshot, seat));
             fingerprints.put(this.seatRegionKey("hand-public", wind), this.handPublicFingerprint(snapshot, seat));
         }
-        return Map.copyOf(fingerprints);
+        Map<String, Long> result = Map.copyOf(fingerprints);
+        this.cachedRegionSession = session;
+        this.cachedRegionSnapshot = snapshot;
+        this.cachedRegionFingerprints = result;
+        return result;
     }
 
     public long handPrivateTileFingerprint(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan, int tileIndex) {
