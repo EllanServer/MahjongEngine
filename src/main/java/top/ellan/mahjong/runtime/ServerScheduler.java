@@ -91,6 +91,25 @@ public final class ServerScheduler {
 
     private final Plugin plugin;
 
+    /**
+     * Single-slot identity caches for the three scheduler-capability accessors.
+     * The server instance ({@code plugin.getServer()}) is stable for the
+     * plugin's lifetime, and entity schedulers are stable per entity. Caching
+     * the resolved scheduler by target identity skips the reflective
+     * {@link MethodResolution#invoke} dispatch on every repeat call.
+     *
+     * <p>Fields are volatile because scheduling methods are called from both
+     * the main thread and async threads; a torn read at worst causes a cache
+     * miss (recompute) or returns a stale scheduler handle for one call,
+     * which is safe because scheduler handles are stable references.
+     */
+    private volatile Object cachedGlobalServer;
+    private volatile Object cachedGlobalScheduler;
+    private volatile Object cachedRegionServer;
+    private volatile Object cachedRegionScheduler;
+    private volatile Entity cachedEntitySchedulerTarget;
+    private volatile Object cachedEntityScheduler;
+
     public ServerScheduler(Plugin plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
     }
@@ -313,15 +332,35 @@ public final class ServerScheduler {
     }
 
     private Object globalRegionScheduler() {
-        return this.invokeNoArgs(this.plugin.getServer(), GET_GLOBAL_REGION_SCHEDULER);
+        Object server = this.plugin.getServer();
+        if (this.cachedGlobalServer == server) {
+            return this.cachedGlobalScheduler;
+        }
+        Object scheduler = this.invokeNoArgs(server, GET_GLOBAL_REGION_SCHEDULER);
+        this.cachedGlobalServer = server;
+        this.cachedGlobalScheduler = scheduler;
+        return scheduler;
     }
 
     private Object regionScheduler() {
-        return this.invokeNoArgs(this.plugin.getServer(), GET_REGION_SCHEDULER);
+        Object server = this.plugin.getServer();
+        if (this.cachedRegionServer == server) {
+            return this.cachedRegionScheduler;
+        }
+        Object scheduler = this.invokeNoArgs(server, GET_REGION_SCHEDULER);
+        this.cachedRegionServer = server;
+        this.cachedRegionScheduler = scheduler;
+        return scheduler;
     }
 
     private Object entityScheduler(Entity entity) {
-        return this.invokeNoArgs(entity, GET_ENTITY_SCHEDULER);
+        if (this.cachedEntitySchedulerTarget == entity) {
+            return this.cachedEntityScheduler;
+        }
+        Object scheduler = this.invokeNoArgs(entity, GET_ENTITY_SCHEDULER);
+        this.cachedEntitySchedulerTarget = entity;
+        this.cachedEntityScheduler = scheduler;
+        return scheduler;
     }
 
     private boolean isPluginEnabled() {
