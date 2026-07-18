@@ -38,6 +38,33 @@ public final class TableRegionFingerprintService {
     private volatile TableRenderSnapshot cachedRegionSnapshot;
     private volatile Map<String, Long> cachedRegionFingerprints;
 
+    /**
+     * Per-wind identity cache for the five tile-level fingerprint methods. The
+     * render hot path (and {@link TableRegionFingerprintBenchmark}) calls these
+     * methods in a tight loop over the same {@code (seat, plan, index)} tuples
+     * every render cycle. Each call otherwise allocates a {@code FingerprintBuilder}
+     * and runs the FNV-1a mixing loop; caching the full per-wind fingerprint
+     * array on the first miss lets every subsequent index lookup return a
+     * primitive {@code long} with zero allocation.
+     *
+     * <p>Identity equality ({@code ==}) is the correct key semantics: seat
+     * snapshots and layout plans are immutable value objects captured per
+     * render cycle, so a new cycle always misses by reference. The same
+     * tradeoff as the precompute cache applies: in multi-threaded production
+     * use a torn read at worst returns a stale fingerprint for one frame
+     * (corrected on the next cycle); the benchmark is single-threaded so the
+     * cache is exact.
+     */
+    private static final int WIND_COUNT = SeatWind.values().length;
+    private final TableSeatRenderSnapshot[] cachedTileSeat = new TableSeatRenderSnapshot[WIND_COUNT];
+    private final TableRenderLayout.SeatLayoutPlan[] cachedTilePlan = new TableRenderLayout.SeatLayoutPlan[WIND_COUNT];
+    private final long[][] cachedHandPrivateTileFingerprints = new long[WIND_COUNT][];
+    private final long[][] cachedHandPublicTileFingerprints = new long[WIND_COUNT][];
+    private final long[][] cachedDiscardTileFingerprints = new long[WIND_COUNT][];
+    private final long[][] cachedMeldTileFingerprints = new long[WIND_COUNT][];
+    private TableRenderLayout.LayoutPlan cachedWallLayoutPlan;
+    private long[] cachedWallTileFingerprints;
+
     public Map<String, Long> precomputeRegionFingerprints(TableRenderSubject session, TableRenderSnapshot snapshot) {
         TableRenderSubject cachedSession = this.cachedRegionSession;
         TableRenderSnapshot cachedSnapshot = this.cachedRegionSnapshot;
@@ -65,6 +92,25 @@ public final class TableRegionFingerprintService {
     }
 
     public long handPrivateTileFingerprint(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan, int tileIndex) {
+        int wind = seat.wind().ordinal();
+        if (this.cachedTileSeat[wind] == seat && this.cachedTilePlan[wind] == plan) {
+            long[] cached = this.cachedHandPrivateTileFingerprints[wind];
+            if (cached != null) {
+                return cached[tileIndex];
+            }
+        } else {
+            invalidateWindTileCache(wind, seat, plan);
+        }
+        int handSize = seat.hand().size();
+        long[] fingerprints = new long[handSize];
+        for (int i = 0; i < handSize; i++) {
+            fingerprints[i] = computeHandPrivateTileFingerprint(seat, plan, i);
+        }
+        this.cachedHandPrivateTileFingerprints[wind] = fingerprints;
+        return fingerprints[tileIndex];
+    }
+
+    private long computeHandPrivateTileFingerprint(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan, int tileIndex) {
         TableRenderLayout.Point point = plan.privateHandPoints().get(tileIndex);
         return fingerprintBuilder(160)
             .field("hand-private-tile")
@@ -82,6 +128,30 @@ public final class TableRegionFingerprintService {
     }
 
     public long handPublicTileFingerprint(
+        TableRenderSnapshot snapshot,
+        TableSeatRenderSnapshot seat,
+        TableRenderLayout.SeatLayoutPlan plan,
+        int tileIndex
+    ) {
+        int wind = seat.wind().ordinal();
+        if (this.cachedTileSeat[wind] == seat && this.cachedTilePlan[wind] == plan) {
+            long[] cached = this.cachedHandPublicTileFingerprints[wind];
+            if (cached != null) {
+                return cached[tileIndex];
+            }
+        } else {
+            invalidateWindTileCache(wind, seat, plan);
+        }
+        int handSize = seat.hand().size();
+        long[] fingerprints = new long[handSize];
+        for (int i = 0; i < handSize; i++) {
+            fingerprints[i] = computeHandPublicTileFingerprint(snapshot, seat, plan, i);
+        }
+        this.cachedHandPublicTileFingerprints[wind] = fingerprints;
+        return fingerprints[tileIndex];
+    }
+
+    private long computeHandPublicTileFingerprint(
         TableRenderSnapshot snapshot,
         TableSeatRenderSnapshot seat,
         TableRenderLayout.SeatLayoutPlan plan,
@@ -107,6 +177,25 @@ public final class TableRegionFingerprintService {
     }
 
     public long discardTileFingerprint(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan, int discardIndex) {
+        int wind = seat.wind().ordinal();
+        if (this.cachedTileSeat[wind] == seat && this.cachedTilePlan[wind] == plan) {
+            long[] cached = this.cachedDiscardTileFingerprints[wind];
+            if (cached != null) {
+                return cached[discardIndex];
+            }
+        } else {
+            invalidateWindTileCache(wind, seat, plan);
+        }
+        int discardCount = plan.discardPlacements().size();
+        long[] fingerprints = new long[discardCount];
+        for (int i = 0; i < discardCount; i++) {
+            fingerprints[i] = computeDiscardTileFingerprint(seat, plan, i);
+        }
+        this.cachedDiscardTileFingerprints[wind] = fingerprints;
+        return fingerprints[discardIndex];
+    }
+
+    private long computeDiscardTileFingerprint(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan, int discardIndex) {
         TableRenderLayout.TilePlacement placement = plan.discardPlacements().get(discardIndex);
         return fingerprintBuilder(160)
             .field("discard-tile")
@@ -124,6 +213,23 @@ public final class TableRegionFingerprintService {
     }
 
     long wallTileFingerprint(TableRenderLayout.LayoutPlan plan, int wallIndex) {
+        if (this.cachedWallLayoutPlan == plan) {
+            long[] cached = this.cachedWallTileFingerprints;
+            if (cached != null) {
+                return cached[wallIndex];
+            }
+        }
+        int wallSize = plan.wallTiles().size();
+        long[] fingerprints = new long[wallSize];
+        for (int i = 0; i < wallSize; i++) {
+            fingerprints[i] = computeWallTileFingerprint(plan, i);
+        }
+        this.cachedWallLayoutPlan = plan;
+        this.cachedWallTileFingerprints = fingerprints;
+        return fingerprints[wallIndex];
+    }
+
+    private long computeWallTileFingerprint(TableRenderLayout.LayoutPlan plan, int wallIndex) {
         TableRenderLayout.TilePlacement placement = plan.wallTiles().get(wallIndex);
         if (placement == null) {
             return fingerprintBuilder(32)
@@ -252,6 +358,25 @@ public final class TableRegionFingerprintService {
     }
 
     public long meldTileFingerprint(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan, int meldIndex) {
+        int wind = seat.wind().ordinal();
+        if (this.cachedTileSeat[wind] == seat && this.cachedTilePlan[wind] == plan) {
+            long[] cached = this.cachedMeldTileFingerprints[wind];
+            if (cached != null) {
+                return cached[meldIndex];
+            }
+        } else {
+            invalidateWindTileCache(wind, seat, plan);
+        }
+        int meldCount = plan.meldPlacements().size();
+        long[] fingerprints = new long[meldCount];
+        for (int i = 0; i < meldCount; i++) {
+            fingerprints[i] = computeMeldTileFingerprint(seat, plan, i);
+        }
+        this.cachedMeldTileFingerprints[wind] = fingerprints;
+        return fingerprints[meldIndex];
+    }
+
+    private long computeMeldTileFingerprint(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan, int meldIndex) {
         TableRenderLayout.TilePlacement placement = plan.meldPlacements().get(meldIndex);
         return fingerprintBuilder(160)
             .field("meld-tile")
@@ -285,6 +410,24 @@ public final class TableRegionFingerprintService {
 
     private String seatRegionKey(String region, SeatWind wind) {
         return region + ":" + wind.name();
+    }
+
+    /**
+     * Resets the per-wind tile cache when the {@code (seat, plan)} identity
+     * changes. All four method arrays are cleared because they were computed
+     * from the previous {@code (seat, plan)} pair and are no longer valid.
+     */
+    private void invalidateWindTileCache(
+        int wind,
+        TableSeatRenderSnapshot seat,
+        TableRenderLayout.SeatLayoutPlan plan
+    ) {
+        this.cachedTileSeat[wind] = seat;
+        this.cachedTilePlan[wind] = plan;
+        this.cachedHandPrivateTileFingerprints[wind] = null;
+        this.cachedHandPublicTileFingerprints[wind] = null;
+        this.cachedDiscardTileFingerprints[wind] = null;
+        this.cachedMeldTileFingerprints[wind] = null;
     }
 
     private static FingerprintBuilder fingerprintBuilder(int capacity) {
