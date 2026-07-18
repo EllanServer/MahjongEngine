@@ -47,7 +47,7 @@ class PaperOutputParsingTest(unittest.TestCase):
 
 class LiveInputTest(unittest.TestCase):
     def test_uses_latest_paper_compatible_craftengine_by_default(self) -> None:
-        self.assertEqual("craftengine-paper-26.7.3", DEFAULT_CRAFTENGINE_ARTIFACT)
+        self.assertEqual("craftengine-paper-26.7.4", DEFAULT_CRAFTENGINE_ARTIFACT)
 
     def test_reserved_ports_are_distinct(self) -> None:
         ports = reserve_ports(3)

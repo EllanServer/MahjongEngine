@@ -362,16 +362,16 @@ The dependency surface is deliberately fixed:
 | External client runtime | Node `22.23.1` |
 | Protocol implementation | `minecraft-protocol` `1.66.2`, locked by npm integrity |
 | Paper | `1.20.1` build `196`, SHA-256 `234a9b32098100c6fc116664d64e36ccdb58b5b649af0f80bcccb08b0255eaea` |
-| CraftEngine for plugin runs | Paper `26.7.3` (`Len451or`), SHA-512 from the committed artifact lock |
+| CraftEngine for plugin runs | Paper `26.7.4` (`aINSQrXC`), SHA-512 from the committed artifact lock |
 
 `perf/live/artifacts.lock.json` contains immutable URLs, byte sizes and hashes. Downloads are
 written to a temporary file, size/hash verified, fsynced, then atomically moved into place.
 The Paper URL is the official Paper downloads-service object. The optional CraftEngine entry
-is artifact `craftengine-paper-26.7.3`, the latest Paper/Folia/Purpur file published for that
+is artifact `craftengine-paper-26.7.4`, the latest Paper/Folia/Purpur file published for that
 version. Do not substitute the same-version Bukkit/Spigot file: Modrinth marks that separate
 artifact for Minecraft 26.x only, while the locked Paper file explicitly includes Paper 1.20.1
 through 26.2. Its committed metadata source is
-`https://api.modrinth.com/v2/version/Len451or`.
+`https://api.modrinth.com/v2/version/aINSQrXC`.
 
 ### What is actually counted
 
@@ -424,13 +424,16 @@ or substitutes a stub named `CraftEngine`.
 
 ```powershell
 python perf/live/download_locked.py `
-  --artifact craftengine-paper-26.7.3 `
-  --destination build/live-cache/craft-engine-paper-plugin-26.7.3.jar
+  --artifact craftengine-paper-26.7.4 `
+  --destination build/live-cache/craft-engine-paper-plugin-26.7.4.jar
 python perf/live/run_server.py `
   --paper-jar build/live-cache/server.jar `
   --plugin-jar build/libs/mahjong-paper-1.5.0.jar `
-  --craftengine-jar build/live-cache/craft-engine-paper-plugin-26.7.3.jar `
+  --plugin-config perf/live/fixtures/mahjongpaper-smoke-config.yml `
+  --craftengine-jar build/live-cache/craft-engine-paper-plugin-26.7.4.jar `
   --required-plugin MahjongPaper `
+  --setup-command 'execute at MahjongPerfBot run fill ~-16 ~-1 ~-16 ~16 ~-1 ~16 minecraft:stone' `
+  --setup-command 'execute at MahjongPerfBot run fill ~-16 ~ ~-16 ~16 ~10 ~16 minecraft:air' `
   --scenario-name majsoul-hanchan-four-bot-spectator `
   --scenario-command "/mahjong botmatch MAJSOUL_HANCHAN" `
   --scenario-ready-pattern 'Round .+ \| Turn .+ \| Wall [1-9][0-9]* \| Spectators 1' `
@@ -449,11 +452,11 @@ and must observe the committed ready pattern before warmup and measurement begin
 traffic is a hard failure, not a fallback to an empty-server keepalive run.
 
 The standalone measurement-infrastructure PR deliberately does not execute this plugin profile
-as its required pull-request check. The current foundation baseline does not expose Caffeine to
-the plugin classloader on a fresh Paper instance, so the real plugin profile correctly stops at
-the required-plugin enablement check. That dependency blocker must be fixed in the foundation
-change and then exercised by a stacked run; this harness does not patch the plugin descriptor,
-inject a fake dependency, or turn the known failure green.
+as its required pull-request check. Plugin runs use the committed fixture config to disable game
+room placement restrictions, persistence and ranking equally for base and candidate, then create
+a flat, clear table footprint relative to the connected protocol client before starting the
+botmatch. The harness still loads the real locked CraftEngine plugin and does not patch plugin
+metadata or inject a fake dependency.
 
 ### Measurement rules
 
@@ -480,6 +483,7 @@ run-manifest.json                 hashes, versions, ports, timings, shutdown res
 paper-summary.json                derived TPS/MSPT sample distributions
 raw/paper-samples.jsonl           exact timestamped Paper command responses plus parsed values
 raw/server-stdout.log             complete server console output
+raw/inputs/plugin-config.yml      exact staged plugin fixture configuration, when supplied
 raw/instance/logs/latest.log      Paper's own latest.log
 raw/runtime-jars.json             SHA-256 of server/plugin/runtime jars actually loaded
 raw/protocol-client/packets.jsonl one record per externally observed Minecraft frame

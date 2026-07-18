@@ -54,6 +54,17 @@ final class TableViewerSnapshotFactoryOverheadTest {
     }
 
     @Test
+    void commandStateSummaryIncludesTheLiveRoundTurnWallAndSpectatorCount() {
+        Fixture fixture = fixture(false, true, SeatWind.SOUTH, false, MahjongVariant.RIICHI);
+
+        String summary = PlainTextComponentSerializer.plainText().serialize(
+            new TableViewerSnapshotFactory(fixture.session()).createStateSummary(fixture.viewer())
+        );
+
+        assertEquals("Round East 1 | Turn Other player | Wall 42 | Spectators 0", summary);
+    }
+
+    @Test
     void activeOverheadViewIsReadOnlyAndUsesShiftToReturn() {
         Fixture fixture = fixture(true);
 
