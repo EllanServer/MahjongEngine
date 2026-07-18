@@ -1,7 +1,5 @@
 package top.ellan.mahjong.table.core;
 
-import java.util.Objects;
-
 public final class DelimitedFingerprintBuilder {
     private final StringBuilder delegate;
     private boolean needsSeparator;
@@ -14,28 +12,53 @@ public final class DelimitedFingerprintBuilder {
         return new DelimitedFingerprintBuilder(capacity);
     }
 
+    public DelimitedFingerprintBuilder field(String value) {
+        if (this.needsSeparator) {
+            this.delegate.append(':');
+        }
+        if (value != null) {
+            this.delegate.append(value);
+        }
+        this.needsSeparator = true;
+        return this;
+    }
+
     public DelimitedFingerprintBuilder field(Object value) {
-        this.appendFieldSeparator();
-        this.delegate.append(Objects.toString(value, ""));
-        return this.finishField();
+        if (this.needsSeparator) {
+            this.delegate.append(':');
+        }
+        if (value != null) {
+            this.delegate.append(value);
+        }
+        this.needsSeparator = true;
+        return this;
     }
 
     public DelimitedFingerprintBuilder field(boolean value) {
-        this.appendFieldSeparator();
+        if (this.needsSeparator) {
+            this.delegate.append(':');
+        }
         this.delegate.append(value);
-        return this.finishField();
+        this.needsSeparator = true;
+        return this;
     }
 
     public DelimitedFingerprintBuilder field(char value) {
-        this.appendFieldSeparator();
+        if (this.needsSeparator) {
+            this.delegate.append(':');
+        }
         this.delegate.append(value);
-        return this.finishField();
+        this.needsSeparator = true;
+        return this;
     }
 
     public DelimitedFingerprintBuilder field(int value) {
-        this.appendFieldSeparator();
+        if (this.needsSeparator) {
+            this.delegate.append(':');
+        }
         this.delegate.append(value);
-        return this.finishField();
+        this.needsSeparator = true;
+        return this;
     }
 
     public DelimitedFingerprintBuilder raw(Object value) {
@@ -46,17 +69,6 @@ public final class DelimitedFingerprintBuilder {
     public DelimitedFingerprintBuilder entrySeparator() {
         this.delegate.append(';');
         this.needsSeparator = false;
-        return this;
-    }
-
-    private void appendFieldSeparator() {
-        if (this.needsSeparator) {
-            this.delegate.append(':');
-        }
-    }
-
-    private DelimitedFingerprintBuilder finishField() {
-        this.needsSeparator = true;
         return this;
     }
 
