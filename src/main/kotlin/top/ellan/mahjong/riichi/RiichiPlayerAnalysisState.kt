@@ -68,6 +68,7 @@ abstract class RiichiPlayerAnalysisState(
     protected val cachedFuroReactions: MutableMap<Pair<MahjongTile, Boolean>, FuroReactionAnalysis?> = mutableMapOf()
     protected var cachedHandsMahjongTiles: List<MahjongTile> = emptyList()
     protected var cachedHandsUtilsTiles: List<Tile> = emptyList()
+    protected var cachedHandBaseTileCounts: IntArray = IntArray(MahjongTile.entries.size)
     protected var cachedFuuroUtils: List<mahjongutils.models.Furo> = emptyList()
     protected val cachedCanWinDecisions: MutableMap<CanWinMemoKey, Boolean> = mutableMapOf()
 
@@ -285,6 +286,18 @@ abstract class RiichiPlayerAnalysisState(
             markCacheCurrent(AnalysisCache.HANDS_UTILS_TILES)
         }
         return cachedHandsUtilsTiles
+    }
+
+    /** Red fives share their normal five's slot, matching furo eligibility rules. */
+    protected fun currentHandBaseTileCounts(): IntArray {
+        if (!isCacheCurrent(AnalysisCache.HAND_BASE_TILE_COUNTS)) {
+            cachedHandBaseTileCounts.fill(0)
+            for (tile in hands) {
+                cachedHandBaseTileCounts[tile.mahjongTile.baseTile.ordinal]++
+            }
+            markCacheCurrent(AnalysisCache.HAND_BASE_TILE_COUNTS)
+        }
+        return cachedHandBaseTileCounts
     }
 
     protected fun currentFuuroUtils(): List<mahjongutils.models.Furo> {
@@ -555,6 +568,7 @@ abstract class RiichiPlayerAnalysisState(
         FURO_REACTION,
         HANDS_MAHJONG_TILES,
         HANDS_UTILS_TILES,
+        HAND_BASE_TILE_COUNTS,
         FUURO_UTILS,
         CAN_WIN,
     }

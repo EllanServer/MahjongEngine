@@ -251,6 +251,20 @@ open class RiichiPlayerState(
             }
         }
 
+        if (!hasStructuralFuroCandidate(tile.mahjongTile.baseTile, allowChii)) {
+            return if (canRon) {
+                ReactionOptions(
+                    canRon = true,
+                    canPon = false,
+                    canMinkan = false,
+                    chiiPairs = emptyList(),
+                    suggestedResponse = ReactionResponse(ReactionType.RON, null),
+                )
+            } else {
+                null
+            }
+        }
+
         val analysis = analyzeFuroReaction(tile, allowChii)
         val canPon = analysis?.pon != null
         val canMinkan = analysis?.minkan != null
@@ -272,6 +286,25 @@ open class RiichiPlayerState(
             chiiPairs = chiiPairs,
             suggestedResponse = suggestion,
         )
+    }
+
+    private fun hasStructuralFuroCandidate(
+        baseTile: MahjongTile,
+        allowChii: Boolean,
+    ): Boolean {
+        val counts = currentHandBaseTileCounts()
+        val tileIndex = baseTile.ordinal
+        if (counts[tileIndex] >= 2) {
+            return true
+        }
+        if (!allowChii || tileIndex !in MahjongTile.M1.ordinal..MahjongTile.S9.ordinal) {
+            return false
+        }
+
+        val rank = tileIndex % 9
+        return (rank >= 2 && counts[tileIndex - 2] > 0 && counts[tileIndex - 1] > 0) ||
+            (rank in 1..7 && counts[tileIndex - 1] > 0 && counts[tileIndex + 1] > 0) ||
+            (rank <= 6 && counts[tileIndex + 1] > 0 && counts[tileIndex + 2] > 0)
     }
 
     fun tilePairForPon(tile: TileInstance): Pair<MahjongTile, MahjongTile> {
