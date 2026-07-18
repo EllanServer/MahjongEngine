@@ -40,6 +40,10 @@ on:
           - layout
           - scheduler-reflection
           - ray-proxy
+          - riichi-reaction
+          - sichuan-hu
+          - region-apply
+          - layout-cache
           - infra
       forks:
         description: Trusted CI override for JMH forks (blank uses base config)
@@ -157,6 +161,10 @@ jobs:
               "performance-layout": "layout",
               "performance-scheduler-reflection": "scheduler-reflection",
               "performance-ray-proxy": "ray-proxy",
+              "performance-riichi-reaction": "riichi-reaction",
+              "performance-sichuan-hu": "sichuan-hu",
+              "performance-region-apply": "region-apply",
+              "performance-layout-cache": "layout-cache",
           }
           selected = [profile for label, profile in choices.items() if label in labels]
           if len(selected) != 1:
