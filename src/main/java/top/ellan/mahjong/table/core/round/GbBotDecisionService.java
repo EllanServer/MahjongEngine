@@ -192,14 +192,19 @@ final class GbBotDecisionService {
         GbTingResponse[] tingMemo = new GbTingResponse[TILE_KIND_COUNT];
         MahjongTile previousDiscarded = null;
         int previousDiscardPreference = 0;
+        List<MahjongTile> remaining = new ArrayList<>(hand.size() - 1);
         for (int i = 0; i < hand.size(); i++) {
             MahjongTile discarded = hand.get(i);
             int discardedOrdinal = discarded.ordinal();
             GbTingResponse ting = tingMemo[discardedOrdinal];
             boolean tingMemoHit = ting != null;
             if (ting == null) {
-                List<MahjongTile> remaining = new ArrayList<>(hand);
-                remaining.remove(i);
+                remaining.clear();
+                for (int j = 0; j < hand.size(); j++) {
+                    if (j != i) {
+                        remaining.add(hand.get(j));
+                    }
+                }
                 ting = tingEvaluator.evaluate(remaining, melds);
                 if (ting != null) {
                     tingMemo[discardedOrdinal] = ting;
