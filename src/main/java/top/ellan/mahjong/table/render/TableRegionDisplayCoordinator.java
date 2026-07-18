@@ -1017,28 +1017,25 @@ public final class TableRegionDisplayCoordinator {
     }
 
     private String seatRegionKey(String region, SeatWind wind) {
-        if ("visual".equals(region)) {
-            return VISUAL_REGION_KEYS[wind.index()];
+        int index = wind.index();
+        switch (region) {
+            case "visual":
+                return VISUAL_REGION_KEYS[index];
+            case "labels":
+                return LABEL_REGION_KEYS[index];
+            case "sticks":
+                return STICK_REGION_KEYS[index];
+            case "hand-public":
+                return HAND_PUBLIC_REGION_KEYS[index];
+            case "hand-private":
+                return HAND_PRIVATE_REGION_KEYS[index];
+            case "discards":
+                return DISCARD_REGION_KEYS[index];
+            case "melds":
+                return MELD_REGION_KEYS[index];
+            default:
+                return region + ":" + wind.name();
         }
-        if ("labels".equals(region)) {
-            return LABEL_REGION_KEYS[wind.index()];
-        }
-        if ("sticks".equals(region)) {
-            return STICK_REGION_KEYS[wind.index()];
-        }
-        if ("hand-public".equals(region)) {
-            return HAND_PUBLIC_REGION_KEYS[wind.index()];
-        }
-        if ("hand-private".equals(region)) {
-            return HAND_PRIVATE_REGION_KEYS[wind.index()];
-        }
-        if ("discards".equals(region)) {
-            return DISCARD_REGION_KEYS[wind.index()];
-        }
-        if ("melds".equals(region)) {
-            return MELD_REGION_KEYS[wind.index()];
-        }
-        return region + ":" + wind.name();
     }
 
     private String handPrivateRegionKey(SeatWind wind, int tileIndex) {
