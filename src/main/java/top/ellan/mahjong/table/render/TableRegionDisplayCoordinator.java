@@ -476,8 +476,9 @@ public final class TableRegionDisplayCoordinator {
 
     private QueueExecution applyQueue(RegionUpdateQueue updates) {
         int processed = 0;
-        for (int bucketIndex = 0; bucketIndex < updates.bucketCount(); bucketIndex++) {
-            List<RegionUpdateAction> bucket = updates.bucket(bucketIndex);
+        List<RegionUpdateAction>[] buckets = updates.buckets;
+        for (int bucketIndex = 0; bucketIndex < buckets.length; bucketIndex++) {
+            List<RegionUpdateAction> bucket = buckets[bucketIndex];
             for (int updateIndex = 0, bucketSize = bucket.size(); updateIndex < bucketSize; updateIndex++) {
                 if (!bucket.get(updateIndex).apply()) {
                     return new QueueExecution(true, processed);
