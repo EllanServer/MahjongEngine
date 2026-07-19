@@ -91,6 +91,16 @@ public final class ServerScheduler {
 
     private final Plugin plugin;
 
+    /**
+     * Each capability is published as one immutable entry so readers can never
+     * observe a target from one resolution paired with another target's scheduler.
+     * The null scheduler value is intentional: it negatively caches unavailable
+     * Folia capabilities on standard Paper runtimes.
+     */
+    private volatile SchedulerCapability globalSchedulerCapability;
+    private volatile SchedulerCapability regionSchedulerCapability;
+    private volatile SchedulerCapability entitySchedulerCapability;
+
     public ServerScheduler(Plugin plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
     }
@@ -313,15 +323,35 @@ public final class ServerScheduler {
     }
 
     private Object globalRegionScheduler() {
-        return this.invokeNoArgs(this.plugin.getServer(), GET_GLOBAL_REGION_SCHEDULER);
+        Object server = this.plugin.getServer();
+        SchedulerCapability capability = this.globalSchedulerCapability;
+        if (capability != null && capability.target() == server) {
+            return capability.scheduler();
+        }
+        Object scheduler = this.invokeNoArgs(server, GET_GLOBAL_REGION_SCHEDULER);
+        this.globalSchedulerCapability = new SchedulerCapability(server, scheduler);
+        return scheduler;
     }
 
     private Object regionScheduler() {
-        return this.invokeNoArgs(this.plugin.getServer(), GET_REGION_SCHEDULER);
+        Object server = this.plugin.getServer();
+        SchedulerCapability capability = this.regionSchedulerCapability;
+        if (capability != null && capability.target() == server) {
+            return capability.scheduler();
+        }
+        Object scheduler = this.invokeNoArgs(server, GET_REGION_SCHEDULER);
+        this.regionSchedulerCapability = new SchedulerCapability(server, scheduler);
+        return scheduler;
     }
 
     private Object entityScheduler(Entity entity) {
-        return this.invokeNoArgs(entity, GET_ENTITY_SCHEDULER);
+        SchedulerCapability capability = this.entitySchedulerCapability;
+        if (capability != null && capability.target() == entity) {
+            return capability.scheduler();
+        }
+        Object scheduler = this.invokeNoArgs(entity, GET_ENTITY_SCHEDULER);
+        this.entitySchedulerCapability = new SchedulerCapability(entity, scheduler);
+        return scheduler;
     }
 
     private boolean isPluginEnabled() {
@@ -365,6 +395,9 @@ public final class ServerScheduler {
 
     private static PluginTask wrap(Object task) {
         return task == null ? NO_OP_TASK : new ScheduledTaskHandle(task);
+    }
+
+    private record SchedulerCapability(Object target, Object scheduler) {
     }
 
     private record BukkitTaskHandle(BukkitTask task) implements PluginTask {
