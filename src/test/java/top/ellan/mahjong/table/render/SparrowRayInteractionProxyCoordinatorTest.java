@@ -13,6 +13,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -75,6 +76,8 @@ final class SparrowRayInteractionProxyCoordinatorTest {
         assertNull(ClientInteractionProxyRegistry.tableIdFor(1201, VIEWER_ID));
         assertEquals(0, coordinator.entityCount());
         verify(backend).destroy(viewer, List.of(proxy));
+        verify(session, times(1)).id();
+        verify(proxy, times(1)).entityId();
     }
 
     @Test
@@ -123,7 +126,179 @@ final class SparrowRayInteractionProxyCoordinatorTest {
     }
 
     @Test
-    void unchangedGeometryReusesClientProxyWithoutMorePackets() {
+    void sameImmutableInteractionSnapshotReusesWithoutRepeatedIdentityReads() {
+        TableSessionContext session = mock(TableSessionContext.class);
+        SparrowRayInteractionProxyCoordinator.Backend backend = mock(
+            SparrowRayInteractionProxyCoordinator.Backend.class
+        );
+        SparrowRayInteractionProxyCoordinator.ClientProxy proxy = mock(
+            SparrowRayInteractionProxyCoordinator.ClientProxy.class
+        );
+        Player viewer = mock(Player.class);
+        when(session.id()).thenReturn("table-a");
+        when(session.onlinePlayer(VIEWER_ID)).thenReturn(viewer);
+        when(viewer.isOnline()).thenReturn(true);
+        when(backend.available()).thenReturn(true);
+        when(backend.create(eq(viewer), any())).thenReturn(List.of(proxy));
+        when(proxy.entityId()).thenReturn(1204);
+        doAnswer(invocation -> {
+            invocation.<Runnable>getArgument(1).run();
+            return null;
+        }).when(session).runForViewer(eq(viewer), any(Runnable.class));
+        SparrowRayInteractionProxyCoordinator coordinator = new SparrowRayInteractionProxyCoordinator(
+            session,
+            backend
+        );
+        List<DisplayInteractionRayRegistry.RayInteraction> interactions = List.of(interaction());
+        Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> interactionsByViewer = Map.of(
+            VIEWER_ID,
+            interactions
+        );
+
+        coordinator.replace("actions", interactionsByViewer);
+        coordinator.replace("actions", interactionsByViewer);
+
+        verify(backend, times(1)).create(eq(viewer), any());
+        verify(backend, times(1)).spawn(viewer, List.of(proxy));
+        verify(proxy, times(1)).entityId();
+        verify(session, times(1)).id();
+        assertEquals(1, coordinator.entityCount());
+    }
+
+    @Test
+    void mutableInteractionListGeometryChangeCannotHitIdentityFastPath() {
+        TableSessionContext session = mock(TableSessionContext.class);
+        SparrowRayInteractionProxyCoordinator.Backend backend = mock(
+            SparrowRayInteractionProxyCoordinator.Backend.class
+        );
+        SparrowRayInteractionProxyCoordinator.ClientProxy firstProxy = mock(
+            SparrowRayInteractionProxyCoordinator.ClientProxy.class
+        );
+        SparrowRayInteractionProxyCoordinator.ClientProxy changedProxy = mock(
+            SparrowRayInteractionProxyCoordinator.ClientProxy.class
+        );
+        Player viewer = mock(Player.class);
+        when(session.id()).thenReturn("table-a");
+        when(session.onlinePlayer(VIEWER_ID)).thenReturn(viewer);
+        when(viewer.isOnline()).thenReturn(true);
+        when(backend.available()).thenReturn(true);
+        when(backend.create(eq(viewer), any()))
+            .thenReturn(List.of(firstProxy))
+            .thenReturn(List.of(changedProxy));
+        when(firstProxy.entityId()).thenReturn(1205);
+        when(changedProxy.entityId()).thenReturn(1206);
+        doAnswer(invocation -> {
+            invocation.<Runnable>getArgument(1).run();
+            return null;
+        }).when(session).runForViewer(eq(viewer), any(Runnable.class));
+        SparrowRayInteractionProxyCoordinator coordinator = new SparrowRayInteractionProxyCoordinator(
+            session,
+            backend
+        );
+        List<DisplayInteractionRayRegistry.RayInteraction> interactions = new ArrayList<>();
+        interactions.add(interaction());
+        Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> interactionsByViewer = Map.of(
+            VIEWER_ID,
+            interactions
+        );
+
+        coordinator.replace("actions", interactionsByViewer);
+        interactions.set(0, interaction("view:river", 0.75F));
+        coordinator.replace("actions", interactionsByViewer);
+
+        verify(backend, times(2)).create(eq(viewer), any());
+        verify(backend).destroy(viewer, List.of(firstProxy));
+        verify(backend).spawn(viewer, List.of(firstProxy));
+        verify(backend).spawn(viewer, List.of(changedProxy));
+        assertNull(ClientInteractionProxyRegistry.tableIdFor(1205, VIEWER_ID));
+        assertEquals("table-a", ClientInteractionProxyRegistry.tableIdFor(1206, VIEWER_ID));
+        assertEquals(1, coordinator.entityCount());
+    }
+
+    @Test
+    void multipleProxyOwnershipRemainsCompleteWithCachedFirstEntityId() {
+        TableSessionContext session = mock(TableSessionContext.class);
+        SparrowRayInteractionProxyCoordinator.Backend backend = mock(
+            SparrowRayInteractionProxyCoordinator.Backend.class
+        );
+        SparrowRayInteractionProxyCoordinator.ClientProxy firstProxy = mock(
+            SparrowRayInteractionProxyCoordinator.ClientProxy.class
+        );
+        SparrowRayInteractionProxyCoordinator.ClientProxy secondProxy = mock(
+            SparrowRayInteractionProxyCoordinator.ClientProxy.class
+        );
+        Player viewer = mock(Player.class);
+        when(session.id()).thenReturn("table-a");
+        when(session.onlinePlayer(VIEWER_ID)).thenReturn(viewer);
+        when(viewer.isOnline()).thenReturn(true);
+        when(backend.available()).thenReturn(true);
+        when(backend.create(eq(viewer), any())).thenReturn(List.of(firstProxy, secondProxy));
+        when(firstProxy.entityId()).thenReturn(1207);
+        when(secondProxy.entityId()).thenReturn(1208);
+        doAnswer(invocation -> {
+            invocation.<Runnable>getArgument(1).run();
+            return null;
+        }).when(session).runForViewer(eq(viewer), any(Runnable.class));
+        SparrowRayInteractionProxyCoordinator coordinator = new SparrowRayInteractionProxyCoordinator(
+            session,
+            backend
+        );
+
+        coordinator.replace("actions", Map.of(VIEWER_ID, List.of(interaction())));
+
+        assertTrue(coordinator.isCurrent("actions", Set.of(VIEWER_ID)));
+        assertEquals("table-a", ClientInteractionProxyRegistry.tableIdFor(1207, VIEWER_ID));
+        assertEquals("table-a", ClientInteractionProxyRegistry.tableIdFor(1208, VIEWER_ID));
+        coordinator.remove("actions");
+        assertNull(ClientInteractionProxyRegistry.tableIdFor(1207, VIEWER_ID));
+        assertNull(ClientInteractionProxyRegistry.tableIdFor(1208, VIEWER_ID));
+        verify(firstProxy, times(1)).entityId();
+        verify(secondProxy, times(3)).entityId();
+    }
+
+    @Test
+    void cachedEntityCountTracksTheSameViewerAcrossMultipleRegions() {
+        TableSessionContext session = mock(TableSessionContext.class);
+        SparrowRayInteractionProxyCoordinator.Backend backend = mock(
+            SparrowRayInteractionProxyCoordinator.Backend.class
+        );
+        SparrowRayInteractionProxyCoordinator.ClientProxy firstProxy = mock(
+            SparrowRayInteractionProxyCoordinator.ClientProxy.class
+        );
+        SparrowRayInteractionProxyCoordinator.ClientProxy secondProxy = mock(
+            SparrowRayInteractionProxyCoordinator.ClientProxy.class
+        );
+        Player viewer = mock(Player.class);
+        when(session.id()).thenReturn("table-a");
+        when(session.onlinePlayer(VIEWER_ID)).thenReturn(viewer);
+        when(viewer.isOnline()).thenReturn(true);
+        when(backend.available()).thenReturn(true);
+        when(backend.create(eq(viewer), any()))
+            .thenReturn(List.of(firstProxy))
+            .thenReturn(List.of(secondProxy));
+        when(firstProxy.entityId()).thenReturn(1209);
+        when(secondProxy.entityId()).thenReturn(1210);
+        doAnswer(invocation -> {
+            invocation.<Runnable>getArgument(1).run();
+            return null;
+        }).when(session).runForViewer(eq(viewer), any(Runnable.class));
+        SparrowRayInteractionProxyCoordinator coordinator = new SparrowRayInteractionProxyCoordinator(
+            session,
+            backend
+        );
+
+        coordinator.replace("actions", Map.of(VIEWER_ID, List.of(interaction())));
+        coordinator.replace("hand", Map.of(VIEWER_ID, List.of(interaction())));
+
+        assertEquals(2, coordinator.entityCount());
+        coordinator.removeViewer(VIEWER_ID);
+        assertEquals(0, coordinator.entityCount());
+        assertNull(ClientInteractionProxyRegistry.tableIdFor(1209, VIEWER_ID));
+        assertNull(ClientInteractionProxyRegistry.tableIdFor(1210, VIEWER_ID));
+    }
+
+    @Test
+    void unchangedGeometryWithDifferentActionReusesClientProxyWithoutMorePackets() {
         TableSessionContext session = mock(TableSessionContext.class);
         SparrowRayInteractionProxyCoordinator.Backend backend = mock(
             SparrowRayInteractionProxyCoordinator.Backend.class
@@ -148,7 +323,10 @@ final class SparrowRayInteractionProxyCoordinatorTest {
         );
 
         coordinator.replace("actions", Map.of(VIEWER_ID, List.of(interaction())));
-        coordinator.replace("actions", Map.of(VIEWER_ID, List.of(interaction())));
+        coordinator.replace(
+            "actions",
+            Map.of(VIEWER_ID, List.of(interaction("view:river:updated", 0.5F)))
+        );
 
         verify(backend, times(1)).create(eq(viewer), any());
         verify(backend, times(1)).spawn(viewer, List.of(proxy));
@@ -157,6 +335,10 @@ final class SparrowRayInteractionProxyCoordinatorTest {
     }
 
     private static DisplayInteractionRayRegistry.RayInteraction interaction() {
+        return interaction("view:river", 0.5F);
+    }
+
+    private static DisplayInteractionRayRegistry.RayInteraction interaction(String command, float width) {
         return new DisplayInteractionRayRegistry.RayInteraction(
             WORLD_ID,
             0.0D,
@@ -164,10 +346,10 @@ final class SparrowRayInteractionProxyCoordinatorTest {
             3.0D,
             1.0D,
             0.0D,
-            0.5F,
+            width,
             0.3F,
             0.0F,
-            DisplayClickAction.playerCommand("table-a", VIEWER_ID, "view:river")
+            DisplayClickAction.playerCommand("table-a", VIEWER_ID, command)
         );
     }
 }

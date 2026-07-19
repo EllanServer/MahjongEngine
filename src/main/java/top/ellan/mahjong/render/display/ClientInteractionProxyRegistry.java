@@ -26,6 +26,14 @@ public final class ClientInteractionProxyRegistry {
         return owner != null && viewerId.equals(owner.viewerId()) ? owner.tableId() : null;
     }
 
+    public static boolean isOwnedBy(int entityId, UUID viewerId, String tableId) {
+        if (viewerId == null || tableId == null) {
+            return false;
+        }
+        ProxyOwner owner = OWNERS.get(entityId);
+        return owner != null && owner.matches(viewerId, tableId);
+    }
+
     public static void unregister(int entityId, UUID viewerId, String tableId) {
         if (viewerId == null || tableId == null) {
             return;
@@ -65,5 +73,8 @@ public final class ClientInteractionProxyRegistry {
     }
 
     private record ProxyOwner(UUID viewerId, String tableId) {
+        private boolean matches(UUID expectedViewerId, String expectedTableId) {
+            return expectedViewerId.equals(this.viewerId) && expectedTableId.equals(this.tableId);
+        }
     }
 }
