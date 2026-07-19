@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -202,12 +203,26 @@ final class ServerSchedulerReflectionCacheTest {
             }
             return task;
         });
+        when(firstEntityScheduler.runDelayed(any(Plugin.class), any(), any(Runnable.class), anyLong()))
+            .thenAnswer(invocation -> {
+                if (!Thread.currentThread().getName().equals("scheduler-entity-first")) {
+                    wrongRoutes.incrementAndGet();
+                }
+                return task;
+            });
         when(secondEntityScheduler.run(any(Plugin.class), any(), any(Runnable.class))).thenAnswer(invocation -> {
             if (!Thread.currentThread().getName().equals("scheduler-entity-second")) {
                 wrongRoutes.incrementAndGet();
             }
             return task;
         });
+        when(secondEntityScheduler.runDelayed(any(Plugin.class), any(), any(Runnable.class), anyLong()))
+            .thenAnswer(invocation -> {
+                if (!Thread.currentThread().getName().equals("scheduler-entity-second")) {
+                    wrongRoutes.incrementAndGet();
+                }
+                return task;
+            });
 
         ServerScheduler scheduler = new ServerScheduler(plugin);
         CountDownLatch ready = new CountDownLatch(2);
@@ -279,6 +294,7 @@ final class ServerSchedulerReflectionCacheTest {
             }
             for (int iteration = 0; iteration < 20_000; iteration++) {
                 scheduler.runEntity(entity, NO_OP);
+                scheduler.runEntityDelayed(entity, NO_OP, 1L);
             }
         } catch (Throwable throwable) {
             failure.compareAndSet(null, throwable);
