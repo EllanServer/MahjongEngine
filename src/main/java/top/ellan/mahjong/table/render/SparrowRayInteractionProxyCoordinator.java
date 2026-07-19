@@ -78,23 +78,23 @@ final class SparrowRayInteractionProxyCoordinator {
                 if (viewerId == null || interactions == null || interactions.isEmpty()) {
                     continue;
                 }
+                ActiveProxies current = previous.get(viewerId);
+                if (current != null
+                    && current.viewer().isOnline()
+                    && this.canReuse(viewerId, current, interactions)) {
+                    next.put(viewerId, current);
+                    continue;
+                }
                 Player viewer = this.session.onlinePlayer(viewerId);
                 if (viewer == null || !viewer.isOnline()) {
                     continue;
                 }
-                ActiveProxies current = previous.get(viewerId);
-                if (this.canReuse(viewerId, viewer, current, interactions)) {
-                    next.put(viewerId, current);
-                    continue;
-                }
-                List<DisplayInteractionRayRegistry.RayInteraction> stableInteractions = List.copyOf(interactions);
-                List<InteractionGeometry> geometry = interactionGeometry(stableInteractions);
-                List<ClientProxy> proxies = List.copyOf(this.backend.create(viewer, stableInteractions));
+                List<InteractionGeometry> geometry = interactionGeometry(interactions);
+                List<ClientProxy> proxies = List.copyOf(this.backend.create(viewer, interactions));
                 if (!proxies.isEmpty()) {
                     ActiveProxies created = new ActiveProxies(
                         viewer,
                         proxies,
-                        stableInteractions,
                         geometry,
                         proxies.get(0).entityId()
                     );
@@ -156,12 +156,10 @@ final class SparrowRayInteractionProxyCoordinator {
             if (viewerId == null || interactions == null || interactions.isEmpty()) {
                 continue;
             }
-            Player viewer = this.session.onlinePlayer(viewerId);
-            if (viewer == null || !viewer.isOnline()) {
-                continue;
-            }
             ActiveProxies active = previous.get(viewerId);
-            if (!this.canReuse(viewerId, viewer, active, interactions)) {
+            if (active == null
+                || !active.viewer().isOnline()
+                || !this.canReuse(viewerId, active, interactions)) {
                 return false;
             }
             reusableViewers++;
@@ -171,14 +169,10 @@ final class SparrowRayInteractionProxyCoordinator {
 
     private boolean canReuse(
         UUID viewerId,
-        Player viewer,
         ActiveProxies active,
         List<DisplayInteractionRayRegistry.RayInteraction> interactions
     ) {
-        if (active == null || active.viewer() != viewer || active.proxies().isEmpty()) {
-            return false;
-        }
-        if (active.interactions() != interactions && !sameGeometry(active.geometry(), interactions)) {
+        if (active == null || active.proxies().isEmpty() || !sameGeometry(active.geometry(), interactions)) {
             return false;
         }
         return this.hasOwnership(viewerId, active);
@@ -391,7 +385,6 @@ final class SparrowRayInteractionProxyCoordinator {
     private record ActiveProxies(
         Player viewer,
         List<ClientProxy> proxies,
-        List<DisplayInteractionRayRegistry.RayInteraction> interactions,
         List<InteractionGeometry> geometry,
         int firstEntityId
     ) {
