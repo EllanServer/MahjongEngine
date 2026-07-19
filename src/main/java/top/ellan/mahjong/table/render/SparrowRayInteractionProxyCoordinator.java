@@ -36,11 +36,9 @@ final class SparrowRayInteractionProxyCoordinator {
     private static final Backend DEFAULT_BACKEND = new SparrowBackend();
 
     private final TableSessionContext session;
-    private final String tableId;
     private final Backend backend;
     private final Map<String, Map<UUID, ActiveProxies>> regions = new LinkedHashMap<>();
     private final AtomicBoolean warningLogged = new AtomicBoolean();
-    private int entityCount;
 
     SparrowRayInteractionProxyCoordinator(TableSessionContext session) {
         this(session, DEFAULT_BACKEND);
@@ -48,7 +46,6 @@ final class SparrowRayInteractionProxyCoordinator {
 
     SparrowRayInteractionProxyCoordinator(TableSessionContext session, Backend backend) {
         this.session = session;
-        this.tableId = session == null ? null : session.id();
         this.backend = backend;
     }
 
@@ -90,14 +87,9 @@ final class SparrowRayInteractionProxyCoordinator {
                     continue;
                 }
                 List<InteractionGeometry> geometry = interactionGeometry(interactions);
-                List<ClientProxy> proxies = List.copyOf(this.backend.create(viewer, interactions));
+                List<ClientProxy> proxies = this.backend.create(viewer, interactions);
                 if (!proxies.isEmpty()) {
-                    ActiveProxies created = new ActiveProxies(
-                        viewer,
-                        proxies,
-                        geometry,
-                        proxies.get(0).entityId()
-                    );
+                    ActiveProxies created = new ActiveProxies(viewer, List.copyOf(proxies), geometry);
                     next.put(viewerId, created);
                     pendingSpawns.add(new PendingSpawn(viewerId, created));
                 }
@@ -114,21 +106,18 @@ final class SparrowRayInteractionProxyCoordinator {
                 this.removeActive(viewerId, active);
             }
         });
-        int previousCount = proxyCount(previous);
         if (next.isEmpty()) {
             this.regions.remove(regionKey);
-            this.entityCount -= previousCount;
             return;
         }
 
         Map<UUID, ActiveProxies> immutableNext = Map.copyOf(next);
         this.regions.put(regionKey, immutableNext);
-        this.entityCount += proxyCount(immutableNext) - previousCount;
         for (PendingSpawn pending : pendingSpawns) {
             UUID viewerId = pending.viewerId();
             ActiveProxies active = pending.active();
-            for (int index = 0; index < active.proxies().size(); index++) {
-                ClientInteractionProxyRegistry.register(active.entityId(index), viewerId, this.tableId);
+            for (ClientProxy proxy : active.proxies()) {
+                ClientInteractionProxyRegistry.register(proxy.entityId(), viewerId, this.session.id());
             }
             try {
                 this.session.runForViewer(
@@ -172,15 +161,15 @@ final class SparrowRayInteractionProxyCoordinator {
         ActiveProxies active,
         List<DisplayInteractionRayRegistry.RayInteraction> interactions
     ) {
-        if (active == null || active.proxies().isEmpty() || !sameGeometry(active.geometry(), interactions)) {
+        if (active == null
+            || !sameGeometry(active.geometry(), interactions)
+            || active.proxies().isEmpty()) {
             return false;
         }
-        return this.hasOwnership(viewerId, active);
-    }
-
-    private boolean hasOwnership(UUID viewerId, ActiveProxies active) {
-        for (int index = 0; index < active.proxies().size(); index++) {
-            if (!ClientInteractionProxyRegistry.isOwnedBy(active.entityId(index), viewerId, this.tableId)) {
+        for (ClientProxy proxy : active.proxies()) {
+            if (!this.session.id().equals(
+                ClientInteractionProxyRegistry.tableIdFor(proxy.entityId(), viewerId)
+            )) {
                 return false;
             }
         }
@@ -233,8 +222,15 @@ final class SparrowRayInteractionProxyCoordinator {
                 continue;
             }
             ActiveProxies active = activeByViewer == null ? null : activeByViewer.get(ownerId);
-            if (active == null || active.proxies().isEmpty() || !this.hasOwnership(ownerId, active)) {
+            if (active == null || active.proxies().isEmpty()) {
                 return false;
+            }
+            for (ClientProxy proxy : active.proxies()) {
+                if (!this.session.id().equals(
+                    ClientInteractionProxyRegistry.tableIdFor(proxy.entityId(), ownerId)
+                )) {
+                    return false;
+                }
             }
         }
         return true;
@@ -245,7 +241,6 @@ final class SparrowRayInteractionProxyCoordinator {
         if (removed == null) {
             return;
         }
-        this.entityCount -= proxyCount(removed);
         removed.forEach(this::removeActive);
     }
 
@@ -265,7 +260,6 @@ final class SparrowRayInteractionProxyCoordinator {
             } else {
                 this.regions.put(regionKey, Map.copyOf(remaining));
             }
-            this.entityCount -= removed.proxies().size();
             this.removeActive(viewerId, removed);
         }
     }
@@ -274,15 +268,13 @@ final class SparrowRayInteractionProxyCoordinator {
         for (String regionKey : List.copyOf(this.regions.keySet())) {
             this.remove(regionKey);
         }
-        this.entityCount = 0;
-        ClientInteractionProxyRegistry.clearTable(this.tableId);
+        ClientInteractionProxyRegistry.clearTable(this.session.id());
     }
 
     synchronized void shutdown() {
         Map<String, Map<UUID, ActiveProxies>> activeRegions = Map.copyOf(this.regions);
         this.regions.clear();
-        this.entityCount = 0;
-        ClientInteractionProxyRegistry.clearTable(this.tableId);
+        ClientInteractionProxyRegistry.clearTable(this.session.id());
         activeRegions.values().forEach(activeByViewer -> activeByViewer.forEach((viewerId, active) -> {
             if (active.viewer().isOnline()) {
                 this.destroyQuietly(active.viewer(), active.proxies());
@@ -291,13 +283,11 @@ final class SparrowRayInteractionProxyCoordinator {
     }
 
     synchronized int entityCount() {
-        return this.entityCount;
-    }
-
-    private static int proxyCount(Map<UUID, ActiveProxies> activeByViewer) {
         int count = 0;
-        for (ActiveProxies active : activeByViewer.values()) {
-            count += active.proxies().size();
+        for (Map<UUID, ActiveProxies> activeByViewer : this.regions.values()) {
+            for (ActiveProxies active : activeByViewer.values()) {
+                count += active.proxies().size();
+            }
         }
         return count;
     }
@@ -322,14 +312,14 @@ final class SparrowRayInteractionProxyCoordinator {
         }
     }
 
-    private void unregister(UUID viewerId, ActiveProxies active) {
-        for (int index = 0; index < active.proxies().size(); index++) {
-            ClientInteractionProxyRegistry.unregister(active.entityId(index), viewerId, this.tableId);
+    private void unregister(UUID viewerId, List<ClientProxy> proxies) {
+        for (ClientProxy proxy : proxies) {
+            ClientInteractionProxyRegistry.unregister(proxy.entityId(), viewerId, this.session.id());
         }
     }
 
     private void removeActive(UUID viewerId, ActiveProxies active) {
-        this.unregister(viewerId, active);
+        this.unregister(viewerId, active.proxies());
         if (!active.viewer().isOnline()) {
             return;
         }
@@ -385,12 +375,8 @@ final class SparrowRayInteractionProxyCoordinator {
     private record ActiveProxies(
         Player viewer,
         List<ClientProxy> proxies,
-        List<InteractionGeometry> geometry,
-        int firstEntityId
+        List<InteractionGeometry> geometry
     ) {
-        private int entityId(int index) {
-            return index == 0 ? this.firstEntityId : this.proxies.get(index).entityId();
-        }
     }
 
     private record PendingSpawn(UUID viewerId, ActiveProxies active) {
