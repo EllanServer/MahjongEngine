@@ -46,8 +46,8 @@ import top.ellan.mahjong.runtime.PluginTask;
 
 public final class MahjongTableManager implements Listener {
     private static final String ADMIN_PERMISSION = "mahjongpaper.admin";
-    private static final long DUPLICATE_DISPLAY_ACTION_WINDOW_NANOS = 40_000_000L;
-    private static final long DUPLICATE_HAND_TILE_CLICK_WINDOW_NANOS = 40_000_000L;
+    private static final long DUPLICATE_DISPLAY_ACTION_WINDOW_NANOS = 150_000_000L;
+    private static final long DUPLICATE_HAND_TILE_CLICK_WINDOW_NANOS = 150_000_000L;
     private static final long RECENT_DISPLAY_ACTION_TTL_SECONDS = 60L;
     private static final long RECENT_HAND_TILE_CLICK_TTL_SECONDS = 60L;
     private static final double PERSISTED_TABLE_CLEANUP_RADIUS_XZ = 4.5D;
