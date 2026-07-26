@@ -9,7 +9,7 @@ plugins {
     jacoco
     kotlin("jvm") version "2.4.10"
     kotlin("plugin.serialization") version "2.4.10"
-    id("com.gradleup.shadow") version "9.6.0" apply false
+    id("com.gradleup.shadow") version "9.6.1" apply false
     id("io.papermc.paperweight.userdev") version "2.0.0-SNAPSHOT"
     id("com.diffplug.spotless") version "8.8.0"
     id("dev.detekt") version "2.0.0-alpha.5"
