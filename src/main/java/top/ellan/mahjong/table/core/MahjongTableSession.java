@@ -79,6 +79,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     private final TableRenderer renderer = new TableRenderer();
     private final TableRenderSnapshotFactory renderSnapshotFactory = new TableRenderSnapshotFactory();
     private final TableRegionFingerprintService regionFingerprintService = new TableRegionFingerprintService();
+    private final SessionRenderLayoutCache renderLayoutCache = new SessionRenderLayoutCache();
     private MahjongRule configuredRule;
     // These three fields are written on the table's region thread (during
     // startRound / completeRoundStartInternal / setRoundControllerInternal)
@@ -1635,10 +1636,11 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     public TableRenderPrecomputeResult precomputeRender(TableRenderSnapshot snapshot) {
+        TableRenderLayout.LayoutPlan layout = this.renderLayoutCache.precompute(snapshot);
         return new TableRenderPrecomputeResult(
             snapshot,
             this.regionFingerprintService.precomputeRegionFingerprints(this, snapshot),
-            TableRenderLayout.precompute(snapshot)
+            layout
         );
     }
 

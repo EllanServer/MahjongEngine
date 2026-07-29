@@ -33,7 +33,7 @@ MINECRAFT_FORMAT = re.compile(r"§.")
 TPS_VALUES = re.compile(r"\*?(\d+(?:\.\d+)?)")
 MSPT_TRIPLE = re.compile(r"(\d+(?:\.\d+)?)/(\d+(?:\.\d+)?)/(\d+(?:\.\d+)?)")
 READY_LINE = re.compile(r"Done \([^)]+\)! For help, type")
-DEFAULT_CRAFTENGINE_ARTIFACT = "craftengine-paper-26.7.3"
+DEFAULT_CRAFTENGINE_ARTIFACT = "craftengine-paper-26.7.4"
 MAHJONG_TRAFFIC_COMMAND = re.compile(
     r"^/mahjong botmatch (MAJSOUL_HANCHAN|MAJSOUL_TONPUU|GB|SICHUAN)$"
 )
@@ -474,6 +474,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--paper-lock", type=Path, default=script_dir / "artifacts.lock.json")
     parser.add_argument("--paper-artifact", default="paper-1.20.1-196")
     parser.add_argument("--plugin-jar", type=Path)
+    parser.add_argument("--plugin-config", type=Path)
     parser.add_argument("--craftengine-jar", type=Path)
     parser.add_argument("--craftengine-artifact", default=DEFAULT_CRAFTENGINE_ARTIFACT)
     parser.add_argument("--required-plugin", action="append", default=[])
@@ -505,6 +506,10 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError(f"Paper jar does not exist: {args.paper_jar}")
     if args.plugin_jar is not None and not args.plugin_jar.is_file():
         raise ValueError(f"Plugin jar does not exist: {args.plugin_jar}")
+    if args.plugin_config is not None and not args.plugin_config.is_file():
+        raise ValueError(f"Plugin config does not exist: {args.plugin_config}")
+    if args.plugin_config is not None and args.plugin_jar is None:
+        raise ValueError("--plugin-config requires --plugin-jar")
     if args.plugin_jar is not None and args.craftengine_jar is None:
         raise ValueError("--plugin-jar requires the real locked --craftengine-jar; a stub dependency is not accepted")
     if args.craftengine_jar is not None and not args.craftengine_jar.is_file():
@@ -558,6 +563,7 @@ def main() -> int:
     paper_verification = verify_file(args.paper_jar, paper_spec)
     input_artifacts: dict[str, Any] = {"paper": paper_verification}
     plugin_name = None
+    plugin_configuration = None
     if args.plugin_jar is not None:
         plugin_name = jar_plugin_name(args.plugin_jar)
         if not plugin_name:
@@ -565,6 +571,11 @@ def main() -> int:
         input_artifacts["plugin"] = hash_description(args.plugin_jar)
         craftengine_spec = artifact_from_lock(lock, args.craftengine_artifact)
         input_artifacts["craftengine"] = verify_file(args.craftengine_jar, craftengine_spec)
+        if args.plugin_config is not None:
+            plugin_configuration = hash_description(args.plugin_config)
+            input_copy = raw_dir / "inputs" / "plugin-config.yml"
+            input_copy.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(args.plugin_config, input_copy)
 
     ports = reserve_ports(2)
     server_port, rcon_port = ports
@@ -604,6 +615,10 @@ def main() -> int:
             plugins_dir.mkdir()
             shutil.copy2(args.craftengine_jar, plugins_dir / str(artifact_from_lock(lock, args.craftengine_artifact)["filename"]))
             shutil.copy2(args.plugin_jar, plugins_dir / args.plugin_jar.name)
+            if args.plugin_config is not None:
+                plugin_data_dir = plugins_dir / plugin_name
+                plugin_data_dir.mkdir()
+                shutil.copy2(args.plugin_config, plugin_data_dir / "config.yml")
 
         java_command = [
             args.java,
@@ -785,6 +800,7 @@ def main() -> int:
             "artifact_lock": hash_description(args.paper_lock.resolve()),
             "world_template": world_description,
             "plugin_name": plugin_name,
+            "plugin_configuration": plugin_configuration,
             "setup_commands": args.setup_command,
             "scenario": {
                 "name": args.scenario_name,

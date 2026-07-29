@@ -2,6 +2,7 @@ package top.ellan.mahjong.table.render
 
 import org.bukkit.Location
 import org.bukkit.entity.Player
+import org.mockito.AdditionalAnswers
 import org.mockito.ArgumentMatchers
 import org.mockito.Mockito.doAnswer
 import org.mockito.Mockito.mock
@@ -15,6 +16,8 @@ import top.ellan.mahjong.table.core.MahjongTableSession
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotSame
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class TableRenderSnapshotFactoryTest {
@@ -117,14 +120,79 @@ class TableRenderSnapshotFactoryTest {
         assertEquals(144, snapshot.wallCapacity())
         assertTrue(!snapshot.usesDeadWall())
 
+        val reusedSnapshot = factory.create(session, 2L, 0L)
+        for (wind in SeatWind.values()) {
+            assertSame(snapshot.seat(wind).viewerIdsExcluding(), reusedSnapshot.seat(wind).viewerIdsExcluding())
+            assertSame(
+                snapshot.seat(wind).viewerMembershipSignature(),
+                reusedSnapshot.seat(wind).viewerMembershipSignature(),
+            )
+        }
+
+        `when`(session.viewers()).thenReturn(
+            listOf(eastViewer, duplicateEastViewer, westViewer, southViewer),
+        )
+        val reorderedSnapshot = factory.create(session, 3L, 0L)
+        assertEquals(eastSeat.viewerIdsExcluding(), reorderedSnapshot.seat(SeatWind.EAST).viewerIdsExcluding())
+        assertEquals(
+            eastSeat.viewerMembershipSignature(),
+            reorderedSnapshot.seat(SeatWind.EAST).viewerMembershipSignature(),
+        )
+        assertNotSame(
+            reusedSnapshot.seat(SeatWind.EAST).viewerIdsExcluding(),
+            reorderedSnapshot.seat(SeatWind.EAST).viewerIdsExcluding(),
+        )
+
+        `when`(session.viewers()).thenReturn(
+            listOf(southViewer, westViewer, duplicateEastViewer, eastViewer),
+        )
+        val restoredSnapshot = factory.create(session, 4L, 0L)
+        val secondSession =
+            mock(
+                MahjongTableSession::class.java,
+                AdditionalAnswers.delegatesTo<MahjongTableSession>(session),
+            )
+        val secondSessionSnapshot = factory.create(secondSession, 5L, 0L)
+        assertEquals(
+            restoredSnapshot.seat(SeatWind.EAST).viewerIdsExcluding(),
+            secondSessionSnapshot.seat(SeatWind.EAST).viewerIdsExcluding(),
+        )
+        assertNotSame(
+            restoredSnapshot.seat(SeatWind.EAST).viewerIdsExcluding(),
+            secondSessionSnapshot.seat(SeatWind.EAST).viewerIdsExcluding(),
+        )
+        assertNotSame(
+            restoredSnapshot.seat(SeatWind.EAST).viewerMembershipSignature(),
+            secondSessionSnapshot.seat(SeatWind.EAST).viewerMembershipSignature(),
+        )
+
+        factory.create(session, 6L, 0L)
         `when`(session.playerAt(SeatWind.NORTH)).thenReturn(null)
-        val emptyNorthSeat = factory.create(session, 2L, 0L).seat(SeatWind.NORTH)
+        val emptyNorthSeat = factory.create(session, 7L, 0L).seat(SeatWind.NORTH)
         assertEquals(listOf(eastId, westId, southId), emptyNorthSeat.viewerIdsExcluding())
         assertEquals(
             "00000000-0000-0000-0000-000000000011" +
                 "7fffffff-ffff-ffff-ffff-ffffffffffff" +
                 "80000000-0000-0000-0000-000000000012",
             emptyNorthSeat.viewerMembershipSignature(),
+        )
+
+        `when`(session.viewers()).thenReturn(listOf(westViewer, eastViewer))
+        val removedViewerSnapshot = factory.create(session, 8L, 0L)
+        assertTrue(!removedViewerSnapshot.seat(SeatWind.SOUTH).online())
+        assertTrue(removedViewerSnapshot.seat(SeatWind.SOUTH).viewerIdsExcluding().isEmpty())
+        assertTrue(removedViewerSnapshot.seat(SeatWind.SOUTH).viewerMembershipSignature().isEmpty())
+        assertEquals(
+            listOf(westId),
+            removedViewerSnapshot.seat(SeatWind.EAST).viewerIdsExcluding(),
+        )
+        assertEquals(
+            westId.toString(),
+            removedViewerSnapshot.seat(SeatWind.EAST).viewerMembershipSignature(),
+        )
+        assertEquals(
+            listOf(eastId, westId),
+            removedViewerSnapshot.seat(SeatWind.NORTH).viewerIdsExcluding(),
         )
 
         verify(session, never()).onlinePlayer(ArgumentMatchers.any(UUID::class.java))

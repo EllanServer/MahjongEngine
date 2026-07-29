@@ -33,12 +33,18 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.io.IOException;
 import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandMap;
+import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.command.PluginIdentifiableCommand;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class MahjongPaperPlugin extends JavaPlugin {
@@ -58,6 +64,8 @@ public final class MahjongPaperPlugin extends JavaPlugin {
     private GameRoomSelectionService gameRoomSelectionService;
     private GameRoomSelectionPreviewService gameRoomSelectionPreviewService;
     private PluginTask gameRoomTickTask;
+    private CommandMap legacyPaperCommandMap;
+    private Command legacyPaperCommand;
 
     @Override
     public void onEnable() {
@@ -153,6 +161,7 @@ public final class MahjongPaperPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        this.unregisterLegacyPaperCommand();
         if (this.craftEngine != null) {
             this.craftEngine.disableFurnitureInteractionBridge();
             this.craftEngine.clearTrackedCullables();
@@ -226,13 +235,46 @@ public final class MahjongPaperPlugin extends JavaPlugin {
 
         PluginCommand command = this.getCommand("mahjong");
         if (command == null) {
-            this.getLogger().severe("MahjongPaper command is missing from plugin.yml; disabling plugin.");
+            if (this.registerLegacyPaperCommand(mahjongCommand)) {
+                return true;
+            }
+            this.getLogger().severe(
+                "MahjongPaper could not register its command through Paper lifecycle events, plugin.yml, or the legacy Paper command map; disabling plugin."
+            );
             this.getServer().getPluginManager().disablePlugin(this);
             return false;
         }
         command.setExecutor(mahjongCommand);
         command.setTabCompleter(mahjongCommand);
         return true;
+    }
+
+    private boolean registerLegacyPaperCommand(MahjongCommand delegate) {
+        CommandMap commandMap = this.getServer().getCommandMap();
+        LegacyPaperMahjongCommand command = new LegacyPaperMahjongCommand(this, delegate);
+        boolean registeredPrimaryLabel = commandMap.register("mahjong", "mahjongpaper", command);
+        if (!registeredPrimaryLabel) {
+            removeLegacyPaperCommand(commandMap, command);
+            return false;
+        }
+        this.legacyPaperCommandMap = commandMap;
+        this.legacyPaperCommand = command;
+        return true;
+    }
+
+    private void unregisterLegacyPaperCommand() {
+        CommandMap commandMap = this.legacyPaperCommandMap;
+        Command command = this.legacyPaperCommand;
+        this.legacyPaperCommandMap = null;
+        this.legacyPaperCommand = null;
+        if (commandMap != null && command != null) {
+            removeLegacyPaperCommand(commandMap, command);
+        }
+    }
+
+    private static void removeLegacyPaperCommand(CommandMap commandMap, Command command) {
+        commandMap.getKnownCommands().entrySet().removeIf(entry -> entry.getValue() == command);
+        command.unregister(commandMap);
     }
 
     private PaperCommandRegistrationResult registerPaperCommand(MahjongCommand mahjongCommand) {
@@ -319,6 +361,40 @@ public final class MahjongPaperPlugin extends JavaPlugin {
         REGISTERED,
         UNAVAILABLE,
         FAILED
+    }
+
+    /** Command-map adapter for Paper versions that support paper-plugin.yml but predate lifecycle commands. */
+    private static final class LegacyPaperMahjongCommand extends Command implements PluginIdentifiableCommand {
+        private final MahjongPaperPlugin plugin;
+        private final MahjongCommand delegate;
+
+        private LegacyPaperMahjongCommand(MahjongPaperPlugin plugin, MahjongCommand delegate) {
+            super(
+                "mahjong",
+                "Manage MahjongPaper tables and rounds. Use /mahjong help for command explanations.",
+                "/mahjong <help|create|botmatch|mode|join|leave|list|spectate|unspectate|table|addbot|removebot|rule|start|state|riichi|tsumo|ron|pon|minkan|chii|kan|skip|kyuushu|settlement|rank|leaderboard|render|inspect|clear|forceend|deletetable|reload>",
+                java.util.List.of()
+            );
+            this.plugin = plugin;
+            this.delegate = delegate;
+            this.setPermission(delegate.permission());
+        }
+
+        @Override
+        public boolean execute(CommandSender sender, String commandLabel, String[] args) {
+            return this.delegate.onCommand(sender, this, commandLabel, args);
+        }
+
+        @Override
+        public List<String> tabComplete(CommandSender sender, String alias, String[] args) {
+            List<String> suggestions = this.delegate.onTabComplete(sender, this, alias, args);
+            return suggestions == null ? List.of() : suggestions;
+        }
+
+        @Override
+        public Plugin getPlugin() {
+            return this.plugin;
+        }
     }
 
     public String reloadMahjongConfiguration() {

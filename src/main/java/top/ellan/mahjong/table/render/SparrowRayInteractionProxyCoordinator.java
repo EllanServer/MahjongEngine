@@ -62,6 +62,9 @@ final class SparrowRayInteractionProxyCoordinator {
         }
 
         Map<UUID, ActiveProxies> previous = this.regions.getOrDefault(regionKey, Map.of());
+        if (this.canReuseRegion(previous, interactionsByViewer)) {
+            return;
+        }
         Map<UUID, ActiveProxies> next = new LinkedHashMap<>();
         List<PendingSpawn> pendingSpawns = new ArrayList<>();
         try {
@@ -72,23 +75,21 @@ final class SparrowRayInteractionProxyCoordinator {
                 if (viewerId == null || interactions == null || interactions.isEmpty()) {
                     continue;
                 }
-                Player viewer = this.session.onlinePlayer(viewerId);
-                if (viewer == null || !viewer.isOnline()) {
+                ActiveProxies current = previous.get(viewerId);
+                if (current != null
+                    && current.viewer().isOnline()
+                    && this.canReuse(viewerId, current, interactions)) {
+                    next.put(viewerId, current);
                     continue;
                 }
-                ActiveProxies current = previous.get(viewerId);
-                if (this.canReuse(viewerId, viewer, current, interactions)) {
-                    next.put(viewerId, current);
+                Player viewer = this.session.onlinePlayer(viewerId);
+                if (viewer == null || !viewer.isOnline()) {
                     continue;
                 }
                 List<InteractionGeometry> geometry = interactionGeometry(interactions);
                 List<ClientProxy> proxies = this.backend.create(viewer, interactions);
                 if (!proxies.isEmpty()) {
-                    ActiveProxies created = new ActiveProxies(
-                        viewer,
-                        List.copyOf(proxies),
-                        geometry
-                    );
+                    ActiveProxies created = new ActiveProxies(viewer, List.copyOf(proxies), geometry);
                     next.put(viewerId, created);
                     pendingSpawns.add(new PendingSpawn(viewerId, created));
                 }
@@ -132,14 +133,35 @@ final class SparrowRayInteractionProxyCoordinator {
         }
     }
 
+    private boolean canReuseRegion(
+        Map<UUID, ActiveProxies> previous,
+        Map<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> interactionsByViewer
+    ) {
+        int reusableViewers = 0;
+        for (Map.Entry<UUID, List<DisplayInteractionRayRegistry.RayInteraction>> entry
+            : interactionsByViewer.entrySet()) {
+            UUID viewerId = entry.getKey();
+            List<DisplayInteractionRayRegistry.RayInteraction> interactions = entry.getValue();
+            if (viewerId == null || interactions == null || interactions.isEmpty()) {
+                continue;
+            }
+            ActiveProxies active = previous.get(viewerId);
+            if (active == null
+                || !active.viewer().isOnline()
+                || !this.canReuse(viewerId, active, interactions)) {
+                return false;
+            }
+            reusableViewers++;
+        }
+        return reusableViewers == previous.size();
+    }
+
     private boolean canReuse(
         UUID viewerId,
-        Player viewer,
         ActiveProxies active,
         List<DisplayInteractionRayRegistry.RayInteraction> interactions
     ) {
         if (active == null
-            || active.viewer() != viewer
             || !sameGeometry(active.geometry(), interactions)
             || active.proxies().isEmpty()) {
             return false;

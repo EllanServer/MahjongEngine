@@ -16,13 +16,13 @@
       },
       "source_metadata": "https://fill.papermc.io/v3/projects/paper/versions/1.20.1/builds"
     },
-    "craftengine-paper-26.7.3": {
+    "craftengine-paper-26.7.4": {
       "kind": "server-plugin",
       "project": "craftengine",
       "distribution": "paper",
-      "version": "26.7.3",
+      "version": "26.7.4",
       "release_type": "beta",
-      "modrinth_version_id": "Len451or",
+      "modrinth_version_id": "aINSQrXC",
       "loaders": [
         "folia",
         "paper",
@@ -53,18 +53,18 @@
         "26.1.2",
         "26.2"
       ],
-      "filename": "craft-engine-paper-plugin-26.7.3.jar",
-      "url": "https://cdn.modrinth.com/data/tRX6FMfQ/versions/Len451or/craft-engine-paper-plugin-26.7.3.jar",
-      "size": 8907932,
+      "filename": "craft-engine-paper-plugin-26.7.4.jar",
+      "url": "https://cdn.modrinth.com/data/tRX6FMfQ/versions/aINSQrXC/craft-engine-paper-plugin-26.7.4.jar",
+      "size": 8970694,
       "hash": {
         "algorithm": "sha512",
-        "digest": "e87351417e4f99504cf0a8868bad03a88b12bc9bda5c36f0ee4c7451e3525f08146b2130b61cd34b222ee41c38ca75aa9ced9ada65bc3540c80aa66c3d39d689"
+        "digest": "1d6982e325552fd51a9a481252e0c055c32a5b6e3c2d816cf69ca4b2f355a5f7af1abed00ff9d29c08fb32ff293d9d11837ad4372c34675b73682a98b1ec86b0"
       },
       "published_hashes": {
-        "sha1": "467fa7317635cf9f76812bd73a47d984c57cf53f",
-        "sha512": "e87351417e4f99504cf0a8868bad03a88b12bc9bda5c36f0ee4c7451e3525f08146b2130b61cd34b222ee41c38ca75aa9ced9ada65bc3540c80aa66c3d39d689"
+        "sha1": "179e7b8b191093e41beca56e3d52ae608f46e161",
+        "sha512": "1d6982e325552fd51a9a481252e0c055c32a5b6e3c2d816cf69ca4b2f355a5f7af1abed00ff9d29c08fb32ff293d9d11837ad4372c34675b73682a98b1ec86b0"
       },
-      "source_metadata": "https://api.modrinth.com/v2/version/Len451or"
+      "source_metadata": "https://api.modrinth.com/v2/version/aINSQrXC"
     }
   }
 }

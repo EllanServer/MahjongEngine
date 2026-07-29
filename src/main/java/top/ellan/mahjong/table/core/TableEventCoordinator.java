@@ -41,13 +41,13 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.util.RayTraceResult;
 
 final class TableEventCoordinator implements Listener {
-    private static final long DUPLICATE_DISPLAY_ACTION_WINDOW_NANOS = 40_000_000L;
+    private static final long DUPLICATE_DISPLAY_ACTION_WINDOW_NANOS = 150_000_000L;
     private static final long OVERHEAD_EXIT_GUARD_SECONDS = 2L;
     private static final double FLAT_INTERACTION_MAX_DISTANCE = 6.0D;
     private static final double FLAT_INTERACTION_BLOCK_EPSILON = 0.05D;
     /**
      * Bounded TTL on the per-player recent-action cache. The dedup window is
-     * 40ms (DUPLICATE_DISPLAY_ACTION_WINDOW_NANOS), so anything older than a
+     * 150ms (DUPLICATE_DISPLAY_ACTION_WINDOW_NANOS), so anything older than a
      * few seconds is by definition not a duplicate of a fresh click — but the
      * previous bare ConcurrentHashMap only evicted on PlayerQuitEvent, which
      * on Folia can occasionally be missed when the player's entity region
