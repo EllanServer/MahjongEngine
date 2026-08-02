@@ -148,7 +148,7 @@ jobs:
           "C:\msys64\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v5.6.0
         with:
           distribution: temurin
           java-version: "25"
@@ -219,7 +219,7 @@ jobs:
 
     steps:
       - name: Set up JDK 25
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v5.6.0
         with:
           distribution: temurin
           java-version: "25"
