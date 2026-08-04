@@ -18,6 +18,7 @@ import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerHudSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerHudPresentationSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerOverlaySnapshot;
+import top.ellan.mahjong.table.action.PlayerActionSnapshotFactory;
 import top.ellan.mahjong.riichi.ReactionResponse;
 import top.ellan.mahjong.riichi.ReactionResponses;
 import top.ellan.mahjong.riichi.RiichiPlayerState;
@@ -104,6 +105,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     private final TableRenderInspectCoordinator renderInspectCoordinator;
     private final TableLifecycleCoordinator lifecycleCoordinator;
     private final TableViewerSnapshotFactory viewerSnapshotFactory;
+    private final PlayerActionSnapshotFactory actionSnapshotFactory;
     private final TableDiceAnimationCoordinator diceAnimationCoordinator;
     private final TablePlayerFeedbackCoordinator playerFeedbackCoordinator;
     private final TableStateSoundCoordinator stateSoundCoordinator;
@@ -183,6 +185,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         this.renderInspectCoordinator = new TableRenderInspectCoordinator(this.sessionContext);
         this.lifecycleCoordinator = new TableLifecycleCoordinator(this.sessionMutator);
         this.viewerSnapshotFactory = new TableViewerSnapshotFactory(this.sessionMutator);
+        this.actionSnapshotFactory = new PlayerActionSnapshotFactory(this.sessionMutator);
         this.diceAnimationCoordinator = new TableDiceAnimationCoordinator(this.sessionContext);
         this.playerFeedbackCoordinator = new TablePlayerFeedbackCoordinator(this.sessionMutator);
         this.stateSoundCoordinator = new TableStateSoundCoordinator(this.sessionContext);
@@ -200,6 +203,15 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
 
     public TableRuntimeServices plugin() {
         return this.plugin;
+    }
+
+    /**
+     * Shared, stateless action-snapshot factory for this session. Bot strategies
+     * and render paths capture action snapshots every tick, so the factory is
+     * created once per session instead of per capture.
+     */
+    public PlayerActionSnapshotFactory actionSnapshotFactory() {
+        return this.actionSnapshotFactory;
     }
 
     @Override
@@ -1719,7 +1731,11 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
             return this.plugin.messages().plain(locale, "common.unknown");
         }
         int suffix = this.participants.seatIndexOf(playerId) + 1;
-        return this.plugin.messages().plain(locale, "table.bot_name", this.plugin.messages().number(locale, "index", Math.max(1, suffix)));
+        return this.plugin.messages().plain(
+            locale,
+            "table.bot_name",
+            Map.of("index", this.plugin.messages().formatNumber(locale, "index", Math.max(1, suffix)))
+        );
     }
 
     public String tileLabelForDisplay(Locale locale, String tileName) {

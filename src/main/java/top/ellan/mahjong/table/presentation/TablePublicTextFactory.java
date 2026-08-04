@@ -5,6 +5,7 @@ import top.ellan.mahjong.model.MahjongVariant;
 import top.ellan.mahjong.model.SeatWind;
 import top.ellan.mahjong.riichi.model.MahjongRule;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 public final class TablePublicTextFactory {
@@ -139,7 +140,7 @@ public final class TablePublicTextFactory {
             return this.session.plugin().messages().plain(
                 locale,
                 "table.public.seat_empty",
-                this.session.plugin().messages().tag("seat", this.seatDisplayName(wind, locale))
+                Map.of("seat", this.seatDisplayName(wind, locale))
             );
         }
         String status = this.waitingSeatStatus(locale, playerId);
@@ -150,9 +151,11 @@ public final class TablePublicTextFactory {
         return this.session.plugin().messages().plain(
             locale,
             "table.public.seat_status",
-            this.session.plugin().messages().tag("seat", this.seatDisplayName(wind, locale)),
-            this.session.plugin().messages().number(locale, "points", this.session.points(playerId)),
-            this.session.plugin().messages().tag("status", status.isBlank() ? "" : " | " + status)
+            Map.of(
+                "seat", this.seatDisplayName(wind, locale),
+                "points", this.session.plugin().messages().formatNumber(locale, "points", this.session.points(playerId)),
+                "status", status.isBlank() ? "" : " | " + status
+            )
         );
     }
 
@@ -165,9 +168,11 @@ public final class TablePublicTextFactory {
         return this.session.plugin().messages().plain(
             locale,
             "table.public.center_waiting",
-            this.session.plugin().messages().tag("table_id", this.session.id()),
-            this.session.plugin().messages().tag("summary", this.waitingDisplaySummary(locale)),
-            this.session.plugin().messages().tag("rules", this.ruleDisplaySummary(locale))
+            Map.of(
+                "table_id", this.session.id(),
+                "summary", this.waitingDisplaySummary(locale),
+                "rules", this.ruleDisplaySummary(locale)
+            )
         );
     }
 
