@@ -113,7 +113,9 @@ int Handtiles::StringToHandtiles(const std::string &s_ori) {
         }
     }
     //初步检测字符串是否合法
-    std::regex pattern(R"((\[([1-9]{3,4}[msp]|[ESWNCFP]{3,4})(,[123567])?\]|([ESWNCFPa-h]|[1-9]+[msp]))+(\|([ESWN]{2}[01]{4})(\|([a-h]{0,8}|[0-8]))?)?)");
+    // The pattern is compiled once: std::regex construction compiles the
+    // expression, which dominated per-call cost for this hot parse path.
+    static const std::regex pattern(R"((\[([1-9]{3,4}[msp]|[ESWNCFP]{3,4})(,[123567])?\]|([ESWNCFPa-h]|[1-9]+[msp]))+(\|([ESWN]{2}[01]{4})(\|([a-h]{0,8}|[0-8]))?)?)");
     if (!std::regex_match(s, pattern)) {
         return -1; //【错误】：字符串非法
     }
