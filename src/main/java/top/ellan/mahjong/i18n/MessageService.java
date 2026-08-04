@@ -61,4 +61,3 @@ public final class MessageService {
         return this.messages.number(locale, key, value);
     }
 }
-
