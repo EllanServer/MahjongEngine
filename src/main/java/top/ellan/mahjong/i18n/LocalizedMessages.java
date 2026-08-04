@@ -54,6 +54,40 @@ public final class LocalizedMessages {
         return this.plainTextSerializer.serialize(this.render(locale, key, placeholders));
     }
 
+    /**
+     * Renders a message with placeholders supplied as a plain key/value map.
+     *
+     * <p>This overload is behaviourally identical to the {@link TagResolver} variant
+     * (placeholders are resolved by tag name, so map iteration order is irrelevant). It
+     * exists so hot rendering paths can be measured and cached through a single,
+     * stable placeholder representation.
+     */
+    public Component render(Locale locale, String key, Map<String, String> placeholders) {
+        return this.render(locale, key, resolvers(placeholders));
+    }
+
+    /**
+     * Renders a message to plain text with placeholders supplied as a key/value map.
+     *
+     * <p>See {@link #render(Locale, String, Map)} for the contract shared with the
+     * {@link TagResolver} variant.
+     */
+    public String plain(Locale locale, String key, Map<String, String> placeholders) {
+        return this.plain(locale, key, resolvers(placeholders));
+    }
+
+    /**
+     * Formats a number using the locale-aware integer format used by {@link #number}.
+     */
+    public String formatNumber(Locale locale, String key, Number value) {
+        Locale formatLocale = this.resolveLocales(locale).get(0);
+        NumberFormat format = this.integerFormats.computeIfAbsent(
+            formatLocale,
+            resolvedLocale -> ThreadLocal.withInitial(() -> NumberFormat.getIntegerInstance(resolvedLocale))
+        ).get();
+        return format.format(value);
+    }
+
     public boolean contains(Locale locale, String key) {
         for (Locale candidate : this.resolveLocales(locale)) {
             if (this.bundle(candidate).containsKey(key)) {
@@ -68,12 +102,16 @@ public final class LocalizedMessages {
     }
 
     public TagResolver number(Locale locale, String key, Number value) {
-        Locale formatLocale = this.resolveLocales(locale).get(0);
-        NumberFormat format = this.integerFormats.computeIfAbsent(
-            formatLocale,
-            resolvedLocale -> ThreadLocal.withInitial(() -> NumberFormat.getIntegerInstance(resolvedLocale))
-        ).get();
-        return Placeholder.unparsed(key, format.format(value));
+        return Placeholder.unparsed(key, this.formatNumber(locale, key, value));
+    }
+
+    private static TagResolver[] resolvers(Map<String, String> placeholders) {
+        TagResolver[] resolvers = new TagResolver[placeholders.size()];
+        int index = 0;
+        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+            resolvers[index++] = Placeholder.unparsed(entry.getKey(), entry.getValue());
+        }
+        return resolvers;
     }
 
     public Locale normalizeLocale(String rawLocale) {

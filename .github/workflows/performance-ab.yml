@@ -33,6 +33,7 @@ on:
         options:
           - snapshot
           - gb-bot
+          - i18n
           - region-fingerprint
           - display-spawn
           - region-queue
@@ -154,6 +155,7 @@ jobs:
           choices = {
               "performance-snapshot": "snapshot",
               "performance-gb-bot": "gb-bot",
+              "performance-i18n": "i18n",
               "performance-region-fingerprint": "region-fingerprint",
               "performance-display-spawn": "display-spawn",
               "performance-region-queue": "region-queue",
