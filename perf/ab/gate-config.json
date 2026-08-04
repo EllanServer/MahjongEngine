@@ -315,67 +315,6 @@
     }
   },
   "benchmarks": [
-      {
-        "id": "i18n.bot-name.time",
-        "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainBotName",
-        "metric": "primary",
-        "direction": "lower"
-      },
-      {
-        "id": "i18n.bot-name.alloc",
-        "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainBotName",
-        "metric": "gc.alloc.rate.norm",
-        "direction": "lower"
-      },
-      {
-        "id": "i18n.seat-status.time",
-        "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainSeatStatus",
-        "metric": "primary",
-        "direction": "lower"
-      },
-      {
-        "id": "i18n.seat-status.alloc",
-        "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainSeatStatus",
-        "metric": "gc.alloc.rate.norm",
-        "direction": "lower"
-      },
-      {
-        "id": "i18n.seat-empty.time",
-        "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainSeatEmpty",
-        "metric": "primary",
-        "direction": "lower"
-      },
-      {
-        "id": "i18n.seat-empty.alloc",
-        "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainSeatEmpty",
-        "metric": "gc.alloc.rate.norm",
-        "direction": "lower"
-      },
-      {
-        "id": "i18n.center-waiting.time",
-        "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainCenterWaiting",
-        "metric": "primary",
-        "direction": "lower"
-      },
-      {
-        "id": "i18n.center-waiting.alloc",
-        "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainCenterWaiting",
-        "metric": "gc.alloc.rate.norm",
-        "direction": "lower"
-      },
-      {
-        "id": "i18n.seat-status-component.time",
-        "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.renderSeatStatus",
-        "metric": "primary",
-        "direction": "lower"
-      },
-      {
-        "id": "i18n.seat-status-component.alloc",
-        "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.renderSeatStatus",
-        "metric": "gc.alloc.rate.norm",
-        "direction": "lower"
-      },
-
     {
       "id": "infra.fingerprint.time",
       "benchmark": "top.ellan.mahjong.perf.DelimitedFingerprintBuilderBenchmark.buildRepresentativeFingerprint",
@@ -757,6 +696,66 @@
     {
       "id": "ray.viewers32.alloc",
       "benchmark": "top.ellan.mahjong.perf.RayProxyCoordinatorBenchmark.proxyPlan32Viewers",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "i18n.bot-name.time",
+      "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainBotName",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "i18n.bot-name.alloc",
+      "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainBotName",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "i18n.seat-status.time",
+      "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainSeatStatus",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "i18n.seat-status.alloc",
+      "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainSeatStatus",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "i18n.seat-empty.time",
+      "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainSeatEmpty",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "i18n.seat-empty.alloc",
+      "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainSeatEmpty",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "i18n.center-waiting.time",
+      "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainCenterWaiting",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "i18n.center-waiting.alloc",
+      "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.plainCenterWaiting",
+      "metric": "gc.alloc.rate.norm",
+      "direction": "lower"
+    },
+    {
+      "id": "i18n.seat-status-component.time",
+      "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.renderSeatStatus",
+      "metric": "primary",
+      "direction": "lower"
+    },
+    {
+      "id": "i18n.seat-status-component.alloc",
+      "benchmark": "top.ellan.mahjong.perf.LocalizedMessagesBenchmark.renderSeatStatus",
       "metric": "gc.alloc.rate.norm",
       "direction": "lower"
     }
