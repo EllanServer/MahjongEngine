@@ -80,6 +80,7 @@ public final class TableRegionDisplayCoordinator {
     private final int maxEntitySpawnsPerApply;
     private final Map<String, List<Entity>> regionDisplays = new LinkedHashMap<>();
     private final Map<String, Long> regionFingerprints = new HashMap<>();
+    private final Map<String, Long> appliedLayoutFingerprints = new HashMap<>();
     private final Map<String, Set<UUID>> rayInteractionOwners = new HashMap<>();
     private final Set<String> publicJoinRayRegions = new LinkedHashSet<>();
     private final SparrowViewerOverlayCoordinator clientViewerOverlays;
@@ -500,6 +501,12 @@ public final class TableRegionDisplayCoordinator {
     ) {
         this.clearRegion(this.seatRegionKey("hand-private", seat.wind()));
         int handSize = seat.playerId() == null ? 0 : seat.hand().size();
+        // Layout structure fingerprint: tile coordinates are fully determined by (seat, hand
+        // size, tile index, selected indices), all covered by the content fingerprints, so the
+        // only structural signal needed for the reconcile-vs-respawn decision is the hand size
+        // itself. Using the already-computed handSize keeps the every-apply enqueue cost at
+        // baseline (no fingerprint computation on the short-circuit path).
+        long layoutFingerprint = handSize;
         for (int tileIndex = 0; tileIndex < MAX_HAND_TILE_REGIONS; tileIndex++) {
             String regionKey = this.handPrivateRegionKey(seat.wind(), tileIndex);
             if (tileIndex >= handSize) {
@@ -510,6 +517,7 @@ public final class TableRegionDisplayCoordinator {
             this.enqueue(queue, BUCKET_HAND, () -> this.updatePrivateHandTileRegion(
                 regionKey,
                 this.fingerprintService.handPrivateTileFingerprint(seat, plan, index),
+                layoutFingerprint,
                 budget,
                 seat,
                 plan,
@@ -527,6 +535,9 @@ public final class TableRegionDisplayCoordinator {
     ) {
         this.clearRegion(this.seatRegionKey("hand-public", seat.wind()));
         int handSize = seat.playerId() == null ? 0 : seat.hand().size();
+        // See enqueuePrivateHandRegionUpdates: the layout structure fingerprint is the hand
+        // size itself (all other layout inputs are covered by the content fingerprints).
+        long layoutFingerprint = handSize;
         for (int tileIndex = 0; tileIndex < MAX_HAND_TILE_REGIONS; tileIndex++) {
             String regionKey = this.handPublicRegionKey(seat.wind(), tileIndex);
             if (tileIndex >= handSize) {
@@ -537,6 +548,7 @@ public final class TableRegionDisplayCoordinator {
             this.enqueue(queue, BUCKET_HAND, () -> this.updateRegionWithSpecs(
                 regionKey,
                 this.fingerprintService.handPublicTileFingerprint(snapshot, seat, plan, index),
+                layoutFingerprint,
                 budget,
                 () -> this.session.renderer().renderHandPublicTileSpecs(this.session, snapshot, seat, plan, index)
             ));
@@ -617,6 +629,7 @@ public final class TableRegionDisplayCoordinator {
     private boolean updatePrivateHandRegions(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan, ApplyBudget budget) {
         this.clearRegion(this.seatRegionKey("hand-private", seat.wind()));
         int handSize = seat.playerId() == null ? 0 : seat.hand().size();
+        long layoutFingerprint = handSize;
         for (int tileIndex = 0; tileIndex < MAX_HAND_TILE_REGIONS; tileIndex++) {
             String regionKey = this.handPrivateRegionKey(seat.wind(), tileIndex);
             if (tileIndex >= handSize) {
@@ -627,6 +640,7 @@ public final class TableRegionDisplayCoordinator {
             if (!this.updatePrivateHandTileRegion(
                 regionKey,
                 this.fingerprintService.handPrivateTileFingerprint(seat, plan, tileIndex),
+                layoutFingerprint,
                 budget,
                 seat,
                 plan,
@@ -641,6 +655,7 @@ public final class TableRegionDisplayCoordinator {
     private boolean updatePrivateHandTileRegion(
         String regionKey,
         long fingerprint,
+        long layoutFingerprint,
         ApplyBudget budget,
         TableSeatRenderSnapshot seat,
         TableRenderLayout.SeatLayoutPlan plan,
@@ -654,6 +669,7 @@ public final class TableRegionDisplayCoordinator {
         return this.updateRegionWithRayInteractions(
             regionKey,
             fingerprint,
+            layoutFingerprint,
             budget,
             true,
             () -> {
@@ -674,6 +690,17 @@ public final class TableRegionDisplayCoordinator {
         boolean requiresRayInteractions,
         RayRegionRenderer renderer
     ) {
+        return this.updateRegionWithRayInteractions(regionKey, fingerprint, 0L, budget, requiresRayInteractions, renderer);
+    }
+
+    private boolean updateRegionWithRayInteractions(
+        String regionKey,
+        long fingerprint,
+        long layoutFingerprint,
+        ApplyBudget budget,
+        boolean requiresRayInteractions,
+        RayRegionRenderer renderer
+    ) {
         Long previousFingerprint = this.regionFingerprints.get(regionKey);
         List<Entity> currentEntities = this.regionDisplays.get(regionKey);
         if (this.hasInvalidDisplayEntity(currentEntities)) {
@@ -681,6 +708,9 @@ public final class TableRegionDisplayCoordinator {
             previousFingerprint = null;
             currentEntities = null;
         }
+        // Private hand content fingerprints are layout-complete (they include hand size,
+        // selected indices and the tile itself), so the short-circuit needs no layout check;
+        // the layout fingerprint only gates the reconcile-vs-respawn decision below.
         if (previousFingerprint != null
             && previousFingerprint == fingerprint
             && (currentEntities != null || this.regionFingerprints.containsKey(regionKey))
@@ -692,9 +722,12 @@ public final class TableRegionDisplayCoordinator {
         }
         RayRegionRenderPlan renderPlan = renderer.render();
         List<DisplayEntities.EntitySpec> specs = renderPlan.entitySpecs();
-        if (currentEntities != null && DisplayEntities.reconcile(this.session, currentEntities, specs)) {
+        if (currentEntities != null
+            && this.layoutMatches(regionKey, layoutFingerprint)
+            && DisplayEntities.reconcile(this.session, currentEntities, specs)) {
             budget.consumeRegionUpdate(1);
             this.regionFingerprints.put(regionKey, fingerprint);
+            this.appliedLayoutFingerprints.put(regionKey, layoutFingerprint);
             this.replaceRayInteractions(
                 regionKey,
                 renderPlan.rayInteractions(),
@@ -714,6 +747,7 @@ public final class TableRegionDisplayCoordinator {
             this.regionDisplays.put(regionKey, entities);
         }
         this.regionFingerprints.put(regionKey, fingerprint);
+        this.appliedLayoutFingerprints.put(regionKey, layoutFingerprint);
         this.replaceRayInteractions(
             regionKey,
             renderPlan.rayInteractions(),
@@ -840,6 +874,10 @@ public final class TableRegionDisplayCoordinator {
     }
 
     private boolean updateRegionWithSpecs(String regionKey, long fingerprint, ApplyBudget budget, RegionSpecRenderer renderer) {
+        return this.updateRegionWithSpecs(regionKey, fingerprint, 0L, budget, renderer);
+    }
+
+    private boolean updateRegionWithSpecs(String regionKey, long fingerprint, long layoutFingerprint, ApplyBudget budget, RegionSpecRenderer renderer) {
         Long previousFingerprint = this.regionFingerprints.get(regionKey);
         List<Entity> currentEntities = this.regionDisplays.get(regionKey);
         if (this.hasInvalidDisplayEntity(currentEntities)) {
@@ -847,6 +885,9 @@ public final class TableRegionDisplayCoordinator {
             previousFingerprint = null;
             currentEntities = null;
         }
+        // Hand content fingerprints are layout-complete (they include hand size, selected
+        // indices and the tile itself), so the short-circuit needs no separate layout check;
+        // the layout fingerprint only gates the reconcile-vs-respawn decision below.
         if (previousFingerprint != null && previousFingerprint == fingerprint && (currentEntities != null || this.regionFingerprints.containsKey(regionKey))) {
             return true;
         }
@@ -854,9 +895,12 @@ public final class TableRegionDisplayCoordinator {
             return false;
         }
         List<DisplayEntities.EntitySpec> specs = renderer.render();
-        if (currentEntities != null && DisplayEntities.reconcile(this.session, currentEntities, specs)) {
+        if (currentEntities != null
+            && this.layoutMatches(regionKey, layoutFingerprint)
+            && DisplayEntities.reconcile(this.session, currentEntities, specs)) {
             budget.consumeRegionUpdate(1);
             this.regionFingerprints.put(regionKey, fingerprint);
+            this.appliedLayoutFingerprints.put(regionKey, layoutFingerprint);
             return true;
         }
         if (!budget.canConsumeEntitySpawns(specs.size())) {
@@ -870,12 +914,30 @@ public final class TableRegionDisplayCoordinator {
             this.regionDisplays.put(regionKey, entities);
         }
         this.regionFingerprints.put(regionKey, fingerprint);
+        this.appliedLayoutFingerprints.put(regionKey, layoutFingerprint);
         return true;
+    }
+
+    /**
+     * Returns whether the hand structure still matches the layout that was last applied to
+     * this region. The layout fingerprint is the hand size itself (tile coordinates are fully
+     * determined by seat, hand size, tile index and selected indices — all covered by the
+     * content fingerprints), so this only distinguishes "same structure, reconcile in place"
+     * from "hand grew/shrunk, respawn". A zero fingerprint means the region has no layout
+     * gate (non-hand regions) and always reconciles when content changed.
+     */
+    private boolean layoutMatches(String regionKey, long layoutFingerprint) {
+        if (layoutFingerprint == 0L) {
+            return true;
+        }
+        Long applied = this.appliedLayoutFingerprints.get(regionKey);
+        return applied != null && applied == layoutFingerprint;
     }
 
     private void clearRegion(String regionKey) {
         this.removeRegionDisplays(regionKey);
         this.regionFingerprints.remove(regionKey);
+        this.appliedLayoutFingerprints.remove(regionKey);
     }
 
     private void removeAllDisplays() {

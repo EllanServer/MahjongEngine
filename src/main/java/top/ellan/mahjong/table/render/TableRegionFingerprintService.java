@@ -6,6 +6,7 @@ import top.ellan.mahjong.render.layout.TableRenderLayout;
 import top.ellan.mahjong.render.snapshot.TableRenderSnapshot;
 import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -34,16 +35,12 @@ public final class TableRegionFingerprintService {
     public long handPrivateTileFingerprint(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan, int tileIndex) {
         TableRenderLayout.Point point = plan.privateHandPoints().get(tileIndex);
         return fingerprintBuilder(160)
-            .field("hand-private-tile")
             .field(seat.wind().name())
             .field(seat.playerId())
             .field(tileIndex)
             .field(seat.online())
             .field(seat.hand().size())
             .field(seat.selectedHandTileIndices().contains(tileIndex))
-            .field(Double.doubleToLongBits(point.x()))
-            .field(Double.doubleToLongBits(point.y()))
-            .field(Double.doubleToLongBits(point.z()))
             .field(seat.hand().get(tileIndex).name())
             .value();
     }
@@ -56,17 +53,20 @@ public final class TableRegionFingerprintService {
     ) {
         TableRenderLayout.Point point = plan.publicHandPoints().get(tileIndex);
         return fingerprintBuilder(160)
-            .field("hand-public-tile")
             .field(seat.wind().name())
             .field(seat.playerId())
-            .field(tileIndex)
+            // tileIndex and hand size are packed into a single injective field: hand size
+            // participates in the layout fingerprint, so it must also be part of the content
+            // fingerprint, otherwise a hand that grows/shrinks re-arranges every tile while
+            // the per-tile content fingerprints stay identical and the short-circuit would
+            // wrongly skip the layout update. Packing keeps the field count (and therefore
+            // the every-tick fixed cost) identical to the pre-change fingerprint.
+            // Injective because tileIndex < 64 and hand size < 64 in every legal game state.
+            .field((tileIndex << 6) | seat.hand().size())
             .field(snapshot.started())
             .field(seat.online())
             .field(seat.viewerMembershipSignature())
             .field(seat.stickLayoutCount())
-            .field(Double.doubleToLongBits(point.x()))
-            .field(Double.doubleToLongBits(point.y()))
-            .field(Double.doubleToLongBits(point.z()))
             // Public hand entities are an information boundary: their identity must never depend
             // on a concealed tile, including during the deal/start transition.
             .field("unknown")
