@@ -64,7 +64,7 @@ public final class TableRegionFingerprintService {
             // wrongly skip the layout update. Packing keeps the field count (and therefore
             // the every-tick fixed cost) identical to the pre-change fingerprint.
             // Injective because tileIndex < 64 and hand size < 64 in every legal game state.
-            .field(tileIndex * 64 + seat.hand().size())
+            .field((tileIndex << 6) | seat.hand().size())
             .field(snapshot.started())
             .field(seat.online())
             .field(seat.viewerMembershipSignature())
