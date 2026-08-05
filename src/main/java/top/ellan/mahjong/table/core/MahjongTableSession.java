@@ -77,6 +77,14 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     private final boolean persistentRoom;
     private final boolean botMatchRoom;
     private final TableParticipantRegistry participants = new TableParticipantRegistry();
+    /**
+     * Cache of fully rendered bot display names, keyed by locale tag + '|' + bot player id.
+     * Bot names are deterministic per (locale, seat index) and only change on participant
+     * mutations, so the expensive placeholder-driven i18n render is performed once per key
+     * instead of once per render-snapshot capture (the capture path calls displayName for
+     * every seated player on every tick).
+     */
+    private final Map<String, String> botDisplayNameCache = new HashMap<>();
     private final TableRenderer renderer = new TableRenderer();
     private final TableRenderSnapshotFactory renderSnapshotFactory = new TableRenderSnapshotFactory();
     private final TableRegionFingerprintService regionFingerprintService = new TableRegionFingerprintService();
@@ -328,6 +336,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         this.assignOwnerIfAbsent(playerId);
         this.playerFeedbackCoordinator.clearPlayerState(botId);
         this.handSelectionCoordinator.clearPlayer(botId);
+        this.invalidateBotDisplayNameCache(botId);
         return true;
     }
 
@@ -341,6 +350,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         }
         this.playerFeedbackCoordinator.clearPlayerState(playerId);
         this.handSelectionCoordinator.clearPlayer(playerId);
+        this.invalidateBotDisplayNameCache(playerId);
         this.render();
         return true;
     }
@@ -356,6 +366,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         boolean removed = this.participants.removePlayer(playerId);
         this.unattendedPlayers.remove(playerId);
         if (removed) {
+            this.invalidateBotDisplayNameCache(playerId);
             DisplayInteractionRayRegistry.clearViewer(playerId, this.id);
         }
         if (removed && Objects.equals(this.ownerId, playerId)) {
@@ -653,6 +664,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
 
     public void clearBotNamesForLifecycle() {
         this.participants.clearBotNames();
+        this.botDisplayNameCache.clear();
     }
 
     public void clearSeatAssignmentsForLifecycle() {
@@ -1726,16 +1738,33 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     private String botDisplayName(UUID playerId, Locale locale) {
-        String raw = this.participants.botDisplayNameSource(playerId);
-        if (raw == null) {
-            return this.plugin.messages().plain(locale, "common.unknown");
+        String cacheKey = locale.toLanguageTag() + '|' + playerId;
+        String cached = this.botDisplayNameCache.get(cacheKey);
+        if (cached != null) {
+            return cached;
         }
-        int suffix = this.participants.seatIndexOf(playerId) + 1;
-        return this.plugin.messages().plain(
-            locale,
-            "table.bot_name",
-            Map.of("index", this.plugin.messages().formatNumber(locale, "index", Math.max(1, suffix)))
-        );
+        String raw = this.participants.botDisplayNameSource(playerId);
+        String rendered;
+        if (raw == null) {
+            rendered = this.plugin.messages().plain(locale, "common.unknown");
+        } else {
+            int suffix = this.participants.seatIndexOf(playerId) + 1;
+            rendered = this.plugin.messages().plain(
+                locale,
+                "table.bot_name",
+                Map.of("index", this.plugin.messages().formatNumber(locale, "index", Math.max(1, suffix)))
+            );
+        }
+        this.botDisplayNameCache.put(cacheKey, rendered);
+        return rendered;
+    }
+
+    private void invalidateBotDisplayNameCache(UUID playerId) {
+        if (playerId == null) {
+            this.botDisplayNameCache.clear();
+            return;
+        }
+        this.botDisplayNameCache.entrySet().removeIf(entry -> entry.getKey().endsWith('|' + playerId.toString()));
     }
 
     public String tileLabelForDisplay(Locale locale, String tileName) {

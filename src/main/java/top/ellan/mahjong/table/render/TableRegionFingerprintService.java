@@ -6,6 +6,7 @@ import top.ellan.mahjong.render.layout.TableRenderLayout;
 import top.ellan.mahjong.render.snapshot.TableRenderSnapshot;
 import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -41,9 +42,6 @@ public final class TableRegionFingerprintService {
             .field(seat.online())
             .field(seat.hand().size())
             .field(seat.selectedHandTileIndices().contains(tileIndex))
-            .field(Double.doubleToLongBits(point.x()))
-            .field(Double.doubleToLongBits(point.y()))
-            .field(Double.doubleToLongBits(point.z()))
             .field(seat.hand().get(tileIndex).name())
             .value();
     }
@@ -64,9 +62,6 @@ public final class TableRegionFingerprintService {
             .field(seat.online())
             .field(seat.viewerMembershipSignature())
             .field(seat.stickLayoutCount())
-            .field(Double.doubleToLongBits(point.x()))
-            .field(Double.doubleToLongBits(point.y()))
-            .field(Double.doubleToLongBits(point.z()))
             // Public hand entities are an information boundary: their identity must never depend
             // on a concealed tile, including during the deal/start transition.
             .field("unknown")
@@ -252,6 +247,53 @@ public final class TableRegionFingerprintService {
 
     private String seatRegionKey(String region, SeatWind wind) {
         return region + ":" + wind.name();
+    }
+
+    /**
+     * Layout fingerprint for a seat's private hand tiles. The per-tile content fingerprint
+     * intentionally excludes tile positions so a pure layout change (hand size growth/shrink
+     * re-arranging every tile) does not poison every tile fingerprint; the layout fingerprint
+     * is tracked separately so layout-only changes route through reconcile (teleport) instead
+     * of full region respawn.
+     */
+    public long privateHandLayoutFingerprint(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan) {
+        FingerprintBuilder builder = fingerprintBuilder(320)
+            .field("hand-private-layout")
+            .field(seat.wind().name())
+            .field(seat.playerId())
+            .field(seat.hand().size());
+        List<TableRenderLayout.Point> points = plan.privateHandPoints();
+        for (int i = 0; i < points.size(); i++) {
+            TableRenderLayout.Point point = points.get(i);
+            builder.field(i)
+                .field(Double.doubleToLongBits(point.x()))
+                .field(Double.doubleToLongBits(point.y()))
+                .field(Double.doubleToLongBits(point.z()))
+                .field(seat.selectedHandTileIndices().contains(i));
+        }
+        return builder.value();
+    }
+
+    /**
+     * Layout fingerprint for a seat's public hand tiles. See privateHandLayoutFingerprint
+     * for the rationale.
+     */
+    public long publicHandLayoutFingerprint(TableRenderSnapshot snapshot, TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan) {
+        FingerprintBuilder builder = fingerprintBuilder(320)
+            .field("hand-public-layout")
+            .field(seat.wind().name())
+            .field(seat.playerId())
+            .field(snapshot.started())
+            .field(seat.hand().size());
+        List<TableRenderLayout.Point> points = plan.publicHandPoints();
+        for (int i = 0; i < points.size(); i++) {
+            TableRenderLayout.Point point = points.get(i);
+            builder.field(i)
+                .field(Double.doubleToLongBits(point.x()))
+                .field(Double.doubleToLongBits(point.y()))
+                .field(Double.doubleToLongBits(point.z()));
+        }
+        return builder.value();
     }
 
     private static FingerprintBuilder fingerprintBuilder(int capacity) {
