@@ -35,7 +35,6 @@ public final class TableRegionFingerprintService {
     public long handPrivateTileFingerprint(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan, int tileIndex) {
         TableRenderLayout.Point point = plan.privateHandPoints().get(tileIndex);
         return fingerprintBuilder(160)
-            .field("hand-private-tile")
             .field(seat.wind().name())
             .field(seat.playerId())
             .field(tileIndex)
@@ -54,7 +53,6 @@ public final class TableRegionFingerprintService {
     ) {
         TableRenderLayout.Point point = plan.publicHandPoints().get(tileIndex);
         return fingerprintBuilder(160)
-            .field("hand-public-tile")
             .field(seat.wind().name())
             .field(seat.playerId())
             // tileIndex and hand size are packed into a single injective field: hand size
