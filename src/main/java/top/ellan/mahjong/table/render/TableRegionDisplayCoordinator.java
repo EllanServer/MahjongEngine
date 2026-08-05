@@ -501,7 +501,12 @@ public final class TableRegionDisplayCoordinator {
     ) {
         this.clearRegion(this.seatRegionKey("hand-private", seat.wind()));
         int handSize = seat.playerId() == null ? 0 : seat.hand().size();
-        long layoutFingerprint = seat.playerId() == null ? 0L : this.fingerprintService.privateHandLayoutFingerprint(seat, plan);
+        // Layout structure fingerprint: tile coordinates are fully determined by (seat, hand
+        // size, tile index, selected indices), all covered by the content fingerprints, so the
+        // only structural signal needed for the reconcile-vs-respawn decision is the hand size
+        // itself. Using the already-computed handSize keeps the every-apply enqueue cost at
+        // baseline (no fingerprint computation on the short-circuit path).
+        long layoutFingerprint = handSize;
         for (int tileIndex = 0; tileIndex < MAX_HAND_TILE_REGIONS; tileIndex++) {
             String regionKey = this.handPrivateRegionKey(seat.wind(), tileIndex);
             if (tileIndex >= handSize) {
@@ -530,7 +535,9 @@ public final class TableRegionDisplayCoordinator {
     ) {
         this.clearRegion(this.seatRegionKey("hand-public", seat.wind()));
         int handSize = seat.playerId() == null ? 0 : seat.hand().size();
-        long layoutFingerprint = seat.playerId() == null ? 0L : this.fingerprintService.publicHandLayoutFingerprint(snapshot, seat, plan);
+        // See enqueuePrivateHandRegionUpdates: the layout structure fingerprint is the hand
+        // size itself (all other layout inputs are covered by the content fingerprints).
+        long layoutFingerprint = handSize;
         for (int tileIndex = 0; tileIndex < MAX_HAND_TILE_REGIONS; tileIndex++) {
             String regionKey = this.handPublicRegionKey(seat.wind(), tileIndex);
             if (tileIndex >= handSize) {
@@ -622,7 +629,7 @@ public final class TableRegionDisplayCoordinator {
     private boolean updatePrivateHandRegions(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan, ApplyBudget budget) {
         this.clearRegion(this.seatRegionKey("hand-private", seat.wind()));
         int handSize = seat.playerId() == null ? 0 : seat.hand().size();
-        long layoutFingerprint = seat.playerId() == null ? 0L : this.fingerprintService.privateHandLayoutFingerprint(seat, plan);
+        long layoutFingerprint = handSize;
         for (int tileIndex = 0; tileIndex < MAX_HAND_TILE_REGIONS; tileIndex++) {
             String regionKey = this.handPrivateRegionKey(seat.wind(), tileIndex);
             if (tileIndex >= handSize) {
@@ -911,6 +918,14 @@ public final class TableRegionDisplayCoordinator {
         return true;
     }
 
+    /**
+     * Returns whether the hand structure still matches the layout that was last applied to
+     * this region. The layout fingerprint is the hand size itself (tile coordinates are fully
+     * determined by seat, hand size, tile index and selected indices — all covered by the
+     * content fingerprints), so this only distinguishes "same structure, reconcile in place"
+     * from "hand grew/shrunk, respawn". A zero fingerprint means the region has no layout
+     * gate (non-hand regions) and always reconciles when content changed.
+     */
     private boolean layoutMatches(String regionKey, long layoutFingerprint) {
         if (layoutFingerprint == 0L) {
             return true;

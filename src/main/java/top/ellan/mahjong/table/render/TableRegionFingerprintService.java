@@ -256,48 +256,6 @@ public final class TableRegionFingerprintService {
         return region + ":" + wind.name();
     }
 
-    /**
-     * Layout fingerprint for a seat's private hand tiles.
-     *
-     * <p>The per-tile content fingerprint intentionally excludes tile positions so a pure layout
-     * change (hand size growth/shrink re-arranging every tile) does not poison every tile
-     * fingerprint. Tile coordinates are fully determined by (seat, hand size, tile index,
-     * selected indices), all of which are already part of the per-tile content fingerprints,
-     * so the layout fingerprint only needs to carry the hand structure (size): when content
-     * changes but the structure does not, the region can be reconciled in place (teleport)
-     * instead of being respawned.
-     *
-     * <p>This is a deliberately cheap fingerprint (a few FNV fields) because it is computed
-     * once per seat per apply; it never needs to enumerate tile coordinates.
-     */
-    public long privateHandLayoutFingerprint(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan) {
-        return fingerprintBuilder(48)
-            .field("hand-private-layout")
-            .field(seat.wind().name())
-            .field(seat.playerId())
-            .field(seat.hand().size())
-            .value();
-    }
-
-    /**
-     * Layout fingerprint for a seat's public hand tiles.
-     *
-     * <p>The per-tile content fingerprint intentionally excludes tile positions, so the layout
-     * fingerprint carries the remaining structural signal (hand size plus the seat identity,
-     * which is already covered by the content fingerprints); the coordinator consults it on
-     * the update path to decide reconcile-vs-respawn. It is cheap to compute (a few FNV
-     * fields, once per seat per apply).
-     */
-    public long publicHandLayoutFingerprint(TableRenderSnapshot snapshot, TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan) {
-        return fingerprintBuilder(48)
-            .field("hand-public-layout")
-            .field(seat.wind().name())
-            .field(seat.playerId())
-            .field(snapshot.started())
-            .field(seat.hand().size())
-            .value();
-    }
-
     private static FingerprintBuilder fingerprintBuilder(int capacity) {
         return new FingerprintBuilder();
     }
