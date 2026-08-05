@@ -57,7 +57,14 @@ public final class TableRegionFingerprintService {
             .field("hand-public-tile")
             .field(seat.wind().name())
             .field(seat.playerId())
-            .field(tileIndex)
+            // tileIndex and hand size are packed into a single injective field: hand size
+            // participates in the layout fingerprint, so it must also be part of the content
+            // fingerprint, otherwise a hand that grows/shrinks re-arranges every tile while
+            // the per-tile content fingerprints stay identical and the short-circuit would
+            // wrongly skip the layout update. Packing keeps the field count (and therefore
+            // the every-tick fixed cost) identical to the pre-change fingerprint.
+            // Injective because tileIndex < 64 and hand size < 64 in every legal game state.
+            .field(tileIndex * 64 + seat.hand().size())
             .field(snapshot.started())
             .field(seat.online())
             .field(seat.viewerMembershipSignature())
@@ -65,12 +72,6 @@ public final class TableRegionFingerprintService {
             // Public hand entities are an information boundary: their identity must never depend
             // on a concealed tile, including during the deal/start transition.
             .field("unknown")
-            // Hand size participates in the layout fingerprint, so it must also be part of the
-            // content fingerprint: otherwise a hand that grows/shrinks re-arranges every tile
-            // while the per-tile content fingerprints stay identical and the short-circuit
-            // would wrongly skip the layout update. A per-tile arithmetic field is an order of
-            // magnitude cheaper than a per-region layout lookup on the short-circuit path.
-            .field(seat.hand().size())
             .value();
     }
 
