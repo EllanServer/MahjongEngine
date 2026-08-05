@@ -17,6 +17,7 @@ import top.ellan.mahjong.command.subcommand.BotMatchSubcommand;
 import top.ellan.mahjong.command.subcommand.ChiiSubcommand;
 import top.ellan.mahjong.command.subcommand.ClearSubcommand;
 import top.ellan.mahjong.command.subcommand.CreateSubcommand;
+import top.ellan.mahjong.command.subcommand.CleanupSubcommand;
 import top.ellan.mahjong.command.subcommand.DebugSubcommand;
 import top.ellan.mahjong.command.subcommand.DeleteTableSubcommand;
 import top.ellan.mahjong.command.subcommand.ForceEndSubcommand;
@@ -252,6 +253,7 @@ public final class MahjongCommand implements CommandExecutor, TabCompleter {
         commands.add(new RenderSubcommand(context).create());
         commands.add(new InspectSubcommand(context).create());
         commands.add(new DebugSubcommand(context).create());
+        commands.add(new CleanupSubcommand(context).create());
         commands.add(new ClearSubcommand(context).create());
         commands.add(new ForceEndSubcommand(context).create());
         commands.add(new DeleteTableSubcommand(context).create());

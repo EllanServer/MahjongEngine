@@ -75,6 +75,7 @@ public final class TableRegionDisplayCoordinator {
     private static final int BUCKET_BACKGROUND = 4;
 
     private final TableSessionContext session;
+    private long spawnGeneration;
     private final TableRegionFingerprintService fingerprintService;
     private final int maxRegionUpdatesPerApply;
     private final int maxEntitySpawnsPerApply;
@@ -745,6 +746,7 @@ public final class TableRegionDisplayCoordinator {
         List<Entity> entities = DisplayEntities.spawnAll(this.session, specs);
         if (!entities.isEmpty()) {
             this.regionDisplays.put(regionKey, entities);
+            this.markRegionEntities(regionKey, entities);
         }
         this.regionFingerprints.put(regionKey, fingerprint);
         this.appliedLayoutFingerprints.put(regionKey, layoutFingerprint);
@@ -912,6 +914,7 @@ public final class TableRegionDisplayCoordinator {
         List<Entity> entities = DisplayEntities.spawnAll(this.session, specs);
         if (!entities.isEmpty()) {
             this.regionDisplays.put(regionKey, entities);
+            this.markRegionEntities(regionKey, entities);
         }
         this.regionFingerprints.put(regionKey, fingerprint);
         this.appliedLayoutFingerprints.put(regionKey, layoutFingerprint);
@@ -932,6 +935,33 @@ public final class TableRegionDisplayCoordinator {
         }
         Long applied = this.appliedLayoutFingerprints.get(regionKey);
         return applied != null && applied == layoutFingerprint;
+    }
+
+    /**
+     * Writes ownership metadata (table id, session id, role, slot, generation) into the
+     * persistent data container of every freshly spawned entity so orphans can be attributed
+     * to a table and cleaned up even after the in-memory registry is gone. The role/slot are
+     * derived from the region key (e.g. {@code hand-private:EAST:3} → role {@code hand-private},
+     * slot {@code EAST:3}); generation is a per-coordinator monotonically increasing spawn
+     * counter that lets an audit distinguish a newer respawn from an older one.
+     */
+    private void markRegionEntities(String regionKey, List<Entity> entities) {
+        String tableId = this.session.id();
+        long generation = ++this.spawnGeneration;
+        String role = regionKey;
+        String slot = "";
+        int firstColon = regionKey.indexOf(':');
+        if (firstColon >= 0) {
+            role = regionKey.substring(0, firstColon);
+            slot = regionKey.substring(firstColon + 1);
+        }
+        for (Entity entity : entities) {
+            DisplayEntities.markManagedEntity(
+                this.session.bukkitPlugin(),
+                entity,
+                DisplayEntities.ManagedEntityTag.of(tableId, tableId, role, slot, generation)
+            );
+        }
     }
 
     private void clearRegion(String regionKey) {

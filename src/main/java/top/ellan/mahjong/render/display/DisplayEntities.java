@@ -33,6 +33,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.Transformation;
@@ -42,10 +43,26 @@ import org.joml.Vector3f;
 public final class DisplayEntities {
     private static final String ITEM_MODEL_NAMESPACE = "mahjongcraft";
     private static final String MANAGED_ENTITY_KEY = "managed_entity";
+    private static final String TAG_TABLE_ID = "table_id";
+    private static final String TAG_SESSION_ID = "session_id";
+    private static final String TAG_ROLE = "role";
+    private static final String TAG_SLOT = "slot";
+    private static final String TAG_GENERATION = "generation";
     private static final float TILE_SCALE = 1.0F;
     private static final float LABEL_VIEW_RANGE = 48.0F;
     private static final Map<String, ItemStack> TILE_ITEM_CACHE = new ConcurrentHashMap<>();
     private static final Map<Plugin, NamespacedKey> MANAGED_ENTITY_KEYS = new ConcurrentHashMap<>();
+    private static final Map<Plugin, Map<String, NamespacedKey>> MANAGED_ENTITY_TAG_KEYS = new ConcurrentHashMap<>();
+    /**
+     * Ownership metadata written to every entity spawned by this plugin, so that orphaned
+     * display/interaction entities can be attributed to (and safely cleaned up against) a
+     * table even after the in-memory registry is gone. Never contains Bukkit references.
+     */
+    public record ManagedEntityTag(String tableId, String sessionId, String role, String slot, long generation) {
+        public static ManagedEntityTag of(String tableId, String sessionId, String role, String slot, long generation) {
+            return new ManagedEntityTag(tableId, sessionId, role, slot, generation);
+        }
+    }
     /**
      * Last immutable built-in spec applied to a managed entity. Entries use the server entity ID
      * for lock-free lookup but retain the entity only through a queued weak reference; UUID checks
@@ -1598,12 +1615,55 @@ public final class DisplayEntities {
         return entity.getPersistentDataContainer().has(managedEntityKey(plugin), PersistentDataType.BYTE);
     }
 
-    private static void markManagedEntity(Plugin plugin, Entity entity) {
-        entity.getPersistentDataContainer().set(managedEntityKey(plugin), PersistentDataType.BYTE, (byte) 1);
+    public static void markManagedEntity(Plugin plugin, Entity entity) {
+        markManagedEntity(plugin, entity, null);
+    }
+
+    public static void markManagedEntity(Plugin plugin, Entity entity, ManagedEntityTag tag) {
+        if (plugin == null || entity == null) {
+            return;
+        }
+        PersistentDataContainer container = entity.getPersistentDataContainer();
+        container.set(managedEntityKey(plugin), PersistentDataType.BYTE, (byte) 1);
+        if (tag != null) {
+            container.set(managedEntityTagKey(plugin, TAG_TABLE_ID), PersistentDataType.STRING, tag.tableId());
+            container.set(managedEntityTagKey(plugin, TAG_SESSION_ID), PersistentDataType.STRING, tag.sessionId());
+            container.set(managedEntityTagKey(plugin, TAG_ROLE), PersistentDataType.STRING, tag.role());
+            container.set(managedEntityTagKey(plugin, TAG_SLOT), PersistentDataType.STRING, tag.slot());
+            container.set(managedEntityTagKey(plugin, TAG_GENERATION), PersistentDataType.STRING, Long.toString(tag.generation()));
+        }
+    }
+
+    public static ManagedEntityTag readManagedTag(Plugin plugin, Entity entity) {
+        if (plugin == null || entity == null || !isManagedEntity(plugin, entity)) {
+            return null;
+        }
+        PersistentDataContainer container = entity.getPersistentDataContainer();
+        String tableId = container.get(managedEntityTagKey(plugin, TAG_TABLE_ID), PersistentDataType.STRING);
+        String sessionId = container.get(managedEntityTagKey(plugin, TAG_SESSION_ID), PersistentDataType.STRING);
+        String role = container.get(managedEntityTagKey(plugin, TAG_ROLE), PersistentDataType.STRING);
+        String slot = container.get(managedEntityTagKey(plugin, TAG_SLOT), PersistentDataType.STRING);
+        String generation = container.get(managedEntityTagKey(plugin, TAG_GENERATION), PersistentDataType.STRING);
+        if (tableId == null && sessionId == null && role == null && slot == null && generation == null) {
+            return null;
+        }
+        return new ManagedEntityTag(
+            tableId,
+            sessionId,
+            role,
+            slot,
+            generation == null ? 0L : Long.parseLong(generation)
+        );
     }
 
     private static NamespacedKey managedEntityKey(Plugin plugin) {
         return MANAGED_ENTITY_KEYS.computeIfAbsent(plugin, key -> new NamespacedKey(key, MANAGED_ENTITY_KEY));
+    }
+
+    private static NamespacedKey managedEntityTagKey(Plugin plugin, String tag) {
+        return MANAGED_ENTITY_TAG_KEYS
+            .computeIfAbsent(plugin, key -> new ConcurrentHashMap<>())
+            .computeIfAbsent(tag, key -> new NamespacedKey(plugin, MANAGED_ENTITY_KEY + "_" + tag));
     }
 
     private static ItemStack tileItem(DisplayEntityRuntime runtime, MahjongVariant variant, MahjongTile tile, boolean faceDown) {
