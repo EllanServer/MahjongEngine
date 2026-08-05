@@ -43,7 +43,7 @@ final class SichuanBotStrategy implements BotStrategy {
         if (!session.isStarted()) {
             return;
         }
-        PlayerActionSnapshotFactory actionSnapshotFactory = new PlayerActionSnapshotFactory(session);
+        PlayerActionSnapshotFactory actionSnapshotFactory = session.actionSnapshotFactory();
         for (UUID playerId : session.players()) {
             if (!session.isBot(playerId)) {
                 continue;

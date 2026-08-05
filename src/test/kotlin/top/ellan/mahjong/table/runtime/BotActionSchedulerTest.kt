@@ -16,6 +16,7 @@ import top.ellan.mahjong.model.MahjongVariant
 import top.ellan.mahjong.model.SeatWind
 import top.ellan.mahjong.runtime.PluginTask
 import top.ellan.mahjong.runtime.ServerScheduler
+import top.ellan.mahjong.table.action.PlayerActionSnapshotFactory
 import top.ellan.mahjong.table.core.MahjongTableSession
 import top.ellan.mahjong.table.core.TableRuntimeServices
 import java.util.UUID
@@ -33,6 +34,7 @@ class BotActionSchedulerTest {
     @Test
     fun `non riichi variant uses gb style bot scheduling`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
@@ -58,6 +60,7 @@ class BotActionSchedulerTest {
     @Test
     fun `gb bot turn falls back to selectable discard index`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
@@ -96,6 +99,7 @@ class BotActionSchedulerTest {
     @Test
     fun `gb bot exposes a flower before considering kan or discard`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
@@ -131,6 +135,7 @@ class BotActionSchedulerTest {
     @Test
     fun `gb bot turn stops retrying after max attempts`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
@@ -188,6 +193,7 @@ class BotActionSchedulerTest {
     @Test
     fun `gb bot turn retries reset on next scheduling cycle`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
@@ -252,6 +258,7 @@ class BotActionSchedulerTest {
     @Test
     fun `sichuan variant uses sichuan bot strategy`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
@@ -280,6 +287,7 @@ class BotActionSchedulerTest {
     @Test
     fun `sichuan bot exchange preparation uses short delay and one batched submission`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
@@ -328,6 +336,7 @@ class BotActionSchedulerTest {
     @Test
     fun `sichuan bot dingque preparation uses short delay`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
@@ -368,6 +377,7 @@ class BotActionSchedulerTest {
     @Test
     fun `sichuan bot prioritises discarding from smallest suit when all three suits present`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
@@ -419,6 +429,7 @@ class BotActionSchedulerTest {
     @Test
     fun `sichuan bot delegates to engine when already missing one suit`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
@@ -468,6 +479,7 @@ class BotActionSchedulerTest {
     @Test
     fun `sichuan bot declares tsumo when possible`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
@@ -502,6 +514,7 @@ class BotActionSchedulerTest {
     @Test
     fun `sichuan bot reaction uses gb suggested reaction`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)

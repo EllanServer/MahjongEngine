@@ -1,6 +1,7 @@
 package top.ellan.mahjong.i18n;
 
 import java.util.Locale;
+import java.util.Map;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import org.bukkit.command.CommandSender;
@@ -29,6 +30,18 @@ public final class MessageService {
         return this.messages.plain(locale, key, placeholders);
     }
 
+    public Component render(Locale locale, String key, Map<String, String> placeholders) {
+        return this.messages.render(locale, key, placeholders);
+    }
+
+    public String plain(Locale locale, String key, Map<String, String> placeholders) {
+        return this.messages.plain(locale, key, placeholders);
+    }
+
+    public String formatNumber(Locale locale, String key, Number value) {
+        return this.messages.formatNumber(locale, key, value);
+    }
+
     public boolean contains(Locale locale, String key) {
         return this.messages.contains(locale, key);
     }
@@ -48,4 +61,3 @@ public final class MessageService {
         return this.messages.number(locale, key, value);
     }
 }
-

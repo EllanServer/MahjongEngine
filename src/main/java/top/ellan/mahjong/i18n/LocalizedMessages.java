@@ -1,5 +1,7 @@
 package top.ellan.mahjong.i18n;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -37,6 +39,8 @@ public final class LocalizedMessages {
     private final Map<MessageCacheKey, String> templates = new ConcurrentHashMap<>();
     private final Map<MessageCacheKey, Component> staticComponents = new ConcurrentHashMap<>();
     private final Map<MessageCacheKey, String> staticPlainTexts = new ConcurrentHashMap<>();
+    private final Cache<MessageRenderKey, Component> renderedComponents = Caffeine.newBuilder().maximumSize(512).build();
+    private final Cache<MessageRenderKey, String> renderedPlainTexts = Caffeine.newBuilder().maximumSize(512).build();
     private final ConcurrentMap<Locale, ThreadLocal<NumberFormat>> integerFormats = new ConcurrentHashMap<>();
 
     public Component render(Locale locale, String key, TagResolver... placeholders) {
@@ -61,19 +65,43 @@ public final class LocalizedMessages {
      * (placeholders are resolved by tag name, so map iteration order is irrelevant). It
      * exists so hot rendering paths can be measured and cached through a single,
      * stable placeholder representation.
+     *
+     * <p>Results are cached keyed by (locale, message key, sorted placeholder
+     * entries): MiniMessage output depends only on the template and the resolved
+     * placeholder values, and message bundles are immutable after load.
      */
     public Component render(Locale locale, String key, Map<String, String> placeholders) {
-        return this.render(locale, key, resolvers(placeholders));
+        if (placeholders.isEmpty()) {
+            return this.render(locale, key);
+        }
+        MessageRenderKey cacheKey = this.renderKey(locale, key, placeholders);
+        Component cached = this.renderedComponents.getIfPresent(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        Component rendered = this.render(locale, key, resolvers(placeholders));
+        this.renderedComponents.put(cacheKey, rendered);
+        return rendered;
     }
 
     /**
      * Renders a message to plain text with placeholders supplied as a key/value map.
      *
      * <p>See {@link #render(Locale, String, Map)} for the contract shared with the
-     * {@link TagResolver} variant.
+     * {@link TagResolver} variant; results are cached the same way.
      */
     public String plain(Locale locale, String key, Map<String, String> placeholders) {
-        return this.plain(locale, key, resolvers(placeholders));
+        if (placeholders.isEmpty()) {
+            return this.plain(locale, key);
+        }
+        MessageRenderKey cacheKey = this.renderKey(locale, key, placeholders);
+        String cached = this.renderedPlainTexts.getIfPresent(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        String rendered = this.plain(locale, key, resolvers(placeholders));
+        this.renderedPlainTexts.put(cacheKey, rendered);
+        return rendered;
     }
 
     /**
@@ -112,6 +140,12 @@ public final class LocalizedMessages {
             resolvers[index++] = Placeholder.unparsed(entry.getKey(), entry.getValue());
         }
         return resolvers;
+    }
+
+    private MessageRenderKey renderKey(Locale locale, String key, Map<String, String> placeholders) {
+        List<Map.Entry<String, String>> entries = new ArrayList<>(placeholders.entrySet());
+        entries.sort(Map.Entry.comparingByKey());
+        return new MessageRenderKey(this.safeLocale(locale), key, List.copyOf(entries));
     }
 
     public Locale normalizeLocale(String rawLocale) {
@@ -321,6 +355,13 @@ public final class LocalizedMessages {
 
     private record MessageCacheKey(Locale locale, String key) {
         private MessageCacheKey {
+            locale = Objects.requireNonNull(locale, "locale");
+            key = Objects.requireNonNull(key, "key");
+        }
+    }
+
+    private record MessageRenderKey(Locale locale, String key, List<Map.Entry<String, String>> placeholders) {
+        private MessageRenderKey {
             locale = Objects.requireNonNull(locale, "locale");
             key = Objects.requireNonNull(key, "key");
         }
