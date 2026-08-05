@@ -1,5 +1,6 @@
 package top.ellan.mahjong.table.runtime;
 
+import top.ellan.mahjong.table.action.PlayerActionEntry;
 import top.ellan.mahjong.table.action.PlayerActionId;
 import top.ellan.mahjong.table.action.PlayerActionPhase;
 import top.ellan.mahjong.table.action.PlayerActionSnapshot;
@@ -17,7 +18,7 @@ final class GbBotStrategy implements BotStrategy {
         if (!session.isStarted()) {
             return;
         }
-        PlayerActionSnapshotFactory actionSnapshots = new PlayerActionSnapshotFactory(session);
+        PlayerActionSnapshotFactory actionSnapshots = session.actionSnapshotFactory();
         for (UUID playerId : session.players()) {
             if (!session.isBot(playerId) || actionSnapshots.capture(playerId).phase() != PlayerActionPhase.REACTION) {
                 continue;
@@ -68,7 +69,7 @@ final class GbBotStrategy implements BotStrategy {
     }
 
     private void handleGbReaction(MahjongTableSession session, UUID playerId) {
-        PlayerActionSnapshot snapshot = new PlayerActionSnapshotFactory(session).capture(playerId);
+        PlayerActionSnapshot snapshot = session.actionSnapshotFactory().capture(playerId);
         if (snapshot.phase() != PlayerActionPhase.REACTION) {
             return;
         }
@@ -79,7 +80,7 @@ final class GbBotStrategy implements BotStrategy {
         if (!session.isStarted() || session.hasPendingReaction() || !Objects.equals(session.playerAt(session.currentSeat()), playerId)) {
             return;
         }
-        PlayerActionSnapshot snapshot = new PlayerActionSnapshotFactory(session).capture(playerId);
+        PlayerActionSnapshot snapshot = session.actionSnapshotFactory().capture(playerId);
         if (snapshot.phase() != PlayerActionPhase.TURN) {
             return;
         }
@@ -128,7 +129,12 @@ final class GbBotStrategy implements BotStrategy {
     }
 
     private boolean hasAction(PlayerActionSnapshot snapshot, PlayerActionId actionId) {
-        return snapshot.actions().stream().anyMatch(action -> action.actionId() == actionId);
+        for (PlayerActionEntry action : snapshot.actions()) {
+            if (action.actionId() == actionId) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void scheduleGbTurnRetry(MahjongTableSession session, UUID playerId, int retryAttempts, String reason) {

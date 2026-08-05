@@ -18,6 +18,7 @@ import top.ellan.mahjong.render.snapshot.TableSeatRenderSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerHudSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerHudPresentationSnapshot;
 import top.ellan.mahjong.render.snapshot.TableViewerOverlaySnapshot;
+import top.ellan.mahjong.table.action.PlayerActionSnapshotFactory;
 import top.ellan.mahjong.riichi.ReactionResponse;
 import top.ellan.mahjong.riichi.ReactionResponses;
 import top.ellan.mahjong.riichi.RiichiPlayerState;
@@ -76,6 +77,14 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     private final boolean persistentRoom;
     private final boolean botMatchRoom;
     private final TableParticipantRegistry participants = new TableParticipantRegistry();
+    /**
+     * Cache of fully rendered bot display names, keyed by locale tag + '|' + bot player id.
+     * Bot names are deterministic per (locale, seat index) and only change on participant
+     * mutations, so the expensive placeholder-driven i18n render is performed once per key
+     * instead of once per render-snapshot capture (the capture path calls displayName for
+     * every seated player on every tick).
+     */
+    private final Map<String, String> botDisplayNameCache = new HashMap<>();
     private final TableRenderer renderer = new TableRenderer();
     private final TableRenderSnapshotFactory renderSnapshotFactory = new TableRenderSnapshotFactory();
     private final TableRegionFingerprintService regionFingerprintService = new TableRegionFingerprintService();
@@ -104,6 +113,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     private final TableRenderInspectCoordinator renderInspectCoordinator;
     private final TableLifecycleCoordinator lifecycleCoordinator;
     private final TableViewerSnapshotFactory viewerSnapshotFactory;
+    private final PlayerActionSnapshotFactory actionSnapshotFactory;
     private final TableDiceAnimationCoordinator diceAnimationCoordinator;
     private final TablePlayerFeedbackCoordinator playerFeedbackCoordinator;
     private final TableStateSoundCoordinator stateSoundCoordinator;
@@ -183,6 +193,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         this.renderInspectCoordinator = new TableRenderInspectCoordinator(this.sessionContext);
         this.lifecycleCoordinator = new TableLifecycleCoordinator(this.sessionMutator);
         this.viewerSnapshotFactory = new TableViewerSnapshotFactory(this.sessionMutator);
+        this.actionSnapshotFactory = new PlayerActionSnapshotFactory(this.sessionMutator);
         this.diceAnimationCoordinator = new TableDiceAnimationCoordinator(this.sessionContext);
         this.playerFeedbackCoordinator = new TablePlayerFeedbackCoordinator(this.sessionMutator);
         this.stateSoundCoordinator = new TableStateSoundCoordinator(this.sessionContext);
@@ -200,6 +211,15 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
 
     public TableRuntimeServices plugin() {
         return this.plugin;
+    }
+
+    /**
+     * Shared, stateless action-snapshot factory for this session. Bot strategies
+     * and render paths capture action snapshots every tick, so the factory is
+     * created once per session instead of per capture.
+     */
+    public PlayerActionSnapshotFactory actionSnapshotFactory() {
+        return this.actionSnapshotFactory;
     }
 
     @Override
@@ -316,6 +336,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         this.assignOwnerIfAbsent(playerId);
         this.playerFeedbackCoordinator.clearPlayerState(botId);
         this.handSelectionCoordinator.clearPlayer(botId);
+        this.invalidateBotDisplayNameCache(botId);
         return true;
     }
 
@@ -329,6 +350,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         }
         this.playerFeedbackCoordinator.clearPlayerState(playerId);
         this.handSelectionCoordinator.clearPlayer(playerId);
+        this.invalidateBotDisplayNameCache(playerId);
         this.render();
         return true;
     }
@@ -344,6 +366,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
         boolean removed = this.participants.removePlayer(playerId);
         this.unattendedPlayers.remove(playerId);
         if (removed) {
+            this.invalidateBotDisplayNameCache(playerId);
             DisplayInteractionRayRegistry.clearViewer(playerId, this.id);
         }
         if (removed && Objects.equals(this.ownerId, playerId)) {
@@ -641,6 +664,7 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
 
     public void clearBotNamesForLifecycle() {
         this.participants.clearBotNames();
+        this.botDisplayNameCache.clear();
     }
 
     public void clearSeatAssignmentsForLifecycle() {
@@ -1714,12 +1738,33 @@ public final class MahjongTableSession implements TableSessionMutator, TableMemb
     }
 
     private String botDisplayName(UUID playerId, Locale locale) {
-        String raw = this.participants.botDisplayNameSource(playerId);
-        if (raw == null) {
-            return this.plugin.messages().plain(locale, "common.unknown");
+        String cacheKey = locale.toLanguageTag() + '|' + playerId;
+        String cached = this.botDisplayNameCache.get(cacheKey);
+        if (cached != null) {
+            return cached;
         }
-        int suffix = this.participants.seatIndexOf(playerId) + 1;
-        return this.plugin.messages().plain(locale, "table.bot_name", this.plugin.messages().number(locale, "index", Math.max(1, suffix)));
+        String raw = this.participants.botDisplayNameSource(playerId);
+        String rendered;
+        if (raw == null) {
+            rendered = this.plugin.messages().plain(locale, "common.unknown");
+        } else {
+            int suffix = this.participants.seatIndexOf(playerId) + 1;
+            rendered = this.plugin.messages().plain(
+                locale,
+                "table.bot_name",
+                Map.of("index", this.plugin.messages().formatNumber(locale, "index", Math.max(1, suffix)))
+            );
+        }
+        this.botDisplayNameCache.put(cacheKey, rendered);
+        return rendered;
+    }
+
+    private void invalidateBotDisplayNameCache(UUID playerId) {
+        if (playerId == null) {
+            this.botDisplayNameCache.clear();
+            return;
+        }
+        this.botDisplayNameCache.entrySet().removeIf(entry -> entry.getKey().endsWith('|' + playerId.toString()));
     }
 
     public String tileLabelForDisplay(Locale locale, String tileName) {

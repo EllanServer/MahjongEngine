@@ -155,8 +155,22 @@ public final class MahjongPaperPlugin extends JavaPlugin {
                 this.tableManager.refreshPersistentTablesAfterStartup();
             }
         });
+        this.scheduler.runGlobal(this::scanOrphanedEntities);
         this.getLogger().info("MahjongPaper enabled.");
         this.debug.log("lifecycle", "Plugin bootstrap complete.");
+    }
+
+    private void scanOrphanedEntities() {
+        try {
+            java.util.Set<String> active = new java.util.HashSet<>(this.tableManager.tableIds());
+            top.ellan.mahjong.render.display.ManagedEntityAudit.EntityReport report =
+                top.ellan.mahjong.render.display.ManagedEntityAudit.scan(this, active);
+            this.getLogger().info(
+                "Managed entity audit: total=" + report.total() + " orphaned=" + report.orphanCount()
+                    + " (run /mahjong cleanup to remove orphans)");
+        } catch (RuntimeException error) {
+            this.getLogger().warning("Managed entity audit failed: " + error.getMessage());
+        }
     }
 
     @Override

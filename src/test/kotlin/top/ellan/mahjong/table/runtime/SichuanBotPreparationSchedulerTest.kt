@@ -13,6 +13,7 @@ import top.ellan.mahjong.model.MahjongVariant
 import top.ellan.mahjong.model.SeatWind
 import top.ellan.mahjong.runtime.PluginTask
 import top.ellan.mahjong.runtime.ServerScheduler
+import top.ellan.mahjong.table.action.PlayerActionSnapshotFactory
 import top.ellan.mahjong.table.core.MahjongTableSession
 import top.ellan.mahjong.table.core.TableRuntimeServices
 import java.util.UUID
@@ -22,6 +23,7 @@ class SichuanBotPreparationSchedulerTest {
     @Test
     fun `dealer bot waits without retries while human dingque is pending`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val center = mock(Location::class.java)
@@ -62,6 +64,7 @@ class SichuanBotPreparationSchedulerTest {
     @Test
     fun `preparation still schedules pending bot after pending human`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
@@ -91,6 +94,7 @@ class SichuanBotPreparationSchedulerTest {
     @Test
     fun `stale turn task exits during preparation without retry`() {
         val session = mock(MahjongTableSession::class.java)
+        `when`(session.actionSnapshotFactory()).thenReturn(PlayerActionSnapshotFactory(session))
         val plugin = mock(TableRuntimeServices::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
