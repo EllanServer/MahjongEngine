@@ -701,11 +701,13 @@ public final class TableRegionDisplayCoordinator {
             previousFingerprint = null;
             currentEntities = null;
         }
+        // Private hand content fingerprints are layout-complete (they include hand size,
+        // selected indices and the tile itself), so the short-circuit needs no layout check;
+        // the layout fingerprint only gates the reconcile-vs-respawn decision below.
         if (previousFingerprint != null
             && previousFingerprint == fingerprint
             && (currentEntities != null || this.regionFingerprints.containsKey(regionKey))
-            && (!requiresRayInteractions || this.rayInteractionsCurrent(regionKey))
-            && this.layoutMatches(regionKey, layoutFingerprint)) {
+            && (!requiresRayInteractions || this.rayInteractionsCurrent(regionKey))) {
             return true;
         }
         if (!budget.canConsumeRegionUpdate(1)) {
@@ -713,7 +715,9 @@ public final class TableRegionDisplayCoordinator {
         }
         RayRegionRenderPlan renderPlan = renderer.render();
         List<DisplayEntities.EntitySpec> specs = renderPlan.entitySpecs();
-        if (currentEntities != null && DisplayEntities.reconcile(this.session, currentEntities, specs)) {
+        if (currentEntities != null
+            && this.layoutMatches(regionKey, layoutFingerprint)
+            && DisplayEntities.reconcile(this.session, currentEntities, specs)) {
             budget.consumeRegionUpdate(1);
             this.regionFingerprints.put(regionKey, fingerprint);
             this.appliedLayoutFingerprints.put(regionKey, layoutFingerprint);
@@ -874,15 +878,19 @@ public final class TableRegionDisplayCoordinator {
             previousFingerprint = null;
             currentEntities = null;
         }
-        if (previousFingerprint != null && previousFingerprint == fingerprint && (currentEntities != null || this.regionFingerprints.containsKey(regionKey))
-                && this.layoutMatches(regionKey, layoutFingerprint)) {
+        // Hand content fingerprints are layout-complete (they include hand size, selected
+        // indices and the tile itself), so the short-circuit needs no separate layout check;
+        // the layout fingerprint only gates the reconcile-vs-respawn decision below.
+        if (previousFingerprint != null && previousFingerprint == fingerprint && (currentEntities != null || this.regionFingerprints.containsKey(regionKey))) {
             return true;
         }
         if (!budget.canConsumeRegionUpdate(1)) {
             return false;
         }
         List<DisplayEntities.EntitySpec> specs = renderer.render();
-        if (currentEntities != null && DisplayEntities.reconcile(this.session, currentEntities, specs)) {
+        if (currentEntities != null
+            && this.layoutMatches(regionKey, layoutFingerprint)
+            && DisplayEntities.reconcile(this.session, currentEntities, specs)) {
             budget.consumeRegionUpdate(1);
             this.regionFingerprints.put(regionKey, fingerprint);
             this.appliedLayoutFingerprints.put(regionKey, layoutFingerprint);

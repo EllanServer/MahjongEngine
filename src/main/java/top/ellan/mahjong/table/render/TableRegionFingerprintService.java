@@ -65,6 +65,12 @@ public final class TableRegionFingerprintService {
             // Public hand entities are an information boundary: their identity must never depend
             // on a concealed tile, including during the deal/start transition.
             .field("unknown")
+            // Hand size participates in the layout fingerprint, so it must also be part of the
+            // content fingerprint: otherwise a hand that grows/shrinks re-arranges every tile
+            // while the per-tile content fingerprints stay identical and the short-circuit
+            // would wrongly skip the layout update. A per-tile arithmetic field is an order of
+            // magnitude cheaper than a per-region layout lookup on the short-circuit path.
+            .field(seat.hand().size())
             .value();
     }
 
@@ -250,50 +256,45 @@ public final class TableRegionFingerprintService {
     }
 
     /**
-     * Layout fingerprint for a seat's private hand tiles. The per-tile content fingerprint
-     * intentionally excludes tile positions so a pure layout change (hand size growth/shrink
-     * re-arranging every tile) does not poison every tile fingerprint; the layout fingerprint
-     * is tracked separately so layout-only changes route through reconcile (teleport) instead
-     * of full region respawn.
+     * Layout fingerprint for a seat's private hand tiles.
+     *
+     * <p>The per-tile content fingerprint intentionally excludes tile positions so a pure layout
+     * change (hand size growth/shrink re-arranging every tile) does not poison every tile
+     * fingerprint. Tile coordinates are fully determined by (seat, hand size, tile index,
+     * selected indices), all of which are already part of the per-tile content fingerprints,
+     * so the layout fingerprint only needs to carry the hand structure (size): when content
+     * changes but the structure does not, the region can be reconciled in place (teleport)
+     * instead of being respawned.
+     *
+     * <p>This is a deliberately cheap fingerprint (a few FNV fields) because it is computed
+     * once per seat per apply; it never needs to enumerate tile coordinates.
      */
     public long privateHandLayoutFingerprint(TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan) {
-        FingerprintBuilder builder = fingerprintBuilder(320)
+        return fingerprintBuilder(48)
             .field("hand-private-layout")
             .field(seat.wind().name())
             .field(seat.playerId())
-            .field(seat.hand().size());
-        List<TableRenderLayout.Point> points = plan.privateHandPoints();
-        for (int i = 0; i < points.size(); i++) {
-            TableRenderLayout.Point point = points.get(i);
-            builder.field(i)
-                .field(Double.doubleToLongBits(point.x()))
-                .field(Double.doubleToLongBits(point.y()))
-                .field(Double.doubleToLongBits(point.z()))
-                .field(seat.selectedHandTileIndices().contains(i));
-        }
-        return builder.value();
+            .field(seat.hand().size())
+            .value();
     }
 
     /**
-     * Layout fingerprint for a seat's public hand tiles. See privateHandLayoutFingerprint
-     * for the rationale.
+     * Layout fingerprint for a seat's public hand tiles.
+     *
+     * <p>The per-tile content fingerprint intentionally excludes tile positions, so the layout
+     * fingerprint carries the remaining structural signal (hand size plus the seat identity,
+     * which is already covered by the content fingerprints); the coordinator consults it on
+     * the update path to decide reconcile-vs-respawn. It is cheap to compute (a few FNV
+     * fields, once per seat per apply).
      */
     public long publicHandLayoutFingerprint(TableRenderSnapshot snapshot, TableSeatRenderSnapshot seat, TableRenderLayout.SeatLayoutPlan plan) {
-        FingerprintBuilder builder = fingerprintBuilder(320)
+        return fingerprintBuilder(48)
             .field("hand-public-layout")
             .field(seat.wind().name())
             .field(seat.playerId())
             .field(snapshot.started())
-            .field(seat.hand().size());
-        List<TableRenderLayout.Point> points = plan.publicHandPoints();
-        for (int i = 0; i < points.size(); i++) {
-            TableRenderLayout.Point point = points.get(i);
-            builder.field(i)
-                .field(Double.doubleToLongBits(point.x()))
-                .field(Double.doubleToLongBits(point.y()))
-                .field(Double.doubleToLongBits(point.z()));
-        }
-        return builder.value();
+            .field(seat.hand().size())
+            .value();
     }
 
     private static FingerprintBuilder fingerprintBuilder(int capacity) {
