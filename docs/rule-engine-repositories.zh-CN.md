@@ -78,3 +78,6 @@ MahjongPaper 主仓库继续负责：
 拆分期间，旧实现仍是线上兼容基线，但不是新引擎的规则权威。
 
 主仓逐类适配关系、切换门槛和回滚步骤见 [规则引擎迁移映射](rule-engine-migration-map.zh-CN.md)。
+
+规则包消费坐标、manifest、ServiceLoader、fat JAR 排除项及 SDK 发布门禁见
+[规则包 SDK 与发布边界](rule-sdk.zh-CN.md)。

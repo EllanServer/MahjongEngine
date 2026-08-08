@@ -140,6 +140,12 @@ MahjongPaper now requires Java 21 or newer for both the build and the server run
 .\gradlew.bat build
 ```
 
+Rule-pack authors consume the Java-only SPI and its compatibility kit as separate Maven
+artifacts. Their coordinates, classloader boundary, local verification command, and gated
+GitHub Packages release process are documented in
+[docs/rule-sdk.zh-CN.md](./docs/rule-sdk.zh-CN.md). The SPI must remain outside rule-pack fat
+JARs because the core supplies it from the parent classloader.
+
 The plugin declares CraftEngine as a required dependency in [plugin.yml](./src/main/resources/plugin.yml). Install CraftEngine 26.7 or newer; startup and `/mahjong reload` reject older or API-incompatible builds before constructing the direct bridge.
 
 ## Configuration
