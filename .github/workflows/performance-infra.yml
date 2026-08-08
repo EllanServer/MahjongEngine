@@ -95,7 +95,7 @@ jobs:
           ./gradlew jmhJar --console plain --no-daemon
           -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
           "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT"
-          "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=17"
+          "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=21"
 
       - name: Regress isolated JMH lock ownership
         shell: bash

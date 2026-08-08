@@ -201,7 +201,7 @@ jobs:
           base/gradlew -p base jmhJar --console plain --no-daemon
           -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
           "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT"
-          "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=17"
+          "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=21"
 
       - name: Build candidate JMH jar without privileged runtime credentials
         shell: bash
@@ -218,7 +218,7 @@ jobs:
           candidate/gradlew -p candidate jmhJar --console plain --no-daemon
           -x configureGbMahjongNative -x buildGbMahjongNative -x packageGbMahjongNative
           "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT"
-          "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=17"
+          "-PmahjongJavaToolchain=25" "-PmahjongJavaTarget=21"
 
       - name: Stage immutable benchmark inputs
         shell: bash
