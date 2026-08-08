@@ -428,7 +428,7 @@ python perf/live/download_locked.py `
   --destination build/live-cache/craft-engine-paper-plugin-26.7.4.jar
 python perf/live/run_server.py `
   --paper-jar build/live-cache/server.jar `
-  --plugin-jar build/libs/mahjong-paper-1.5.0.jar `
+  --plugin-jar build/libs/mahjong-plugin-2.0.0-SNAPSHOT.jar `
   --plugin-config perf/live/fixtures/mahjongpaper-smoke-config.yml `
   --craftengine-jar build/live-cache/craft-engine-paper-plugin-26.7.4.jar `
   --required-plugin MahjongPaper `
