@@ -172,33 +172,23 @@ public class TableRegionFingerprintBenchmark {
             TableSeatRenderSnapshot seat = this.snapshot.seat(wind);
             TableRenderLayout.SeatLayoutPlan seatPlan = this.layout.seat(wind);
             for (int tileIndex = 0; tileIndex < seat.hand().size(); tileIndex++) {
-                TableRenderLayout.Point point = seatPlan.privateHandPoints().get(tileIndex);
                 checksum = combine(checksum, referenceFingerprint(
-                    "hand-private-tile",
                     seat.wind().name(),
                     seat.playerId(),
                     tileIndex,
                     seat.online(),
                     seat.hand().size(),
                     seat.selectedHandTileIndices().contains(tileIndex),
-                    Double.doubleToLongBits(point.x()),
-                    Double.doubleToLongBits(point.y()),
-                    Double.doubleToLongBits(point.z()),
                     seat.hand().get(tileIndex).name()
                 ));
-                point = seatPlan.publicHandPoints().get(tileIndex);
                 checksum = combine(checksum, referenceFingerprint(
-                    "hand-public-tile",
                     seat.wind().name(),
                     seat.playerId(),
-                    tileIndex,
+                    (tileIndex << 6) | seat.hand().size(),
                     this.snapshot.started(),
                     seat.online(),
                     seat.viewerMembershipSignature(),
                     seat.stickLayoutCount(),
-                    Double.doubleToLongBits(point.x()),
-                    Double.doubleToLongBits(point.y()),
-                    Double.doubleToLongBits(point.z()),
                     "unknown"
                 ));
             }

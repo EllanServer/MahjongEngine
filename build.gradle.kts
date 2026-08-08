@@ -124,7 +124,7 @@ val generateRuleTrustRoot =
                 it.file("META-INF/mahjong-rule-trust-root.txt")
             }
         inputs.property("rulePackPublicKey", rulePackPublicKey)
-        outputs.file(output)
+        outputs.dir(generatedRuleTrustRootDir)
         doLast {
             val target = output.get().asFile
             target.parentFile.mkdirs()
@@ -132,10 +132,7 @@ val generateRuleTrustRoot =
         }
     }
 sourceSets.main {
-    resources.srcDir(generatedRuleTrustRootDir)
-}
-tasks.named("processResources") {
-    dependsOn(generateRuleTrustRoot)
+    resources.srcDir(generateRuleTrustRoot)
 }
 val nativeTasks =
     MahjongTaskRegistration.registerNativeTasks(
