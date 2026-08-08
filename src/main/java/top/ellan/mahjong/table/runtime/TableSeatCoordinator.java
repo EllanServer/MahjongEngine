@@ -8,14 +8,13 @@ import top.ellan.mahjong.render.display.TableDisplayRegistry;
 import top.ellan.mahjong.runtime.ServerScheduler;
 import top.ellan.mahjong.table.core.MahjongTableManager;
 import top.ellan.mahjong.table.core.MahjongTableSession;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -38,11 +37,9 @@ public final class TableSeatCoordinator {
     private final Supplier<CraftEngineService> craftEngine;
     private final ServerScheduler scheduler;
     private final MahjongTableManager tableManager;
-    private final Map<UUID, SeatWatchdogBinding> seatWatchdogs = new ConcurrentHashMap<>();
+    private final Map<UUID, SeatWatchdogLoop> seatWatchdogs = new ConcurrentHashMap<>();
     private final Map<UUID, Long> seatRestoreCooldownUntilMillis = new ConcurrentHashMap<>();
     private final Set<UUID> seatDismountBypass = ConcurrentHashMap.newKeySet();
-    private final AtomicLong seatWatchdogClock = new AtomicLong();
-    private PluginTask seatWatchdogTask;
 
     public TableSeatCoordinator(Supplier<CraftEngineService> craftEngine, ServerScheduler scheduler, MahjongTableManager tableManager) {
         this.craftEngine = Objects.requireNonNull(craftEngine, "craftEngine");
@@ -51,12 +48,8 @@ public final class TableSeatCoordinator {
     }
 
     public void shutdown() {
-        if (this.seatWatchdogTask != null) {
-            this.seatWatchdogTask.cancel();
-            this.seatWatchdogTask = null;
-        }
+        this.seatWatchdogs.values().forEach(SeatWatchdogLoop::close);
         this.seatWatchdogs.clear();
-        this.seatWatchdogClock.set(0L);
         this.seatRestoreCooldownUntilMillis.clear();
         this.seatDismountBypass.clear();
     }
@@ -241,60 +234,28 @@ public final class TableSeatCoordinator {
         if (session == null || playerId == null || wind == null || durationTicks <= 0L) {
             return;
         }
-        long expiresAtTick = this.seatWatchdogClock.get() + durationTicks;
-        SeatWatchdogBinding existing = this.seatWatchdogs.get(playerId);
-        if (existing == null || existing.expiresAtTick() < expiresAtTick) {
-            this.seatWatchdogs.put(playerId, new SeatWatchdogBinding(session.id(), wind, expiresAtTick));
-        }
-        this.ensureSeatWatchdogTask();
-    }
-
-    private void ensureSeatWatchdogTask() {
-        if (this.seatWatchdogTask != null && !this.seatWatchdogTask.isCancelled()) {
-            return;
-        }
-        this.seatWatchdogTask = this.scheduler.runGlobalTimer(this::runSeatWatchdogs, 1L, SEAT_WATCHDOG_PERIOD_TICKS);
-    }
-
-    private void runSeatWatchdogs() {
-        if (this.seatWatchdogs.isEmpty()) {
-            this.stopSeatWatchdogTask();
-            return;
-        }
-        long nowTick = this.seatWatchdogClock.updateAndGet(current -> current + SEAT_WATCHDOG_PERIOD_TICKS);
-        for (Map.Entry<UUID, SeatWatchdogBinding> entry : this.seatWatchdogs.entrySet()) {
-            UUID playerId = entry.getKey();
-            SeatWatchdogBinding binding = entry.getValue();
-            // Pure-local-state short-circuit only: binding expiry is owned by this
-            // global timer thread, so it is safe to read here. All session-state
-            // checks (isStarted, seatOf) and player online checks are deferred to
-            // inspectSeatWatchdogOnPlayerThread, which runs on the player's entity
-            // thread. Reading session.isStarted() / session.seatOf() here would
-            // touch non-region threads to session state (roundController etc.)
-            // even though T1 made those fields volatile; we still prefer the
-            // region-thread read because it eliminates the torn-read window where
-            // the binding is valid at check time but the session starts/stops a
-            // round between this check and the runEntity callback.
-            if (binding.expiresAtTick() < nowTick) {
-                this.seatWatchdogs.remove(playerId, binding);
-                continue;
+        long durationNanos = Math.multiplyExact(durationTicks, 50_000_000L);
+        long now = System.nanoTime();
+        long expiresAtNanos = now > Long.MAX_VALUE - durationNanos
+            ? Long.MAX_VALUE
+            : now + durationNanos;
+        SeatWatchdogLoop replacement = new SeatWatchdogLoop(
+            playerId,
+            new SeatWatchdogBinding(session.id(), wind, expiresAtNanos)
+        );
+        SeatWatchdogLoop selected = seatWatchdogs.compute(playerId, (ignored, existing) -> {
+            if (existing != null
+                && existing.binding.matches(session.id(), wind)
+                && existing.binding.expiresAtNanos() >= expiresAtNanos) {
+                return existing;
             }
-            Player player = Bukkit.getPlayer(playerId);
-            if (player == null || !player.isOnline()) {
-                this.seatWatchdogs.remove(playerId, binding);
-                continue;
+            if (existing != null) {
+                existing.close();
             }
-            this.scheduler.runEntity(player, () -> this.inspectSeatWatchdogOnPlayerThread(player, playerId, binding));
-        }
-        if (this.seatWatchdogs.isEmpty()) {
-            this.stopSeatWatchdogTask();
-        }
-    }
-
-    private void stopSeatWatchdogTask() {
-        if (this.seatWatchdogTask != null) {
-            this.seatWatchdogTask.cancel();
-            this.seatWatchdogTask = null;
+            return replacement;
+        });
+        if (selected == replacement) {
+            replacement.schedule(1L);
         }
     }
 
@@ -311,27 +272,24 @@ public final class TableSeatCoordinator {
         return true;
     }
 
-    private void inspectSeatWatchdogOnPlayerThread(Player player, UUID playerId, SeatWatchdogBinding binding) {
+    private boolean inspectSeatWatchdogOnPlayerThread(Player player, UUID playerId, SeatWatchdogBinding binding) {
         if (player == null || playerId == null || binding == null) {
-            return;
-        }
-        SeatWatchdogBinding currentBinding = this.seatWatchdogs.get(playerId);
-        if (!binding.equals(currentBinding)) {
-            return;
+            return false;
         }
         MahjongTableSession session = this.tableManager.resolveTableById(binding.tableId());
-        long nowTick = this.seatWatchdogClock.get();
-        if (session == null || !session.isStarted() || session.seatOf(playerId) != binding.wind() || binding.expiresAtTick() < nowTick) {
-            this.seatWatchdogs.remove(playerId, binding);
-            return;
+        if (session == null
+            || !session.isStarted()
+            || session.seatOf(playerId) != binding.wind()
+            || binding.expiresAtNanos() < System.nanoTime()) {
+            return false;
         }
         if (!player.isOnline()) {
-            this.seatWatchdogs.remove(playerId, binding);
-            return;
+            return false;
         }
         if (!this.isPlayerSeatedAt(player, session, binding.wind()) && this.tryEnterSeatRestoreCooldown(playerId)) {
             this.restoreSeatOnPlayerThread(player, playerId, session, binding.wind());
         }
+        return true;
     }
 
     private boolean isPlayerSeatedAt(Player player, MahjongTableSession session, SeatWind wind) {
@@ -435,7 +393,66 @@ public final class TableSeatCoordinator {
         return null;
     }
 
-    private record SeatWatchdogBinding(String tableId, SeatWind wind, long expiresAtTick) {
+    private record SeatWatchdogBinding(String tableId, SeatWind wind, long expiresAtNanos) {
+        private boolean matches(String candidateTableId, SeatWind candidateWind) {
+            return this.tableId.equals(candidateTableId) && this.wind == candidateWind;
+        }
+    }
+
+    private final class SeatWatchdogLoop {
+        private final UUID playerId;
+        private final SeatWatchdogBinding binding;
+        private final AtomicBoolean closed = new AtomicBoolean();
+        private final AtomicReference<PluginTask> task = new AtomicReference<>();
+
+        private SeatWatchdogLoop(UUID playerId, SeatWatchdogBinding binding) {
+            this.playerId = playerId;
+            this.binding = binding;
+        }
+
+        private void schedule(long delayTicks) {
+            if (this.closed.get()) {
+                return;
+            }
+            Player player = Bukkit.getPlayer(this.playerId);
+            if (player == null || !player.isOnline()) {
+                this.finish();
+                return;
+            }
+            PluginTask next = scheduler.runEntityDelayed(player, () -> this.run(player), delayTicks);
+            PluginTask previous = this.task.getAndSet(next);
+            if (previous != null && previous != next) {
+                previous.cancel();
+            }
+            if (this.closed.get() && this.task.compareAndSet(next, null)) {
+                next.cancel();
+            }
+        }
+
+        private void run(Player player) {
+            this.task.set(null);
+            if (this.closed.get() || seatWatchdogs.get(this.playerId) != this) {
+                return;
+            }
+            if (!inspectSeatWatchdogOnPlayerThread(player, this.playerId, this.binding)) {
+                this.finish();
+                return;
+            }
+            this.schedule(SEAT_WATCHDOG_PERIOD_TICKS);
+        }
+
+        private void finish() {
+            seatWatchdogs.remove(this.playerId, this);
+            this.close();
+        }
+
+        private void close() {
+            this.closed.set(true);
+            PluginTask current = this.task.getAndSet(null);
+            if (current != null) {
+                current.cancel();
+            }
+        }
     }
 
     private CraftEngineService craftEngine() {

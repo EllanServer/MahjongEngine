@@ -37,6 +37,7 @@ import top.ellan.mahjong.command.subcommand.RenderSubcommand;
 import top.ellan.mahjong.command.subcommand.RiichiSubcommand;
 import top.ellan.mahjong.command.subcommand.RoomSubcommand;
 import top.ellan.mahjong.command.subcommand.RuleSubcommand;
+import top.ellan.mahjong.command.subcommand.RulesSubcommand;
 import top.ellan.mahjong.command.subcommand.SettlementSubcommand;
 import top.ellan.mahjong.command.subcommand.SimpleReactionSubcommand;
 import top.ellan.mahjong.command.subcommand.SpectateSubcommand;
@@ -101,6 +102,34 @@ public final class MahjongCommand implements CommandExecutor, TabCompleter {
         Supplier<GameRoomManager> gameRoomManager,
         GameRoomSelectionService selectionService
     ) {
+        this(
+            messages,
+            tableManager,
+            debug,
+            async,
+            scheduler,
+            database,
+            playerRankStorage,
+            reloadConfiguration,
+            gameRoomManager,
+            selectionService,
+            RulePackCommandHandler.unavailable("architecture runtime not configured")
+        );
+    }
+
+    public MahjongCommand(
+        MessageService messages,
+        MahjongTableManager tableManager,
+        DebugService debug,
+        AsyncService async,
+        ServerScheduler scheduler,
+        Supplier<DatabaseService> database,
+        Supplier<PlayerRankStorage> playerRankStorage,
+        Supplier<String> reloadConfiguration,
+        Supplier<GameRoomManager> gameRoomManager,
+        GameRoomSelectionService selectionService,
+        RulePackCommandHandler rulePackCommands
+    ) {
         this.context = new MahjongCommandContext(
             messages,
             tableManager,
@@ -111,7 +140,8 @@ public final class MahjongCommand implements CommandExecutor, TabCompleter {
             playerRankStorage,
             reloadConfiguration,
             gameRoomManager,
-            selectionService
+            selectionService,
+            rulePackCommands
         );
         this.subcommands = this.createSubcommands();
     }
@@ -194,6 +224,9 @@ public final class MahjongCommand implements CommandExecutor, TabCompleter {
         if (subcommand == null || (subcommand.adminOnly() && !sender.hasPermission(MahjongCommandContext.ADMIN_PERMISSION))) {
             return List.of();
         }
+        if ("rules".equals(subcommand.name())) {
+            return this.context.rulePackCommands().suggestions(args);
+        }
         if (!(sender instanceof Player player)) {
             return List.of();
         }
@@ -236,6 +269,7 @@ public final class MahjongCommand implements CommandExecutor, TabCompleter {
         commands.add(new AddBotSubcommand(context).create());
         commands.add(new RemoveBotSubcommand(context).create());
         commands.add(new RuleSubcommand(context).create());
+        commands.add(new RulesSubcommand(context).create());
         commands.add(new StartSubcommand(context).create());
         commands.add(new StateSubcommand(context).create());
         commands.add(new RiichiSubcommand(context).create());

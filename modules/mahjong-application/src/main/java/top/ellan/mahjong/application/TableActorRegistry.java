@@ -1,0 +1,41 @@
+package top.ellan.mahjong.application;
+
+import java.util.Objects;
+import java.util.Optional;
+import java.util.List;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
+import top.ellan.mahjong.domain.TableId;
+
+/** Lock-free table lookup used by the interaction router. */
+public final class TableActorRegistry {
+    private final ConcurrentHashMap<TableId, TableActor> actors = new ConcurrentHashMap<>();
+
+    public void register(TableId tableId, TableActor actor) {
+        Objects.requireNonNull(tableId, "tableId");
+        Objects.requireNonNull(actor, "actor");
+        if (actors.putIfAbsent(tableId, actor) != null) {
+            throw new IllegalStateException("Table actor already registered: " + tableId);
+        }
+    }
+
+    public Optional<TableActor> find(TableId tableId) {
+        return Optional.ofNullable(actors.get(Objects.requireNonNull(tableId, "tableId")));
+    }
+
+    public boolean remove(TableId tableId, TableActor expected) {
+        return actors.remove(
+                Objects.requireNonNull(tableId, "tableId"),
+                Objects.requireNonNull(expected, "expected"));
+    }
+
+    public int size() {
+        return actors.size();
+    }
+
+    public List<CompletionStage<Void>> closeAll() {
+        List<TableActor> snapshot = List.copyOf(actors.values());
+        actors.clear();
+        return snapshot.stream().map(TableActor::closeAndDrain).toList();
+    }
+}

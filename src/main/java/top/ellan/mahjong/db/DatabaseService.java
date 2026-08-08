@@ -116,6 +116,11 @@ public final class DatabaseService {
         return this.databaseType;
     }
 
+    /** Connection port for the platform-neutral event store. Callers must close the result. */
+    public Connection openConnection() throws SQLException {
+        return this.dataSource.getConnection();
+    }
+
     public boolean rankingEnabled() {
         return this.rankingEnabled;
     }

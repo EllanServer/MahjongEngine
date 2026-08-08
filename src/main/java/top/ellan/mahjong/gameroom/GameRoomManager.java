@@ -10,6 +10,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -19,6 +21,7 @@ import top.ellan.mahjong.config.PluginSettings;
 import top.ellan.mahjong.debug.DebugService;
 import top.ellan.mahjong.i18n.MessageService;
 import top.ellan.mahjong.runtime.ServerScheduler;
+import top.ellan.mahjong.runtime.PluginTask;
 import top.ellan.mahjong.table.core.MahjongTableManager;
 import top.ellan.mahjong.table.core.MahjongTableSession;
 
@@ -35,6 +38,9 @@ public final class GameRoomManager {
     private final Map<UUID, String> exitCountdownTableIds = new ConcurrentHashMap<>();
     private final Map<UUID, String> exitCountdownRoomIds = new ConcurrentHashMap<>();
     private final Map<UUID, java.util.Set<Integer>> warnedSeconds = new ConcurrentHashMap<>();
+    private final Map<UUID, PluginTask> exitCountdownTasks = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> exitCountdownGenerations = new ConcurrentHashMap<>();
+    private final AtomicLong countdownGeneration = new AtomicLong();
 
     public GameRoomManager(
         MahjongTableManager tableManager,
@@ -249,27 +255,33 @@ public final class GameRoomManager {
         if (room != null) {
             this.exitCountdownRoomIds.put(playerId, room.id());
         }
+        long generation = this.countdownGeneration.incrementAndGet();
+        this.exitCountdownGenerations.put(playerId, generation);
+        this.scheduleCountdownCheck(playerId, generation);
 
         // Send warning message
         org.bukkit.entity.Player player = Bukkit.getPlayer(playerId);
         if (player != null) {
-            this.messages.send(player, "gameroom.leave_warning",
+            this.scheduler.runEntity(player, () -> this.messages.send(
+                player,
+                "gameroom.leave_warning",
                 this.messages.tag("seconds", String.valueOf(countdownSeconds)),
                 this.messages.tag("room_name", room == null ? "" : room.name())
-            );
+            ));
         }
         this.logDebug("Player " + playerId + " left room during match, countdown started (" + countdownSeconds + "s)");
     }
 
     private void cancelExitCountdown(UUID playerId) {
-        Long removed = this.exitCountdowns.remove(playerId);
-        this.exitCountdownTableIds.remove(playerId);
-        this.exitCountdownRoomIds.remove(playerId);
-        this.warnedSeconds.remove(playerId);
+        Long removed = this.exitCountdowns.get(playerId);
+        this.removeCountdownState(playerId);
         if (removed != null) {
             org.bukkit.entity.Player player = Bukkit.getPlayer(playerId);
             if (player != null) {
-                this.messages.send(player, "gameroom.countdown_cancelled");
+                this.scheduler.runEntity(
+                    player,
+                    () -> this.messages.send(player, "gameroom.countdown_cancelled")
+                );
             }
             this.logDebug("Player " + playerId + " returned, countdown cancelled");
         }
@@ -316,61 +328,72 @@ public final class GameRoomManager {
         return this.settingsSupplier.get().gameRooms().defaultHeight();
     }
 
-    public void tick() {
-        if (!this.isEnabled()) {
-            if (!this.exitCountdowns.isEmpty() || !this.playerRoomMembership.isEmpty()) {
-                this.clearRuntimeState();
-            }
+    private void scheduleCountdownCheck(UUID playerId, long generation) {
+        AtomicReference<PluginTask> self = new AtomicReference<>();
+        PluginTask next = this.scheduler.runGlobalDelayed(
+            () -> this.checkCountdown(playerId, generation, self.get()),
+            20L
+        );
+        self.set(next);
+        PluginTask previous = this.exitCountdownTasks.put(playerId, next);
+        if (previous != null && previous != next) {
+            previous.cancel();
+        }
+        if (!Objects.equals(this.exitCountdownGenerations.get(playerId), generation)
+            && this.exitCountdownTasks.remove(playerId, next)) {
+            next.cancel();
+        }
+    }
+
+    private void checkCountdown(UUID playerId, long generation, PluginTask expectedTask) {
+        this.exitCountdownTasks.remove(playerId, expectedTask);
+        if (!Objects.equals(this.exitCountdownGenerations.get(playerId), generation)) {
             return;
         }
-        if (this.exitCountdowns.isEmpty()) {
+        if (!this.isEnabled()) {
+            this.removeCountdownState(playerId);
+            return;
+        }
+        Long deadlineValue = this.exitCountdowns.get(playerId);
+        if (deadlineValue == null) {
             return;
         }
         long now = System.currentTimeMillis();
-        var iterator = this.exitCountdowns.entrySet().iterator();
-        while (iterator.hasNext()) {
-            var entry = iterator.next();
-            UUID playerId = entry.getKey();
-            long deadline = entry.getValue();
-
-            if (now >= deadline) {
-                // Countdown expired, force end the match and remove the player
-                // who left the room from the table without moving them.
-                String tableId = this.exitCountdownTableIds.get(playerId);
-                if (tableId != null) {
-                    this.logDebug("Player " + playerId + " countdown expired, force-ending table " + tableId);
-                    // Schedule force-end on the table's region thread to avoid
-                    // cross-thread mutation of game state (round controller,
-                    // viewer presentation, bot task, etc.) on Folia.
-                    MahjongTableSession session = this.tableManager.resolveTableById(tableId);
-                    // Guard against redundant scheduling: if the match has already
-                    // ended and the player is no longer at the table, skip the
-                    // region task dispatch. Otherwise force-end the match and
-                    // remove the leaving player from the table (without teleport).
-                    if (session != null && (session.isStarted() || session.contains(playerId))) {
-                        this.scheduler.runRegion(session.center(), () -> {
-                            this.tableManager.forceEndTable(tableId);
-                            this.tableManager.removePlayerFromTableWithoutMove(playerId);
-                        });
-                    }
-                }
-                iterator.remove();
-                this.removeCountdownState(playerId);
-            } else {
-                long remainingSeconds = (deadline - now) / 1000;
-                int remaining = (int) remainingSeconds;
-                if (isCountdownWarningSecond(remaining)) {
-                    java.util.Set<Integer> warned = this.warnedSeconds.computeIfAbsent(playerId, k -> java.util.concurrent.ConcurrentHashMap.newKeySet());
-                    if (warned.add(remaining)) {
-                        org.bukkit.entity.Player player = Bukkit.getPlayer(playerId);
-                        if (player != null) {
-                            this.messages.send(player, "gameroom.countdown",
-                                this.messages.tag("seconds", String.valueOf(remaining))
-                            );
-                        }
-                    }
+        long deadline = deadlineValue;
+        if (now >= deadline) {
+            String tableId = this.exitCountdownTableIds.get(playerId);
+            if (tableId != null) {
+                this.logDebug("Player " + playerId + " countdown expired, force-ending table " + tableId);
+                MahjongTableSession session = this.tableManager.resolveTableById(tableId);
+                if (session != null && (session.isStarted() || session.contains(playerId))) {
+                    this.scheduler.runRegion(session.center(), () -> {
+                        this.tableManager.forceEndTable(tableId);
+                        this.tableManager.removePlayerFromTableWithoutMove(playerId);
+                    });
                 }
             }
+            this.removeCountdownState(playerId);
+            return;
+        }
+        int remaining = (int) ((deadline - now) / 1000L);
+        if (isCountdownWarningSecond(remaining)) {
+            java.util.Set<Integer> warned = this.warnedSeconds.computeIfAbsent(
+                playerId,
+                ignored -> java.util.concurrent.ConcurrentHashMap.newKeySet()
+            );
+            if (warned.add(remaining)) {
+                org.bukkit.entity.Player player = Bukkit.getPlayer(playerId);
+                if (player != null) {
+                    this.scheduler.runEntity(player, () -> this.messages.send(
+                        player,
+                        "gameroom.countdown",
+                        this.messages.tag("seconds", String.valueOf(remaining))
+                    ));
+                }
+            }
+        }
+        if (Objects.equals(this.exitCountdownGenerations.get(playerId), generation)) {
+            this.scheduleCountdownCheck(playerId, generation);
         }
     }
 
@@ -393,17 +416,29 @@ public final class GameRoomManager {
 
     private void clearRuntimeState() {
         this.playerRoomMembership.clear();
+        this.exitCountdownTasks.values().forEach(PluginTask::cancel);
+        this.exitCountdownTasks.clear();
         this.exitCountdowns.clear();
         this.exitCountdownTableIds.clear();
         this.exitCountdownRoomIds.clear();
         this.warnedSeconds.clear();
+        this.exitCountdownGenerations.clear();
     }
 
     private void removeCountdownState(UUID playerId) {
+        PluginTask task = this.exitCountdownTasks.remove(playerId);
+        if (task != null) {
+            task.cancel();
+        }
         this.exitCountdowns.remove(playerId);
         this.exitCountdownTableIds.remove(playerId);
         this.exitCountdownRoomIds.remove(playerId);
         this.warnedSeconds.remove(playerId);
+        this.exitCountdownGenerations.remove(playerId);
+    }
+
+    public void shutdown() {
+        this.clearRuntimeState();
     }
 
     private void logDebug(String message) {

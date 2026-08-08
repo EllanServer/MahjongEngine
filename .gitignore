@@ -6,9 +6,11 @@
 /buildSrc/.kotlin/
 /buildSrc/build/
 /buildSrc/.codex-build/
+/modules/*/build/
 /logs/
 /_upstream/
 /.tmp-gb-ref/
+/rule-repositories/
 /%TEMP%/
 /native/**/build/
 /.idea/

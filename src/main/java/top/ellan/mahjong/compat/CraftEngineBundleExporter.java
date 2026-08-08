@@ -7,13 +7,23 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.regex.Pattern;
 import org.bukkit.plugin.Plugin;
 
 final class CraftEngineBundleExporter {
     private static final String BUNDLE_ROOT = "craftengine/mahjongpaper";
     private static final String BUNDLE_INDEX = BUNDLE_ROOT + "/_bundle_index.txt";
+    private static final String BUNDLE_MANIFEST = "_bundle_manifest.sha256";
+    private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
     private static final String WRAPPED_BLOCK_STATE_HELPER_CLASS =
         "net.momirealms.craftengine.bukkit.compatibility.packetevents.WrappedBlockStateHelper";
     private static final String WRAPPED_BLOCK_STATE_REGISTER_METHOD = "register";
@@ -41,22 +51,33 @@ final class CraftEngineBundleExporter {
     void exportBundle(Plugin craftEngine) {
         try (InputStream indexStream = this.context.plugin().getResource(BUNDLE_INDEX)) {
             if (indexStream == null) {
-                this.context.plugin().getLogger().warning("Missing bundled CraftEngine index. Skipping CraftEngine export.");
-                return;
+                throw new IOException("Missing bundled CraftEngine index");
             }
 
             Path targetRoot = craftEngine.getDataFolder().toPath().resolve("resources").resolve(this.bundleFolderName);
             Collection<String> entries = new String(indexStream.readAllBytes(), StandardCharsets.UTF_8).lines()
                 .map(String::trim)
                 .filter(line -> !line.isEmpty())
+                .map(CraftEngineBundleExporter::validatedRelativePath)
                 .toList();
-            for (String entry : entries) {
-                this.copyBundledFile(entry, targetRoot.resolve(entry));
+            if (!entries.contains(BUNDLE_MANIFEST)) {
+                throw new IOException("CraftEngine bundle index has no SHA-256 manifest");
             }
+            Map<String, String> expectedHashes = this.readManifest();
+            Set<String> contentEntries = entries.stream()
+                .filter(entry -> !entry.equals(BUNDLE_MANIFEST))
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            if (!expectedHashes.keySet().equals(contentEntries)) {
+                throw new IOException("CraftEngine bundle index/manifest file sets differ");
+            }
+            this.installAtomically(targetRoot, entries, expectedHashes);
 
             this.context.plugin().getLogger().info("CraftEngine detected. Exported MahjongPaper bundle to " + targetRoot.toAbsolutePath());
         } catch (IOException exception) {
-            this.context.plugin().getLogger().warning("Failed to export MahjongPaper CraftEngine bundle: " + exception.getMessage());
+            throw new IllegalStateException(
+                "Failed to verify and atomically install the MahjongPaper CraftEngine bundle",
+                exception
+            );
         }
     }
 
@@ -96,6 +117,81 @@ final class CraftEngineBundleExporter {
         this.antiCheatMappingsInjected = injected;
     }
 
+    private Map<String, String> readManifest() throws IOException {
+        try (InputStream manifestStream = this.context.plugin().getResource(
+            BUNDLE_ROOT + "/" + BUNDLE_MANIFEST
+        )) {
+            if (manifestStream == null) {
+                throw new IOException("Missing bundled CraftEngine SHA-256 manifest");
+            }
+            Map<String, String> result = new LinkedHashMap<>();
+            for (String line : new String(
+                manifestStream.readAllBytes(), StandardCharsets.UTF_8
+            ).lines().toList()) {
+                if (line.isBlank()) {
+                    continue;
+                }
+                int separator = line.indexOf("  ");
+                if (separator != 64) {
+                    throw new IOException("Malformed CraftEngine bundle manifest line");
+                }
+                String hash = line.substring(0, separator);
+                String relativePath = validatedRelativePath(line.substring(separator + 2));
+                if (!SHA256.matcher(hash).matches() || result.put(relativePath, hash) != null) {
+                    throw new IOException("Invalid or duplicate CraftEngine bundle manifest entry");
+                }
+            }
+            return Map.copyOf(result);
+        }
+    }
+
+    private void installAtomically(
+        Path targetRoot,
+        Collection<String> entries,
+        Map<String, String> expectedHashes
+    ) throws IOException {
+        Path parent = Objects.requireNonNull(targetRoot.getParent()).toAbsolutePath().normalize();
+        Files.createDirectories(parent);
+        String nonce = UUID.randomUUID().toString();
+        Path staging = parent.resolve("." + targetRoot.getFileName() + ".staging-" + nonce);
+        Path backup = parent.resolve("." + targetRoot.getFileName() + ".backup-" + nonce);
+        boolean previousMoved = false;
+        boolean installed = false;
+        try {
+            Files.createDirectory(staging);
+            for (String entry : entries) {
+                this.copyBundledFile(entry, staging.resolve(entry));
+            }
+            for (Map.Entry<String, String> expected : expectedHashes.entrySet()) {
+                String actual = sha256(staging.resolve(expected.getKey()));
+                if (!actual.equals(expected.getValue())) {
+                    throw new IOException("CraftEngine bundle hash mismatch: " + expected.getKey());
+                }
+            }
+            if (Files.exists(targetRoot)) {
+                Files.move(targetRoot, backup, StandardCopyOption.ATOMIC_MOVE);
+                previousMoved = true;
+            }
+            Files.move(staging, targetRoot, StandardCopyOption.ATOMIC_MOVE);
+            installed = true;
+        } catch (IOException failure) {
+            if (previousMoved && !Files.exists(targetRoot) && Files.exists(backup)) {
+                try {
+                    Files.move(backup, targetRoot, StandardCopyOption.ATOMIC_MOVE);
+                    previousMoved = false;
+                } catch (IOException rollbackFailure) {
+                    failure.addSuppressed(rollbackFailure);
+                }
+            }
+            throw failure;
+        } finally {
+            deleteTree(staging);
+            if (installed || !previousMoved) {
+                deleteTree(backup);
+            }
+        }
+    }
+
     private void copyBundledFile(String relativePath, Path targetPath) throws IOException {
         String resourcePath = BUNDLE_ROOT + "/" + relativePath;
         try (InputStream resourceStream = this.context.plugin().getResource(resourcePath)) {
@@ -104,6 +200,48 @@ final class CraftEngineBundleExporter {
             }
             Files.createDirectories(Objects.requireNonNull(targetPath.getParent()));
             Files.copy(resourceStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private static String validatedRelativePath(String rawPath) {
+        String relativePath = rawPath.trim();
+        Path parsed = Path.of(relativePath).normalize();
+        if (relativePath.isEmpty()
+            || relativePath.indexOf('\\') >= 0
+            || parsed.isAbsolute()
+            || parsed.startsWith("..")
+            || !parsed.toString().replace('\\', '/').equals(relativePath)) {
+            throw new IllegalArgumentException("Invalid CraftEngine bundle path: " + rawPath);
+        }
+        return relativePath;
+    }
+
+    private static String sha256(Path path) throws IOException {
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("JDK has no SHA-256", impossible);
+        }
+        try (InputStream input = Files.newInputStream(path)) {
+            byte[] buffer = new byte[8192];
+            for (int read = input.read(buffer); read >= 0; read = input.read(buffer)) {
+                if (read > 0) {
+                    digest.update(buffer, 0, read);
+                }
+            }
+        }
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    private static void deleteTree(Path root) throws IOException {
+        if (!Files.exists(root)) {
+            return;
+        }
+        try (var paths = Files.walk(root)) {
+            for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
+            }
         }
     }
 

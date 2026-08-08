@@ -21,6 +21,7 @@ public final class PluginSettings {
     private final GameRoomsSettings gameRooms;
     private final RankingSettings ranking;
     private final CraftEngineSettings craftEngine;
+    private final RulesSettings rules;
 
     private PluginSettings(
         DebugSettings debug,
@@ -28,7 +29,8 @@ public final class PluginSettings {
         TablesSettings tables,
         GameRoomsSettings gameRooms,
         RankingSettings ranking,
-        CraftEngineSettings craftEngine
+        CraftEngineSettings craftEngine,
+        RulesSettings rules
     ) {
         this.debug = debug;
         this.database = database;
@@ -36,6 +38,7 @@ public final class PluginSettings {
         this.gameRooms = gameRooms;
         this.ranking = ranking;
         this.craftEngine = craftEngine;
+        this.rules = rules;
     }
 
     public static PluginSettings load(Path path) throws IOException {
@@ -289,7 +292,11 @@ public final class PluginSettings {
                 )
             )
         );
-        return new PluginSettings(debug, database, tables, gameRooms, ranking, craftEngine);
+        RulesSettings rules = new RulesSettings(
+            bool(config, true, "rules.enabled"),
+            string(config, "", "rules.registryUrl", "rules.registry-url")
+        );
+        return new PluginSettings(debug, database, tables, gameRooms, ranking, craftEngine, rules);
     }
 
     private static boolean bool(YamlDocument config, boolean defaultValue, String... paths) {
@@ -351,6 +358,10 @@ public final class PluginSettings {
 
     public CraftEngineSettings craftEngine() {
         return this.craftEngine;
+    }
+
+    public RulesSettings rules() {
+        return this.rules;
     }
 
     public boolean databaseFailOnError() {
@@ -502,5 +513,11 @@ public final class PluginSettings {
         String tableFurnitureId,
         String seatFurnitureId
     ) {
+    }
+
+    public record RulesSettings(boolean enabled, String registryUrl) {
+        public RulesSettings {
+            registryUrl = registryUrl == null ? "" : registryUrl.trim();
+        }
     }
 }

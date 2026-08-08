@@ -30,20 +30,24 @@ class TableSeatCoordinatorTest {
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
         val session = mock(MahjongTableSession::class.java)
+        val player = mock(Player::class.java)
         val coordinator = TableSeatCoordinator({ null }, scheduler, tableManager)
         val playerId = UUID.fromString("00000000-0000-0000-0000-000000000301")
 
-        `when`(scheduler.runGlobalTimer(Mockito.any(Runnable::class.java), Mockito.anyLong(), Mockito.anyLong())).thenReturn(task)
+        `when`(scheduler.runEntityDelayed(Mockito.eq(player), Mockito.any(Runnable::class.java), Mockito.anyLong())).thenReturn(task)
         `when`(task.isCancelled()).thenReturn(false)
         `when`(session.id()).thenReturn("TABLE01")
+        `when`(player.isOnline).thenReturn(true)
 
         Mockito.mockStatic(Bukkit::class.java).use { bukkit ->
             bukkit.`when`<Int> { Bukkit.getCurrentTick() }.thenThrow(IllegalStateException("No currently ticking region"))
+            bukkit.`when`<Player?> { Bukkit.getPlayer(playerId) }.thenReturn(player)
 
             coordinator.startSeatWatchdog(session, playerId, SeatWind.EAST, 40L)
         }
 
-        verify(scheduler, times(1)).runGlobalTimer(Mockito.any(Runnable::class.java), Mockito.eq(1L), Mockito.eq(2L))
+        verify(scheduler, times(1)).runEntityDelayed(Mockito.eq(player), Mockito.any(Runnable::class.java), Mockito.eq(1L))
+        verify(scheduler, never()).runGlobalTimer(Mockito.any(Runnable::class.java), Mockito.anyLong(), Mockito.anyLong())
         assertEquals(1, seatWatchdogs(coordinator).size)
     }
 
@@ -56,8 +60,14 @@ class TableSeatCoordinatorTest {
         val player = mock(Player::class.java)
         val coordinator = TableSeatCoordinator({ null }, scheduler, tableManager)
         val playerId = UUID.fromString("00000000-0000-0000-0000-000000000302")
+        val scheduled = mutableListOf<Runnable>()
 
-        `when`(scheduler.runGlobalTimer(Mockito.any(Runnable::class.java), Mockito.anyLong(), Mockito.anyLong())).thenReturn(task)
+        `when`(
+            scheduler.runEntityDelayed(Mockito.eq(player), Mockito.any(Runnable::class.java), Mockito.anyLong()),
+        ).thenAnswer { invocation ->
+            scheduled.add(invocation.getArgument(1))
+            task
+        }
         `when`(task.isCancelled()).thenReturn(false)
         `when`(session.id()).thenReturn("TABLE02")
         `when`(tableManager.resolveTableById("TABLE02")).thenReturn(session)
@@ -68,20 +78,17 @@ class TableSeatCoordinatorTest {
         Mockito.mockStatic(Bukkit::class.java).use { bukkit ->
             bukkit.`when`<Player?> { Bukkit.getPlayer(playerId) }.thenReturn(player)
 
-            coordinator.startSeatWatchdog(session, playerId, SeatWind.SOUTH, 4L)
-            invokeRunSeatWatchdogs(coordinator)
+            coordinator.startSeatWatchdog(session, playerId, SeatWind.SOUTH, 1L)
             assertEquals(1, seatWatchdogs(coordinator).size)
 
-            invokeRunSeatWatchdogs(coordinator)
-            assertEquals(1, seatWatchdogs(coordinator).size)
-
-            invokeRunSeatWatchdogs(coordinator)
+            Thread.sleep(75L)
+            scheduled.single().run()
             assertTrue(seatWatchdogs(coordinator).isEmpty())
         }
     }
 
     @Test
-    fun `seat watchdog inspects players on entity scheduler instead of global thread`() {
+    fun `seat watchdog reschedules only its player entity task`() {
         val tableManager = mock(MahjongTableManager::class.java)
         val scheduler = mock(ServerScheduler::class.java)
         val task = mock(PluginTask::class.java)
@@ -89,9 +96,14 @@ class TableSeatCoordinatorTest {
         val player = mock(Player::class.java)
         val coordinator = TableSeatCoordinator({ null }, scheduler, tableManager)
         val playerId = UUID.fromString("00000000-0000-0000-0000-000000000303")
+        val scheduled = mutableListOf<Runnable>()
 
-        `when`(scheduler.runGlobalTimer(Mockito.any(Runnable::class.java), Mockito.anyLong(), Mockito.anyLong())).thenReturn(task)
-        `when`(scheduler.runEntity(Mockito.eq(player), Mockito.any(Runnable::class.java))).thenReturn(task)
+        `when`(
+            scheduler.runEntityDelayed(Mockito.eq(player), Mockito.any(Runnable::class.java), Mockito.anyLong()),
+        ).thenAnswer { invocation ->
+            scheduled.add(invocation.getArgument(1))
+            task
+        }
         `when`(task.isCancelled()).thenReturn(false)
         `when`(session.id()).thenReturn("TABLE03")
         `when`(tableManager.resolveTableById("TABLE03")).thenReturn(session)
@@ -103,10 +115,11 @@ class TableSeatCoordinatorTest {
             bukkit.`when`<Player?> { Bukkit.getPlayer(playerId) }.thenReturn(player)
 
             coordinator.startSeatWatchdog(session, playerId, SeatWind.WEST, 40L)
-            invokeRunSeatWatchdogs(coordinator)
+            scheduled.single().run()
         }
 
-        verify(scheduler, times(1)).runEntity(Mockito.eq(player), Mockito.any(Runnable::class.java))
+        verify(scheduler, times(2)).runEntityDelayed(Mockito.eq(player), Mockito.any(Runnable::class.java), Mockito.anyLong())
+        verify(scheduler, never()).runGlobalTimer(Mockito.any(Runnable::class.java), Mockito.anyLong(), Mockito.anyLong())
     }
 
     @Test
@@ -153,11 +166,5 @@ class TableSeatCoordinatorTest {
         val field = coordinator.javaClass.getDeclaredField("seatWatchdogs")
         field.isAccessible = true
         return field.get(coordinator) as MutableMap<UUID, Any?>
-    }
-
-    private fun invokeRunSeatWatchdogs(coordinator: TableSeatCoordinator) {
-        val method = coordinator.javaClass.getDeclaredMethod("runSeatWatchdogs")
-        method.isAccessible = true
-        method.invoke(coordinator)
     }
 }

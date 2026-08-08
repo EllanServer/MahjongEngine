@@ -24,7 +24,7 @@ val paperDevBundleVersion =
         .orElse(minimumPaperDevBundleVersion)
         .get()
 val paperApiVersion = "1.20"
-val minimumJavaVersion = 17
+val minimumJavaVersion = 21
 val javaTargetVersion =
     providers
         .gradleProperty("mahjongJavaTarget")
@@ -57,9 +57,54 @@ val junitVersion = "6.1.2"
 val testcontainersVersion = "1.21.4"
 val generatedResourcesDir = layout.buildDirectory.dir("generated/resources/mahjong")
 val generatedNativeResourcesDir = layout.buildDirectory.dir("generated/resources/native")
+val generatedRuleTrustRootDir = layout.buildDirectory.dir("generated/resources/rule-trust-root")
 val relocatedRuntime = configurations.create("relocatedRuntime")
+val internalModules =
+    configurations.create("internalModules") {
+        isTransitive = false
+    }
 val mockitoAgent = configurations.create("mockitoAgent")
 MahjongBuildConfiguration.configureRepositories(project)
+
+subprojects {
+    group = rootProject.group
+    version = rootProject.version
+    pluginManager.apply("java-library")
+
+    repositories {
+        mavenCentral()
+        maven("https://repo.papermc.io/repository/maven-public/")
+        maven("https://repo.momirealms.net/releases/")
+    }
+
+    extensions.configure<JavaPluginExtension> {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+        toolchain.languageVersion.set(
+            rootProject.providers
+                .gradleProperty("mahjongJavaToolchain")
+                .map(String::toInt)
+                .orElse(if (Runtime.version().feature() >= 21) Runtime.version().feature() else 21)
+                .map(JavaLanguageVersion::of),
+        )
+        withSourcesJar()
+    }
+
+    dependencies {
+        add("testImplementation", "org.junit.jupiter:junit-jupiter:6.1.2")
+        add("testRuntimeOnly", "org.junit.platform:junit-platform-launcher")
+    }
+
+    tasks.withType<JavaCompile>().configureEach {
+        options.encoding = "UTF-8"
+        options.release.set(21)
+        options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+    }
+
+    tasks.withType<Test>().configureEach {
+        useJUnitPlatform()
+    }
+}
 
 val codegenTasks =
     MahjongTaskRegistration.registerCodegenTasks(
@@ -67,6 +112,31 @@ val codegenTasks =
         generatedResourcesDir,
         project.version.toString(),
     )
+val rulePackPublicKey =
+    providers
+        .gradleProperty("mahjongRulePackPublicKeyBase64")
+        .orElse(providers.environmentVariable("MAHJONG_RULE_PACK_PUBLIC_KEY_BASE64"))
+        .orElse("")
+val generateRuleTrustRoot =
+    tasks.register("generateRuleTrustRoot") {
+        val output =
+            generatedRuleTrustRootDir.map {
+                it.file("META-INF/mahjong-rule-trust-root.txt")
+            }
+        inputs.property("rulePackPublicKey", rulePackPublicKey)
+        outputs.file(output)
+        doLast {
+            val target = output.get().asFile
+            target.parentFile.mkdirs()
+            target.writeText(rulePackPublicKey.get().trim() + "\n", Charsets.UTF_8)
+        }
+    }
+sourceSets.main {
+    resources.srcDir(generatedRuleTrustRootDir)
+}
+tasks.named("processResources") {
+    dependsOn(generateRuleTrustRoot)
+}
 val nativeTasks =
     MahjongTaskRegistration.registerNativeTasks(
         project,
@@ -76,6 +146,22 @@ MahjongTaskRegistration.registerPerformanceTasks(project, minimumPaperDevBundleV
 pluginManager.apply("com.gradleup.shadow")
 
 dependencies {
+    implementation(project(":mahjong-rule-spi"))
+    implementation(project(":mahjong-domain"))
+    implementation(project(":mahjong-application"))
+    implementation(project(":mahjong-rule-runtime"))
+    implementation(project(":mahjong-presentation"))
+    implementation(project(":mahjong-persistence-sql"))
+    implementation(project(":mahjong-platform-paper"))
+    implementation(project(":mahjong-craftengine"))
+    internalModules(project(":mahjong-rule-spi"))
+    internalModules(project(":mahjong-domain"))
+    internalModules(project(":mahjong-application"))
+    internalModules(project(":mahjong-rule-runtime"))
+    internalModules(project(":mahjong-presentation"))
+    internalModules(project(":mahjong-persistence-sql"))
+    internalModules(project(":mahjong-platform-paper"))
+    internalModules(project(":mahjong-craftengine"))
     paperweight.paperDevBundle(paperDevBundleVersion)
     compileOnly("net.momirealms:craft-engine-core:26.7")
     compileOnly("net.momirealms:craft-engine-bukkit:26.7")
@@ -138,7 +224,7 @@ tasks {
     }
 
     named<ShadowJar>("shadowJar") {
-        configurations = listOf(relocatedRuntime)
+        configurations = listOf(relocatedRuntime, internalModules)
         duplicatesStrategy = DuplicatesStrategy.INCLUDE
         archiveClassifier.set("")
         relocate(
@@ -165,6 +251,102 @@ tasks {
             freeCompilerArgs.add("-Xwarning-level=DEPRECATION:error")
         }
     }
+}
+
+val architectureCheck =
+    tasks.register("architectureCheck") {
+        group = "verification"
+        description = "Enforces the dependency direction and concurrency sentinels of the modular core."
+        val moduleRoot = layout.projectDirectory.dir("modules")
+        inputs.files(
+            listOf(
+                "mahjong-rule-spi",
+                "mahjong-rule-tck",
+                "mahjong-domain",
+                "mahjong-application",
+                "mahjong-rule-runtime",
+                "mahjong-presentation",
+            ).map { moduleRoot.dir("$it/src/main/java") },
+        )
+        doLast {
+            val forbiddenImports =
+                mapOf(
+                    "mahjong-rule-spi" to
+                        listOf(
+                            "org.bukkit.",
+                            "io.papermc.",
+                            "net.momirealms.craftengine.",
+                            "java.sql.",
+                            "kotlin.",
+                            "top.ellan.mahjong.rules.",
+                        ),
+                    "mahjong-rule-tck" to
+                        listOf(
+                            "org.bukkit.",
+                            "io.papermc.",
+                            "net.momirealms.craftengine.",
+                            "java.sql.",
+                            "kotlin.",
+                            "top.ellan.mahjong.rules.",
+                        ),
+                    "mahjong-domain" to
+                        listOf(
+                            "org.bukkit.",
+                            "io.papermc.",
+                            "net.momirealms.craftengine.",
+                            "java.sql.",
+                            "kotlin.",
+                            "top.ellan.mahjong.rules.",
+                        ),
+                    "mahjong-application" to
+                        listOf(
+                            "org.bukkit.",
+                            "io.papermc.",
+                            "net.momirealms.craftengine.",
+                            "java.sql.",
+                            "kotlin.",
+                            "top.ellan.mahjong.rules.",
+                        ),
+                    "mahjong-rule-runtime" to
+                        listOf("org.bukkit.", "net.momirealms.craftengine.", "top.ellan.mahjong.rules."),
+                    "mahjong-presentation" to
+                        listOf("org.bukkit.", "net.momirealms.craftengine.", "java.sql.", "top.ellan.mahjong.rules."),
+                )
+            val failures = mutableListOf<String>()
+            forbiddenImports.forEach { (module, prefixes) ->
+                val sourceDir = moduleRoot.dir("$module/src/main/java").asFile
+                if (sourceDir.isDirectory) {
+                    sourceDir
+                        .walkTopDown()
+                        .filter { it.isFile && it.extension == "java" }
+                        .forEach { source ->
+                            source.useLines { lines ->
+                                lines.forEachIndexed { index, line ->
+                                    val trimmed = line.trim()
+                                    if (trimmed.startsWith("import ") && prefixes.any(trimmed::contains)) {
+                                        failures += "${source.relativeTo(rootDir)}:${index + 1}: $trimmed"
+                                    }
+                                    if (
+                                        trimmed.contains("new LinkedBlockingQueue") ||
+                                        trimmed.contains("new ConcurrentLinkedQueue") ||
+                                        trimmed.contains("Executors.newCachedThreadPool")
+                                    ) {
+                                        failures +=
+                                            "${source.relativeTo(rootDir)}:${index + 1}: forbidden unbounded executor/queue"
+                                    }
+                                }
+                            }
+                        }
+                }
+            }
+            if (failures.isNotEmpty()) {
+                throw GradleException("Architecture boundary violations:\n${failures.joinToString("\n")}")
+            }
+        }
+    }
+
+tasks.named("check") {
+    dependsOn(architectureCheck)
 }
 
 MahjongBuildConfiguration.configureLifecycle(

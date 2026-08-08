@@ -34,26 +34,28 @@ class SubcommandRegistryTest {
         assertTrue(subcommandDir.isDirectory, "expected subcommand sources at ${subcommandDir.absolutePath}")
 
         // Concrete = ends in Subcommand.java but is not the abstract base.
-        val concreteClassNames = subcommandDir.listFiles()
-            ?.filter { it.isFile && it.name.endsWith("Subcommand.java") && !it.name.startsWith("Abstract") }
-            ?.map { it.nameWithoutExtension }
-            ?.toSet()
-            ?: emptySet()
+        val concreteClassNames =
+            subcommandDir
+                .listFiles()
+                ?.filter { it.isFile && it.name.endsWith("Subcommand.java") && !it.name.startsWith("Abstract") }
+                ?.map { it.nameWithoutExtension }
+                ?.toSet()
+                ?: emptySet()
 
         assertEquals(
-            32,
+            34,
             concreteClassNames.size,
-            "expected 32 concrete subcommand source files; found ${concreteClassNames.size}: $concreteClassNames"
+            "expected 34 concrete subcommand source files; found ${concreteClassNames.size}: $concreteClassNames",
         )
         assertTrue("SimpleReactionSubcommand" in concreteClassNames, "expected SimpleReactionSubcommand to be present")
         assertEquals(
             concreteClassNames.size - 1 + factoryGeneratedCommands.size,
             production.size,
-            "MahjongCommand.productionSubcommands() must account for factory-generated reaction commands"
+            "MahjongCommand.productionSubcommands() must account for factory-generated reaction commands",
         )
         assertTrue(
             production.map { it.name() }.containsAll(factoryGeneratedCommands),
-            "SimpleReactionSubcommand should generate $factoryGeneratedCommands"
+            "SimpleReactionSubcommand should generate $factoryGeneratedCommands",
         )
     }
 
@@ -113,9 +115,10 @@ class SubcommandRegistryTest {
     @Test
     fun `every HELP_KEY_ORDER entry maps to a registered subcommand`() {
         val knownNames = production.map { it.name() }.toSet()
-        val unknown = MahjongCommandContext.HELP_KEY_ORDER
-            .map { it.removePrefix("command.help.") }
-            .filter { it !in knownNames }
+        val unknown =
+            MahjongCommandContext.HELP_KEY_ORDER
+                .map { it.removePrefix("command.help.") }
+                .filter { it !in knownNames }
         assertTrue(unknown.isEmpty(), "HELP_KEY_ORDER references unknown subcommands: $unknown")
     }
 
@@ -128,15 +131,16 @@ class SubcommandRegistryTest {
         }
     }
 
-    private fun newContext(): MahjongCommandContext = MahjongCommandContext(
-        mock(MessageService::class.java),
-        mock(MahjongTableManager::class.java),
-        mock(DebugService::class.java),
-        mock(AsyncService::class.java),
-        mock(ServerScheduler::class.java),
-        { null },
-        { null },
-        { null },
-        null
-    )
+    private fun newContext(): MahjongCommandContext =
+        MahjongCommandContext(
+            mock(MessageService::class.java),
+            mock(MahjongTableManager::class.java),
+            mock(DebugService::class.java),
+            mock(AsyncService::class.java),
+            mock(ServerScheduler::class.java),
+            { null },
+            { null },
+            { null },
+            null,
+        )
 }

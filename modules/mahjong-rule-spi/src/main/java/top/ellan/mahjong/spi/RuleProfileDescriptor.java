@@ -1,0 +1,12 @@
+package top.ellan.mahjong.spi;
+
+import java.util.Objects;
+
+/** One supported rule profile and its JSON configuration schema. */
+public record RuleProfileDescriptor(ProfileId id, String displayName, String configurationSchemaJson) {
+    public RuleProfileDescriptor {
+        Objects.requireNonNull(id, "id");
+        displayName = Objects.requireNonNull(displayName, "displayName");
+        configurationSchemaJson = Objects.requireNonNull(configurationSchemaJson, "configurationSchemaJson");
+    }
+}

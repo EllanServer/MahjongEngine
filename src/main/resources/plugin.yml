@@ -5,7 +5,7 @@ api-version: "${paperApiVersion}"
 folia-supported: true
 author: openai and ellan
 website: top.ellan
-description: Mahjong Soul-style Riichi Mahjong Paper plugin with optional GB rules, display entities, and CraftEngine-managed assets.
+description: CraftEngine-first Mahjong platform with restart-scoped signed rule packs.
 depend:
   - CraftEngine
 softdepend:
@@ -41,11 +41,10 @@ softdepend:
 commands:
   mahjong:
     description: Manage MahjongPaper tables and rounds. Use /mahjong help for command explanations.
-    usage: /mahjong <help|create|botmatch|mode|join|leave|list|spectate|unspectate|table|addbot|removebot|rule|start|state|riichi|tsumo|ron|pon|minkan|chii|kan|skip|kyuushu|settlement|rank|leaderboard|render|inspect|clear|forceend|deletetable|reload>
+    usage: /mahjong <help|create|botmatch|mode|join|leave|list|spectate|unspectate|table|addbot|removebot|rule|rules|start|state|riichi|tsumo|ron|pon|minkan|chii|kan|skip|kyuushu|settlement|rank|leaderboard|render|inspect|clear|forceend|deletetable|reload>
     permission: mahjongpaper.command
 permissions:
   mahjongpaper.command:
     default: true
   mahjongpaper.admin:
     default: op
-

@@ -1,14 +1,14 @@
 package top.ellan.mahjong.runtime;
 
-import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -16,51 +16,52 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import top.ellan.mahjong.application.BoundedDeadlineScheduler;
 
 public final class AsyncService implements AutoCloseable {
     private static final int MAX_CPU_WORKERS = 8;
+    private static final int MAX_IO_WORKERS = 16;
+    private static final int IO_QUEUE_CAPACITY = 512;
+    private static final int CPU_QUEUE_CAPACITY = 256;
+    private static final int RETRY_DEADLINE_CAPACITY = 512;
 
     private final Logger logger;
     private final ExecutorService ioExecutor;
     private final ExecutorService cpuExecutor;
-    private final ScheduledExecutorService retryScheduler;
+    private final BoundedDeadlineScheduler retryScheduler;
     private final Set<CompletableFuture<Void>> activeOperations = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean acceptingTasks = new AtomicBoolean(true);
 
     public AsyncService(Logger logger) {
         this.logger = logger;
-        this.ioExecutor = createIoExecutor();
+        int processors = Math.max(1, Runtime.getRuntime().availableProcessors());
+        int ioWorkers = Math.max(2, Math.min(MAX_IO_WORKERS, processors * 2));
+        this.ioExecutor = createBoundedExecutor(ioWorkers, IO_QUEUE_CAPACITY, "MahjongPaper-IO-");
         int cpuWorkers = Math.max(1, Math.min(MAX_CPU_WORKERS, Runtime.getRuntime().availableProcessors()));
-        this.cpuExecutor = Executors.newFixedThreadPool(
+        this.cpuExecutor = createBoundedExecutor(
             cpuWorkers,
-            namedDaemonThreadFactory("MahjongPaper-CPU-")
+            CPU_QUEUE_CAPACITY,
+            "MahjongPaper-CPU-"
         );
-        this.retryScheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "MahjongPaper-Async-Retry");
-            thread.setDaemon(true);
-            return thread;
-        });
+        this.retryScheduler = new BoundedDeadlineScheduler(
+            RETRY_DEADLINE_CAPACITY,
+            this.ioExecutor,
+            "MahjongPaper-Async-Retry"
+        );
     }
 
-    private static ExecutorService createIoExecutor() {
-        try {
-            Method ofVirtual = Thread.class.getMethod("ofVirtual");
-            Object builder = ofVirtual.invoke(null);
-            Class<?> builderType = ofVirtual.getReturnType();
-            Object namedBuilder = builderType
-                .getMethod("name", String.class, long.class)
-                .invoke(builder, "MahjongPaper-IO-", 0L);
-            ThreadFactory threadFactory = (ThreadFactory) builderType
-                .getMethod("factory")
-                .invoke(namedBuilder);
-            Method newThreadPerTaskExecutor = Executors.class.getMethod(
-                "newThreadPerTaskExecutor",
-                ThreadFactory.class
-            );
-            return (ExecutorService) newThreadPerTaskExecutor.invoke(null, threadFactory);
-        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
-            return Executors.newCachedThreadPool(namedDaemonThreadFactory("MahjongPaper-IO-"));
-        }
+    private static ExecutorService createBoundedExecutor(int workers, int capacity, String namePrefix) {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+            workers,
+            workers,
+            0L,
+            TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(capacity),
+            namedDaemonThreadFactory(namePrefix),
+            new ThreadPoolExecutor.AbortPolicy()
+        );
+        executor.prestartAllCoreThreads();
+        return executor;
     }
 
     private static ThreadFactory namedDaemonThreadFactory(String namePrefix) {
@@ -179,8 +180,7 @@ public final class AsyncService implements AutoCloseable {
             try {
                 this.retryScheduler.schedule(
                     () -> this.submitRetryAttempt(taskName, task, policy, nextAttempt, result),
-                    delayMillis,
-                    TimeUnit.MILLISECONDS
+                    Duration.ofMillis(delayMillis)
                 );
             } catch (RejectedExecutionException rejected) {
                 result.completeExceptionally(rejected);
@@ -210,7 +210,7 @@ public final class AsyncService implements AutoCloseable {
                 // Individual failures have already been reported by their task.
             }
         }
-        this.retryScheduler.shutdownNow();
+        this.retryScheduler.close();
         this.ioExecutor.shutdown();
         this.cpuExecutor.shutdown();
         try {

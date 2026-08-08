@@ -68,8 +68,7 @@ public final class CraftEngineService {
     public void initializeAfterStartup() {
         Plugin craftEngine = this.context.craftEnginePlugin();
         if (craftEngine == null) {
-            this.context.plugin().debug().log("lifecycle", "CraftEngine not detected. Using direct item_model items.");
-            return;
+            throw new IllegalStateException("CraftEngine 26.7+ is a required MahjongPaper dependency");
         }
 
         if (this.exportBundleOnEnable) {

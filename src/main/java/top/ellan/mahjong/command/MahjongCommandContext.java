@@ -59,6 +59,7 @@ public final class MahjongCommandContext {
         "command.help.addbot",
         "command.help.removebot",
         "command.help.rule",
+        "command.help.rules",
         "command.help.start",
         "command.help.state",
         "command.help.riichi",
@@ -91,6 +92,7 @@ public final class MahjongCommandContext {
         "command.help.forceend",
         "command.help.deletetable",
         "command.help.reload",
+        "command.help.rules",
         "command.help.room"
     );
     private static final String[] HELP_KEYS = HELP_KEY_ORDER.toArray(new String[0]);
@@ -105,6 +107,7 @@ public final class MahjongCommandContext {
     private final Supplier<String> reloadConfiguration;
     private final Supplier<GameRoomManager> gameRoomManager;
     private final GameRoomSelectionService selectionService;
+    private final RulePackCommandHandler rulePackCommands;
 
     public MahjongCommandContext(
         MessageService messages,
@@ -127,7 +130,8 @@ public final class MahjongCommandContext {
             fallbackRankStorage(database),
             reloadConfiguration,
             gameRoomManager,
-            selectionService
+            selectionService,
+            RulePackCommandHandler.unavailable("architecture runtime not configured")
         );
     }
 
@@ -143,6 +147,34 @@ public final class MahjongCommandContext {
         Supplier<GameRoomManager> gameRoomManager,
         GameRoomSelectionService selectionService
     ) {
+        this(
+            messages,
+            tableManager,
+            debug,
+            async,
+            scheduler,
+            database,
+            playerRankStorage,
+            reloadConfiguration,
+            gameRoomManager,
+            selectionService,
+            RulePackCommandHandler.unavailable("architecture runtime not configured")
+        );
+    }
+
+    public MahjongCommandContext(
+        MessageService messages,
+        MahjongTableManager tableManager,
+        DebugService debug,
+        AsyncService async,
+        ServerScheduler scheduler,
+        Supplier<DatabaseService> database,
+        Supplier<PlayerRankStorage> playerRankStorage,
+        Supplier<String> reloadConfiguration,
+        Supplier<GameRoomManager> gameRoomManager,
+        GameRoomSelectionService selectionService,
+        RulePackCommandHandler rulePackCommands
+    ) {
         this.messages = Objects.requireNonNull(messages, "messages");
         this.tableManager = Objects.requireNonNull(tableManager, "tableManager");
         this.debug = Objects.requireNonNull(debug, "debug");
@@ -153,6 +185,7 @@ public final class MahjongCommandContext {
         this.reloadConfiguration = Objects.requireNonNull(reloadConfiguration, "reloadConfiguration");
         this.gameRoomManager = gameRoomManager;
         this.selectionService = selectionService;
+        this.rulePackCommands = Objects.requireNonNull(rulePackCommands, "rulePackCommands");
     }
 
     private static Supplier<PlayerRankStorage> fallbackRankStorage(Supplier<DatabaseService> database) {
@@ -170,6 +203,10 @@ public final class MahjongCommandContext {
 
     public MahjongTableManager tableManager() {
         return this.tableManager;
+    }
+
+    public RulePackCommandHandler rulePackCommands() {
+        return this.rulePackCommands;
     }
 
     public MahjongTableSession requireTable(Player player) {

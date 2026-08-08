@@ -1,6 +1,7 @@
 package top.ellan.mahjong.bootstrap;
 
 import top.ellan.mahjong.command.MahjongCommand;
+import top.ellan.mahjong.command.RulePackCommandCoordinator;
 import top.ellan.mahjong.compat.CraftEngineCompatibility;
 import top.ellan.mahjong.compat.CraftEngineService;
 import top.ellan.mahjong.compat.protection.ProtectionService;
@@ -24,7 +25,6 @@ import top.ellan.mahjong.render.display.DisplayEntities;
 import top.ellan.mahjong.render.display.DisplayInteractionRayRegistry;
 import top.ellan.mahjong.render.display.TableDisplayRegistry;
 import top.ellan.mahjong.runtime.AsyncService;
-import top.ellan.mahjong.runtime.PluginTask;
 import top.ellan.mahjong.runtime.ServerScheduler;
 import top.ellan.mahjong.table.core.DefaultTableRuntimeServices;
 import top.ellan.mahjong.table.core.MahjongTableManager;
@@ -63,7 +63,7 @@ public final class MahjongPaperPlugin extends JavaPlugin {
     private GameRoomManager gameRoomManager;
     private GameRoomSelectionService gameRoomSelectionService;
     private GameRoomSelectionPreviewService gameRoomSelectionPreviewService;
-    private PluginTask gameRoomTickTask;
+    private MahjongArchitectureRuntime architectureRuntime;
     private CommandMap legacyPaperCommandMap;
     private Command legacyPaperCommand;
 
@@ -91,6 +91,20 @@ public final class MahjongPaperPlugin extends JavaPlugin {
             this.getLogger().info("Database enabled: " + this.database.databaseType());
             this.debug.log("database", "Database service initialized with type=" + this.database.databaseType());
         }
+        this.architectureRuntime = MahjongArchitectureRuntime.start(
+            this,
+            this.settings,
+            this.database,
+            this.getLogger()
+        );
+        this.getLogger().info(
+            "Actor architecture ready: eventStore="
+                + this.architectureRuntime.status().eventStoreAvailable()
+                + ", activeRulePacks="
+                + this.architectureRuntime.status().rulePacks()
+                    .map(status -> status.loadedActive().size())
+                    .orElse(0)
+        );
         this.async.execute("gb-native-warmup", () -> GbNativeWarmupService.warmupOnce(this.getLogger()));
 
         this.tableManager = new MahjongTableManager(new DefaultTableRuntimeServices(
@@ -134,7 +148,8 @@ public final class MahjongPaperPlugin extends JavaPlugin {
             () -> this.playerRankStorage,
             this::reloadMahjongConfiguration,
             () -> this.gameRoomManager,
-            this.gameRoomSelectionService
+            this.gameRoomSelectionService,
+            new RulePackCommandCoordinator(this.architectureRuntime, this.scheduler)
         );
         if (!this.registerMahjongCommand(mahjongCommand)) {
             return;
@@ -144,11 +159,6 @@ public final class MahjongPaperPlugin extends JavaPlugin {
         this.getServer().getPluginManager().registerEvents(this.tableManager.eventListener(), this);
         this.getServer().getPluginManager().registerEvents(new top.ellan.mahjong.gameroom.GameRoomListener(() -> this.gameRoomManager, this.messages, () -> this.settings), this);
         this.getServer().getPluginManager().registerEvents(new GameRoomWandListener(this.gameRoomSelectionService, this.gameRoomSelectionPreviewService, this.messages, () -> this.settings), this);
-        this.gameRoomTickTask = this.scheduler.runGlobalTimer(() -> {
-            if (this.gameRoomManager != null) {
-                this.gameRoomManager.tick();
-            }
-        }, 20L, 20L);
         this.scheduler.runGlobal(() -> {
             this.craftEngine.initializeAfterStartup();
             if (this.tableManager != null) {
@@ -180,9 +190,8 @@ public final class MahjongPaperPlugin extends JavaPlugin {
             this.craftEngine.disableFurnitureInteractionBridge();
             this.craftEngine.clearTrackedCullables();
         }
-        if (this.gameRoomTickTask != null) {
-            this.gameRoomTickTask.cancel();
-            this.gameRoomTickTask = null;
+        if (this.gameRoomManager != null) {
+            this.gameRoomManager.shutdown();
         }
         if (this.gameRoomSelectionPreviewService != null) {
             this.gameRoomSelectionPreviewService.cancelAll();
@@ -190,6 +199,10 @@ public final class MahjongPaperPlugin extends JavaPlugin {
         }
         if (this.tableManager != null) {
             this.tableManager.shutdown();
+        }
+        if (this.architectureRuntime != null) {
+            this.architectureRuntime.close();
+            this.architectureRuntime = null;
         }
         if (this.gameRoomManager != null) {
             this.gameRoomManager.save();
@@ -420,6 +433,12 @@ public final class MahjongPaperPlugin extends JavaPlugin {
             this.getLogger().log(Level.SEVERE, "Failed to load config.yml with Sparrow YAML.", exception);
             return "config.yml could not be parsed: " + Objects.toString(exception.getMessage(), exception.getClass().getSimpleName());
         }
+        if (this.architectureRuntime != null
+            && previousSettings != null
+            && (!Objects.equals(previousSettings.database(), reloadedSettings.database())
+                || !Objects.equals(previousSettings.rules(), reloadedSettings.rules()))) {
+            return "Database and signed rule-pack settings are restart-scoped while the actor runtime is active.";
+        }
         CraftEngineCompatibility.Result craftEngineCompatibility =
             CraftEngineCompatibility.inspect(this.getServer().getPluginManager());
         if (!craftEngineCompatibility.compatible()) {
@@ -443,8 +462,9 @@ public final class MahjongPaperPlugin extends JavaPlugin {
             this.getLogger().log(Level.SEVERE, failure, error);
             return failure;
         }
-        DatabaseService reloadedDatabase = null;
-        if (DatabaseService.isEnabled(reloadedSettings.database())) {
+        boolean preserveArchitectureDatabase = this.architectureRuntime != null;
+        DatabaseService reloadedDatabase = preserveArchitectureDatabase ? this.database : null;
+        if (!preserveArchitectureDatabase && DatabaseService.isEnabled(reloadedSettings.database())) {
             try {
                 reloadedDatabase = new DatabaseService(
                     reloadedSettings.database(),
@@ -470,7 +490,10 @@ public final class MahjongPaperPlugin extends JavaPlugin {
         // including retries currently sleeping in backoff. A timed-out reload
         // is aborted instead of closing a pool that may still be in use and
         // silently losing the corresponding round/rank write.
-        if (previousDatabase != null && this.async != null && !this.async.awaitQuiescence(5L)) {
+        if (previousDatabase != reloadedDatabase
+            && previousDatabase != null
+            && this.async != null
+            && !this.async.awaitQuiescence(5L)) {
             if (reloadedDatabase != null) {
                 reloadedDatabase.close();
             }
@@ -485,7 +508,7 @@ public final class MahjongPaperPlugin extends JavaPlugin {
             previousCraftEngine.disableFurnitureInteractionBridge();
             previousCraftEngine.clearTrackedCullables();
         }
-        if (previousDatabase != null) {
+        if (previousDatabase != null && previousDatabase != reloadedDatabase) {
             previousDatabase.close();
         }
 

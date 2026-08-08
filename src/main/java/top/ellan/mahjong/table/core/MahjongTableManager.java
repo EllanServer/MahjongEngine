@@ -42,7 +42,6 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.EventExecutor;
-import top.ellan.mahjong.runtime.PluginTask;
 
 public final class MahjongTableManager implements Listener {
     private static final String ADMIN_PERMISSION = "mahjongpaper.admin";
@@ -71,7 +70,7 @@ public final class MahjongTableManager implements Listener {
     private final TableRefreshCoordinator refreshCoordinator;
     private final TableEventCoordinator eventCoordinator;
     private final TableMembershipCoordinator membershipCoordinator;
-    private final PluginTask tableTickTask;
+    private final LegacyTableDeadlineScheduler legacyDeadlineScheduler;
 
     public MahjongTableManager(TableRuntimeServices plugin) {
         this.plugin = plugin;
@@ -94,7 +93,15 @@ public final class MahjongTableManager implements Listener {
         this.eventCoordinator = new TableEventCoordinator(this);
         this.membershipCoordinator = new TableMembershipCoordinator(this);
         this.registerSeatVehicleEvents();
-        this.tableTickTask = plugin.scheduler().runGlobalTimer(this::dispatchTableTicks, 20L, 20L);
+        this.legacyDeadlineScheduler = new LegacyTableDeadlineScheduler(
+            plugin.scheduler(),
+            this::tickSession,
+            (session, failure) -> org.bukkit.Bukkit.getLogger().log(
+                java.util.logging.Level.WARNING,
+                "Legacy deadline loop stopped for table " + session.id(),
+                failure
+            )
+        );
     }
 
     public Listener eventListener() {
@@ -363,6 +370,7 @@ public final class MahjongTableManager implements Listener {
             this.directory.removeSpectator(spectatorId);
         }
         this.refreshCoordinator.clearPendingArtifactCleanup(session.id());
+        this.legacyDeadlineScheduler.unregister(session);
         session.shutdown();
         this.cleanupTableArtifactsAt(center);
         this.directory.removeTable(session);
@@ -640,7 +648,7 @@ public final class MahjongTableManager implements Listener {
     }
 
     public void shutdown() {
-        this.tableTickTask.cancel();
+        this.legacyDeadlineScheduler.close();
         this.overheadViewCoordinator.shutdown();
         this.seatCoordinator.shutdown();
         this.refreshCoordinator.shutdown();
@@ -763,33 +771,8 @@ public final class MahjongTableManager implements Listener {
         this.plugin.scheduler().runRegion(center, () -> this.cleanupTableArtifacts(center));
     }
 
-    private void dispatchTableTicks() {
-        // Each session.tick() runs on its own region. Wrap the per-session
-        // dispatch so a single misbehaving table cannot stop ticks for every
-        // other table on the server.
-        for (MahjongTableSession session : this.directory.tables()) {
-            try {
-                this.plugin.scheduler().runRegion(session.center(), () -> this.tickSession(session));
-            } catch (RuntimeException dispatchException) {
-                org.bukkit.Bukkit.getLogger().log(
-                    java.util.logging.Level.WARNING,
-                    "Failed to schedule tick for table " + session.id(),
-                    dispatchException
-                );
-            }
-        }
-    }
-
     private void tickSession(MahjongTableSession session) {
-        try {
-            session.tick();
-        } catch (RuntimeException tickException) {
-            org.bukkit.Bukkit.getLogger().log(
-                java.util.logging.Level.WARNING,
-                "Tick failed for table " + session.id(),
-                tickException
-            );
-        }
+        session.tick();
         // Bot watchdog: if the session is started but has no armed bot task,
         // the bot scheduler may have stalled (e.g. after an unhandled
         // exception in a previous callback). Re-schedule to recover.
@@ -887,6 +870,7 @@ public final class MahjongTableManager implements Listener {
 
     private void registerTable(MahjongTableSession session) {
         this.directory.registerTable(session);
+        this.legacyDeadlineScheduler.register(session);
     }
 
     public void finalizeDeferredLeaves(MahjongTableSession session, Map<UUID, SeatWind> playerSeats) {

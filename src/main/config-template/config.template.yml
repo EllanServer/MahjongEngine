@@ -41,6 +41,14 @@ database:
     minIdle: 2
     connectionTimeoutMillis: 10000
 
+rules:
+  # {{rules.enabled}}
+  enabled: true
+
+  # {{rules.registry}}
+  # The release JAR embeds the Ed25519 public key; no private key is configured here.
+  registryUrl: ""
+
 tables:
   # {{tables.batch}}
   startupRebuildBatchSize: 3
