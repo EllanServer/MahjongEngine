@@ -11,6 +11,7 @@ import java.util.concurrent.Executor;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
+import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.persistence.PersistenceOutbox;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
 import top.ellan.mahjong.application.security.SecureActionTokenIssuer;
@@ -40,6 +41,7 @@ final class MatchActorFactory {
     private final JdbcEventStore events;
     private final SceneProjectionPort projector;
     private final TablePresentationCuePort presentationCues;
+    private final TableOpeningPresentationPort openingPresentations;
     private final Clock clock;
 
     MatchActorFactory(
@@ -52,6 +54,7 @@ final class MatchActorFactory {
             JdbcEventStore events,
             SceneProjectionPort projector,
             TablePresentationCuePort presentationCues,
+            TableOpeningPresentationPort openingPresentations,
             Clock clock) {
         this.actorDispatcher = Objects.requireNonNull(actorDispatcher, "actorDispatcher");
         this.ioExecutor = Objects.requireNonNull(ioExecutor, "ioExecutor");
@@ -62,6 +65,8 @@ final class MatchActorFactory {
         this.events = Objects.requireNonNull(events, "events");
         this.projector = Objects.requireNonNull(projector, "projector");
         this.presentationCues = Objects.requireNonNull(presentationCues, "presentationCues");
+        this.openingPresentations = Objects.requireNonNull(
+                openingPresentations, "openingPresentations");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -75,7 +80,8 @@ final class MatchActorFactory {
             TableLifecycle lifecycle,
             long stateRevision,
             long eventSequence,
-            Optional<TableActionEndpoint> replacedEndpoint) {
+            Optional<TableActionEndpoint> replacedEndpoint,
+            boolean presentInitialOpening) {
         return CompletableFuture.supplyAsync(
                 () -> {
                     try {
@@ -90,7 +96,8 @@ final class MatchActorFactory {
                                         lifecycle,
                                         stateRevision,
                                         eventSequence,
-                                        replacedEndpoint);
+                                        replacedEndpoint,
+                                        presentInitialOpening);
                         return new StartedRulePackMatch(binding, tableId, participants, actor);
                     } catch (RuntimeException failure) {
                         markReview(binding, failure);
@@ -110,7 +117,8 @@ final class MatchActorFactory {
             TableLifecycle lifecycle,
             long stateRevision,
             long eventSequence,
-            Optional<TableActionEndpoint> replacedEndpoint) {
+            Optional<TableActionEndpoint> replacedEndpoint,
+            boolean presentInitialOpening) {
         TableAggregate aggregate =
                 new TableAggregate(
                         tableId,
@@ -131,6 +139,8 @@ final class MatchActorFactory {
                         deadlines,
                         projector,
                         presentationCues,
+                        openingPresentations,
+                        presentInitialOpening,
                         new SecureActionTokenIssuer(),
                         clock,
                         TableActorConfig.DEFAULT,

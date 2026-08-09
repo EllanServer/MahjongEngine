@@ -1,6 +1,8 @@
 package top.ellan.mahjong.craftengine.scene;
 
 import java.util.List;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -12,6 +14,8 @@ import top.ellan.mahjong.platform.paper.region.RegionSchedulerPort;
 import top.ellan.mahjong.platform.paper.region.TableRegionResolver;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.presentation.node.SceneNode;
+import top.ellan.mahjong.presentation.node.FurnitureNode;
+import top.ellan.mahjong.presentation.node.SceneNodeId;
 import top.ellan.mahjong.presentation.port.SceneBackendPort;
 import top.ellan.mahjong.presentation.scene.SceneDiff;
 
@@ -95,6 +99,69 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
         }
         regions.markReady(diff.tableId(), table);
         mutations.installBindingsIfReady(diff.tableId(), table);
+    }
+
+    /**
+     * Replaces one bounded transient CE overlay without advancing the durable scene revision.
+     * This keeps cosmetic dice phases from racing or invalidating the latest rule projection.
+     */
+    public void replaceTransient(
+            TableId tableId,
+            long generation,
+            Collection<SceneNodeId> managedIds,
+            List<FurnitureNode> desiredNodes) {
+        Objects.requireNonNull(tableId, "tableId");
+        if (generation < 0) {
+            throw new IllegalArgumentException("transient generation must be non-negative");
+        }
+        List<SceneNodeId> ids = List.copyOf(Objects.requireNonNull(managedIds, "managedIds"));
+        List<FurnitureNode> nodes = List.copyOf(
+                Objects.requireNonNull(desiredNodes, "desiredNodes"));
+        HashSet<SceneNodeId> managed = new HashSet<>(ids);
+        if (managed.size() != ids.size()) {
+            throw new IllegalArgumentException("transient scene IDs must be unique");
+        }
+        HashSet<SceneNodeId> desiredIds = new HashSet<>();
+        for (FurnitureNode node : nodes) {
+            if (!managed.contains(node.id()) || !desiredIds.add(node.id())) {
+                throw new IllegalArgumentException(
+                        "transient furniture must use one unique managed ID");
+            }
+        }
+        CraftEngineTableState table =
+                tables.computeIfAbsent(tableId, ignored -> new CraftEngineTableState());
+        synchronized (table) {
+            if (table.closed || generation < table.transientGeneration) {
+                return;
+            }
+            int retained = table.desired.size();
+            for (SceneNodeId id : managed) {
+                if (table.desired.containsKey(id)) {
+                    retained--;
+                }
+            }
+            if (retained + nodes.size() > config.maxNodesPerTable()) {
+                failureSink.accept(new CraftEngineTableFailure(
+                        tableId,
+                        Math.max(0, table.desiredRevision),
+                        "transient-scene-node-capacity"));
+                return;
+            }
+            table.transientGeneration = generation;
+            for (SceneNodeId id : managed) {
+                if (!desiredIds.contains(id)
+                        && (table.desired.remove(id) != null || table.actual.containsKey(id))) {
+                    table.dirty.add(id);
+                }
+            }
+            for (FurnitureNode node : nodes) {
+                SceneNode previous = table.desired.put(node.id(), node);
+                if (!node.equals(previous)) {
+                    table.dirty.add(node.id());
+                }
+            }
+        }
+        regions.markReady(tableId, table);
     }
 
     /** Called only after CraftEngineReloadEvent confirms the atomically installed bundle is live. */

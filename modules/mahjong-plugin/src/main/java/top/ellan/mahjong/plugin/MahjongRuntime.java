@@ -301,6 +301,7 @@ public final class MahjongRuntime implements AutoCloseable {
                         rules.runtime().orElseThrow(),
                         platform.sceneProjector(),
                         platform.presentationCues(),
+                        platform.openingPresentations(),
                         clock));
     }
 

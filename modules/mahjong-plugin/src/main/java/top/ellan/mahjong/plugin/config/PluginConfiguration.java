@@ -12,7 +12,8 @@ public record PluginConfiguration(
         String craftEngineBundleFolder,
         CraftEngineAssets craftEngineAssets,
         LayoutGeometry layoutGeometry,
-        ViewSettings viewSettings) {
+        ViewSettings viewSettings,
+        OpeningSettings openingSettings) {
     public PluginConfiguration {
         Objects.requireNonNull(database, "database");
         registryUrl = Objects.requireNonNull(registryUrl, "registryUrl").trim();
@@ -20,6 +21,7 @@ public record PluginConfiguration(
         Objects.requireNonNull(craftEngineAssets, "craftEngineAssets");
         Objects.requireNonNull(layoutGeometry, "layoutGeometry");
         Objects.requireNonNull(viewSettings, "viewSettings");
+        Objects.requireNonNull(openingSettings, "openingSettings");
     }
 
     public static PluginConfiguration load(JavaPlugin plugin) {
@@ -62,7 +64,10 @@ public record PluginConfiguration(
                                 "mahjongpaper:hand_tile_hitbox"),
                         config.getString(
                                 "craftengine.assets.action-hitbox",
-                                "mahjongpaper:action_button_hitbox")),
+                                "mahjongpaper:action_button_hitbox"),
+                        config.getString(
+                                "craftengine.assets.dice-face-prefix",
+                                "mahjongpaper:dice_face_")),
                 new LayoutGeometry(
                         config.getDouble("presentation.geometry.tile-width", 0.1125D),
                         config.getDouble("presentation.geometry.tile-height", 0.15D),
@@ -85,7 +90,13 @@ public record PluginConfiguration(
                 new ViewSettings(
                         config.getBoolean("presentation.overhead.enabled", true),
                         config.getDouble("presentation.overhead.height", 4.5D),
-                        config.getInt("presentation.overhead.transition-ticks", 16)));
+                        config.getInt("presentation.overhead.transition-ticks", 16)),
+                new OpeningSettings(
+                        config.getInt("presentation.opening.preview-frames", 3),
+                        config.getInt("presentation.opening.roll-ticks", 20),
+                        config.getInt("presentation.opening.reveal-ticks", 12),
+                        config.getDouble("presentation.opening.dice-spacing", 0.22D),
+                        config.getDouble("presentation.opening.table-height", 0.62D)));
     }
 
     private static String requireToken(String value, String label) {
@@ -109,13 +120,15 @@ public record PluginConfiguration(
             String standingBack,
             String flatBack,
             String handHitbox,
-            String actionHitbox) {
+            String actionHitbox,
+            String diceFacePrefix) {
         public CraftEngineAssets {
             table = requireAsset(table, "table furniture");
             standingBack = requireAsset(standingBack, "standing back furniture");
             flatBack = requireAsset(flatBack, "flat back furniture");
             handHitbox = requireAsset(handHitbox, "hand hitbox furniture");
             actionHitbox = requireAsset(actionHitbox, "action hitbox furniture");
+            diceFacePrefix = requireAsset(diceFacePrefix, "dice face furniture prefix");
         }
     }
 
@@ -148,6 +161,30 @@ public record PluginConfiguration(
             }
             if (transitionTicks < 1 || transitionTicks > 40) {
                 throw new IllegalArgumentException("transitionTicks must be between 1 and 40");
+            }
+        }
+    }
+
+    public record OpeningSettings(
+            int previewFrames,
+            int rollTicks,
+            int revealTicks,
+            double diceSpacing,
+            double tableHeight) {
+        public OpeningSettings {
+            if (previewFrames < 1 || previewFrames > 6) {
+                throw new IllegalArgumentException("previewFrames must be between 1 and 6");
+            }
+            if (rollTicks < 1 || rollTicks > 200 || revealTicks < 1 || revealTicks > 200) {
+                throw new IllegalArgumentException("opening timings must be between 1 and 200 ticks");
+            }
+            if (!Double.isFinite(diceSpacing)
+                    || diceSpacing < 0.1D
+                    || diceSpacing > 0.5D
+                    || !Double.isFinite(tableHeight)
+                    || tableHeight < 0.1D
+                    || tableHeight > 2.0D) {
+                throw new IllegalArgumentException("opening dice geometry is outside its safe range");
             }
         }
     }

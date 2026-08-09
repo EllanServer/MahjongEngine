@@ -232,6 +232,43 @@ class CraftEngineSceneBackendTest {
         assertEquals(0, interactions.routeCount());
     }
 
+    @Test
+    void transientDiceOverlayDoesNotAdvanceOrReplaceTheDurableSceneRevision() {
+        ManualRegionScheduler scheduler = new ManualRegionScheduler();
+        RecordingGateway gateway = new RecordingGateway();
+        CraftEngineSceneBackend backend = backend(gateway, scheduler, ignored -> {});
+        TableId table = TableId.random();
+        SceneNodeId die = new SceneNodeId("opening/die/0");
+        FurnitureNode firstFace = new FurnitureNode(
+                die,
+                SceneVisibility.publicToAll(),
+                "mahjongpaper:dice_face_1",
+                new SceneTransform(0, 0.6, 0, 0, 0, 0, 1));
+
+        backend.submit(diff(table, 1));
+        backend.replaceTransient(table, 4, List.of(die), List.of(firstFace));
+        backend.onCraftEngineReloaded();
+        scheduler.runUntilIdle(REGION, 4);
+        assertEquals(firstFace, gateway.live.get(table).get(die));
+
+        FurnitureNode durableUpdate = new FurnitureNode(
+                new SceneNodeId("tile/0"),
+                SceneVisibility.publicToAll(),
+                "mahjong:tile/back",
+                new SceneTransform(9, 0, 0, 0, 0, 0, 1));
+        backend.submit(new SceneDiff(
+                table, 1, 2, List.of(), List.of(durableUpdate), List.of()));
+        backend.replaceTransient(table, 3, List.of(die), List.of());
+        scheduler.runUntilIdle(REGION, 4);
+
+        assertEquals(firstFace, gateway.live.get(table).get(die));
+        assertEquals(durableUpdate, gateway.live.get(table).get(new SceneNodeId("tile/0")));
+
+        backend.replaceTransient(table, 5, List.of(die), List.of());
+        scheduler.runUntilIdle(REGION, 4);
+        assertFalse(gateway.live.get(table).containsKey(die));
+    }
+
     private static CraftEngineSceneBackend backend(
             RecordingGateway gateway,
             ManualRegionScheduler scheduler,

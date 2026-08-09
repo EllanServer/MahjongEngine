@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
+import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.persistence.OutboxHealth;
 import top.ellan.mahjong.application.persistence.PersistenceOutbox;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
@@ -67,6 +68,8 @@ public final class TableActor implements TableActionEndpoint {
                 deadlineScheduler,
                 projector,
                 TablePresentationCuePort.NONE,
+                TableOpeningPresentationPort.NONE,
+                true,
                 tokenIssuer,
                 clock,
                 config,
@@ -83,6 +86,40 @@ public final class TableActor implements TableActionEndpoint {
             TaskScheduler deadlineScheduler,
             SceneProjectionPort projector,
             TablePresentationCuePort cuePort,
+            ActionTokenIssuer tokenIssuer,
+            Clock clock,
+            TableActorConfig config,
+            TableAggregate aggregate,
+            RuleState initialRuleState,
+            long lastEventSequence) {
+        this(
+                dispatcher,
+                ruleExecutor,
+                provider,
+                outbox,
+                deadlineScheduler,
+                projector,
+                cuePort,
+                TableOpeningPresentationPort.NONE,
+                true,
+                tokenIssuer,
+                clock,
+                config,
+                aggregate,
+                initialRuleState,
+                lastEventSequence);
+    }
+
+    public TableActor(
+            Executor dispatcher,
+            FairRuleExecutor ruleExecutor,
+            RulePackProvider provider,
+            PersistenceOutbox outbox,
+            TaskScheduler deadlineScheduler,
+            SceneProjectionPort projector,
+            TablePresentationCuePort cuePort,
+            TableOpeningPresentationPort openingPort,
+            boolean presentInitialOpening,
             ActionTokenIssuer tokenIssuer,
             Clock clock,
             TableActorConfig config,
@@ -106,6 +143,8 @@ public final class TableActor implements TableActionEndpoint {
                 outbox,
                 projector,
                 Objects.requireNonNull(cuePort, "cuePort"),
+                Objects.requireNonNull(openingPort, "openingPort"),
+                presentInitialOpening,
                 tokenIssuer,
                 clock,
                 aggregate,

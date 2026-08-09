@@ -9,6 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import top.ellan.mahjong.application.persistence.OutboxHealth;
 import top.ellan.mahjong.application.persistence.PersistenceOutbox;
 import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
+import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
 import top.ellan.mahjong.application.projection.TableProjection;
 import top.ellan.mahjong.application.security.ActionTokenIssuer;
@@ -35,6 +36,7 @@ final class TableActorStateMachine {
     private final TableProjectionPublisher projections;
     private final TableScheduledActionController scheduledActions;
     private final TablePresentationCuePublisher presentationCues;
+    private final TableOpeningPublisher openings;
     private final Map<UUID, AuthorizedAction> actionCatalog = new HashMap<>();
     private TableAggregate aggregate;
     private RuleState ruleState;
@@ -47,6 +49,8 @@ final class TableActorStateMachine {
             PersistenceOutbox outbox,
             SceneProjectionPort projector,
             TablePresentationCuePort cuePort,
+            TableOpeningPresentationPort openingPort,
+            boolean presentInitialOpening,
             ActionTokenIssuer tokenIssuer,
             Clock clock,
             TableAggregate aggregate,
@@ -65,6 +69,11 @@ final class TableActorStateMachine {
                 cuePort,
                 aggregate,
                 aggregate.matchBinding().orElseThrow().rulePack().ruleId());
+        openings = new TableOpeningPublisher(
+                openingPort,
+                aggregate,
+                aggregate.matchBinding().orElseThrow().rulePack().ruleId(),
+                presentInitialOpening);
         outboxHealth = outbox.health();
     }
 
@@ -274,6 +283,8 @@ final class TableActorStateMachine {
         actionCatalog.clear();
         actionCatalog.putAll(authorized.actionCatalog());
         recordProjectionFailure(projections.install(authorized.projection()));
+        openings.publishIfChanged(
+                aggregate.revision(), frame.publicView().tablePresentation().opening());
         scheduledActions
                 .install(
                         frame.scheduledAction(),

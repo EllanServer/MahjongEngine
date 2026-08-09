@@ -10,7 +10,25 @@ public record RuleTablePresentation(
         int discardsPerRow,
         Optional<SeatId> dealerSeat,
         Optional<SeatId> currentSeat,
-        Optional<TileInstanceId> lastDiscard) {
+        Optional<TileInstanceId> lastDiscard,
+        Optional<RuleOpeningPresentation> opening) {
+    public RuleTablePresentation(
+            int seatCount,
+            RuleWallPresentation wall,
+            int discardsPerRow,
+            Optional<SeatId> dealerSeat,
+            Optional<SeatId> currentSeat,
+            Optional<TileInstanceId> lastDiscard) {
+        this(
+                seatCount,
+                wall,
+                discardsPerRow,
+                dealerSeat,
+                currentSeat,
+                lastDiscard,
+                Optional.empty());
+    }
+
     public RuleTablePresentation {
         if (seatCount < 2 || seatCount > 4) {
             throw new IllegalArgumentException("seatCount must be between two and four");
@@ -25,8 +43,16 @@ public record RuleTablePresentation(
         dealerSeat = Objects.requireNonNull(dealerSeat, "dealerSeat");
         currentSeat = Objects.requireNonNull(currentSeat, "currentSeat");
         lastDiscard = Objects.requireNonNull(lastDiscard, "lastDiscard");
+        opening = Objects.requireNonNull(opening, "opening");
         dealerSeat.ifPresent(seat -> requireSeat(seat, seatCount));
         currentSeat.ifPresent(seat -> requireSeat(seat, seatCount));
+        opening.ifPresent(value -> {
+            requireSeat(value.openDoorSeat(), seatCount);
+            if (value.breakStackOffset() >= wall.totalStacks()) {
+                throw new IllegalArgumentException(
+                        "Opening wall break must be inside the declared physical wall");
+            }
+        });
     }
 
     private static void requireSeat(SeatId seat, int seatCount) {

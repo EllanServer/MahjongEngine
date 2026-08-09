@@ -79,6 +79,42 @@ templates:
                 shadow_radius: 0
                 shadow_strength: 0
 
+  # Dice appearance, scale, shadow and culling are entirely CE-owned. Java only chooses one of
+  # these six stable assets when a rule pack publishes a deterministic physical roll.
+  mahjongpaper:dice_furniture:
+    material: paper
+    settings:
+      tags:
+        - mahjongpaper:opening_dice
+    data:
+      item_name: "<!i><white>Dice ${point}</white>"
+    item_model: "mahjongcraft:dice/${point}"
+    behavior:
+      type: furniture_item
+      rules:
+        ground:
+          rotation: four
+          alignment: center
+      furniture:
+        settings:
+          item: "${__NAMESPACE__}:${__ID__}"
+        variants:
+          ground:
+            entity_culling:
+              aabb_expansion: 0.1
+              view_distance: 32
+              ray_tracing: true
+            elements:
+              - type: item_display
+                item: "mahjongpaper:dice_${point}_model"
+                display_transform: none
+                billboard: fixed
+                position: 0,0,0
+                translation: 0,0,0
+                rotation: "0,0,0"
+                shadow_radius: 0
+                shadow_strength: 0
+
 items:
   mahjongpaper:table_visual_model:
     material: paper
@@ -287,6 +323,28 @@ config_factory#point_sticks:
           model: "${model}"
           label: "${label}"
           rotation: "0,0,0"
+config_factory#opening_dice:
+  instances:
+    - point: 1
+    - point: 2
+    - point: 3
+    - point: 4
+    - point: 5
+    - point: 6
+  blueprint:
+    items:
+      mahjongpaper:dice_${point}_model:
+        material: paper
+        settings:
+          tags:
+            - mahjongpaper:opening_dice_model
+        data:
+          item_name: "<!i><white>Dice ${point}</white>"
+        item_model: "mahjongcraft:dice/${point}"
+      mahjongpaper:dice_face_${point}:
+        template: mahjongpaper:dice_furniture
+        arguments:
+          point: "${point}"
 config_factory#tiles:
   instances:
     - tile: autumn

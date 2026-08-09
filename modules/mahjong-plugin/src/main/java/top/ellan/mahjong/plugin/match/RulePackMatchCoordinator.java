@@ -11,6 +11,7 @@ import java.util.concurrent.Executor;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
+import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
 import top.ellan.mahjong.application.table.TableActorRegistry;
 import top.ellan.mahjong.application.table.TableActionEndpoint;
@@ -48,6 +49,7 @@ public final class RulePackMatchCoordinator {
             RulePackRuntime rulePacks,
             SceneProjectionPort projector,
             TablePresentationCuePort presentationCues,
+            TableOpeningPresentationPort openingPresentations,
             Clock clock) {
         this.ioExecutor = Objects.requireNonNull(ioExecutor, "ioExecutor");
         this.rules = Objects.requireNonNull(rules, "rules");
@@ -66,6 +68,7 @@ public final class RulePackMatchCoordinator {
                         events,
                         projector,
                         presentationCues,
+                        openingPresentations,
                         clock);
     }
 
@@ -175,7 +178,8 @@ public final class RulePackMatchCoordinator {
                                         TableLifecycle.ACTIVE,
                                         0,
                                         0,
-                                        replacedEndpoint));
+                                        replacedEndpoint,
+                                        true));
     }
 
     private void persistInitialMatch(
@@ -225,7 +229,8 @@ public final class RulePackMatchCoordinator {
                                         TableLifecycle.ACTIVE,
                                         input.verified().stateRevision(),
                                         input.verified().eventSequence(),
-                                        Optional.empty()));
+                                        Optional.empty(),
+                                        false));
     }
 
     private StartedRulePackMatch failRecoveryWithoutParticipants(MatchRecoveryData data) {

@@ -315,6 +315,15 @@ public final class RulePackTck {
                         "wall tile references a slot outside the declared physical wall");
             }
         }
+        publicView.tablePresentation().opening().ifPresent(opening -> {
+            check(opening.openDoorSeat().value() < seatCount,
+                    "opening references an absent seat");
+            check(opening.breakStackOffset()
+                            < publicView.tablePresentation().wall().totalStacks(),
+                    "opening wall break is outside the physical wall");
+            check(opening.rolls().size() <= 2,
+                    "opening contains too many physical dice rolls");
+        });
     }
 
     private static void verifyStableWallSlots(

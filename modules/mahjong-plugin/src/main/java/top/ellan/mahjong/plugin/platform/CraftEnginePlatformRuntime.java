@@ -1,6 +1,7 @@
 package top.ellan.mahjong.plugin.platform;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -15,12 +16,15 @@ import org.bukkit.plugin.Plugin;
 import top.ellan.mahjong.application.concurrent.BoundedDeadlineScheduler;
 import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
 import top.ellan.mahjong.application.interaction.InteractionRouter;
+import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.application.table.TableActorRegistry;
 import top.ellan.mahjong.application.lobby.port.SeatInteractionPort;
 import top.ellan.mahjong.craftengine.scene.CraftEngineBackendConfig;
 import top.ellan.mahjong.craftengine.bundle.CraftEngineBundleInstaller;
 import top.ellan.mahjong.craftengine.interaction.CraftEngineInteractionListener;
+import top.ellan.mahjong.craftengine.opening.CraftEngineOpeningAnimationConfig;
+import top.ellan.mahjong.craftengine.opening.CraftEngineOpeningPresenter;
 import top.ellan.mahjong.craftengine.bundle.CraftEngineReloadListener;
 import top.ellan.mahjong.craftengine.scene.CraftEngineSceneBackend;
 import top.ellan.mahjong.craftengine.bundle.CraftEngineVersion;
@@ -56,6 +60,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
     private final CraftEngineSceneBackend sceneBackend;
     private final LatestSceneProjector sceneProjector;
     private final TablePresentationCuePort presentationCues;
+    private final CraftEngineOpeningPresenter openingPresentations;
     private final AtomicBoolean bundleInstalled = new AtomicBoolean();
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -108,6 +113,17 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                         sceneBackend,
                         new SceneGraphDiffer(),
                         deadlines);
+        PluginConfiguration.OpeningSettings opening = configuration.openingSettings();
+        openingPresentations = new CraftEngineOpeningPresenter(
+                deadlines,
+                sceneBackend,
+                new CraftEngineOpeningAnimationConfig(
+                        configuration.craftEngineAssets().diceFacePrefix(),
+                        opening.previewFrames(),
+                        Duration.ofMillis(Math.multiplyExact(opening.rollTicks(), 50L)),
+                        Duration.ofMillis(Math.multiplyExact(opening.revealTicks(), 50L)),
+                        opening.diceSpacing(),
+                        opening.tableHeight()));
     }
 
     /** Registers platform listeners and starts the immutable CE bundle installation once. */
@@ -136,6 +152,10 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
         return presentationCues;
     }
 
+    public TableOpeningPresentationPort openingPresentations() {
+        return openingPresentations;
+    }
+
     public void registerAnchor(TableId tableId, Location location) {
         anchors.register(
                 Objects.requireNonNull(tableId, "tableId"),
@@ -144,6 +164,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
 
     public void removeTable(TableId tableId) {
         Objects.requireNonNull(tableId, "tableId");
+        openingPresentations.clear(tableId);
         sceneProjector.remove(tableId);
         sceneBackend.removeTable(tableId);
         anchors.remove(tableId);
@@ -314,6 +335,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
     @Override
     public void close() {
         if (closed.compareAndSet(false, true)) {
+            openingPresentations.close();
             privateProjection.close();
         }
     }
