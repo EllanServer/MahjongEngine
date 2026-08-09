@@ -4,9 +4,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import top.ellan.mahjong.domain.CompetitionRef;
+import top.ellan.mahjong.domain.TableAnchor;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.domain.TableParticipant;
-import top.ellan.mahjong.persistence.sql.StoredTableAnchor;
 import top.ellan.mahjong.spi.MatchSeed;
 import top.ellan.mahjong.spi.ProfileId;
 import top.ellan.mahjong.spi.RuleId;
@@ -20,7 +20,7 @@ public record NewRulePackMatch(
         List<TableParticipant> participants,
         Map<String, String> configuration,
         CompetitionRef competitionRef,
-        StoredTableAnchor anchor) {
+        TableAnchor anchor) {
     public NewRulePackMatch {
         Objects.requireNonNull(tableId, "tableId");
         Objects.requireNonNull(ruleId, "ruleId");

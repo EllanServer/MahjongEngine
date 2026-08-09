@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import top.ellan.mahjong.domain.TableAnchor;
 import top.ellan.mahjong.domain.TableId;
 
 /** Durable table anchors. Calls are blocking and belong on the bounded I/O executor. */
@@ -18,7 +19,7 @@ public final class JdbcTableAnchorRepository {
         this.connections = Objects.requireNonNull(connections, "connections");
     }
 
-    public void save(StoredTableAnchor anchor) throws SQLException {
+    public void save(TableAnchor anchor) throws SQLException {
         Objects.requireNonNull(anchor, "anchor");
         try (Connection connection = connections.open()) {
             boolean previousAutoCommit = connection.getAutoCommit();
@@ -39,7 +40,7 @@ public final class JdbcTableAnchorRepository {
         }
     }
 
-    public Optional<StoredTableAnchor> find(TableId tableId) throws SQLException {
+    public Optional<TableAnchor> find(TableId tableId) throws SQLException {
         Objects.requireNonNull(tableId, "tableId");
         try (Connection connection = connections.open();
                 PreparedStatement statement = connection.prepareStatement(
@@ -51,8 +52,8 @@ public final class JdbcTableAnchorRepository {
         }
     }
 
-    public List<StoredTableAnchor> list() throws SQLException {
-        List<StoredTableAnchor> anchors = new ArrayList<>();
+    public List<TableAnchor> list() throws SQLException {
+        List<TableAnchor> anchors = new ArrayList<>();
         try (Connection connection = connections.open();
                 PreparedStatement statement = connection.prepareStatement(
                         "SELECT table_id, world_id, x, y, z, yaw, pitch FROM table_anchor ORDER BY table_id");
@@ -84,7 +85,7 @@ public final class JdbcTableAnchorRepository {
         }
     }
 
-    private static void insert(Connection connection, StoredTableAnchor anchor) throws SQLException {
+    private static void insert(Connection connection, TableAnchor anchor) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
                 "INSERT INTO table_anchor (table_id, world_id, x, y, z, yaw, pitch) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?)")) {
@@ -93,7 +94,7 @@ public final class JdbcTableAnchorRepository {
         }
     }
 
-    private static void update(Connection connection, StoredTableAnchor anchor) throws SQLException {
+    private static void update(Connection connection, TableAnchor anchor) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
                 "UPDATE table_anchor SET world_id = ?, x = ?, y = ?, z = ?, yaw = ?, pitch = ? "
                         + "WHERE table_id = ?")) {
@@ -108,7 +109,7 @@ public final class JdbcTableAnchorRepository {
         }
     }
 
-    private static void bind(PreparedStatement statement, StoredTableAnchor anchor)
+    private static void bind(PreparedStatement statement, TableAnchor anchor)
             throws SQLException {
         statement.setString(1, anchor.tableId().toString());
         statement.setString(2, anchor.worldId());
@@ -119,8 +120,8 @@ public final class JdbcTableAnchorRepository {
         statement.setFloat(7, anchor.pitch());
     }
 
-    private static StoredTableAnchor read(TableId tableId, ResultSet result) throws SQLException {
-        return new StoredTableAnchor(
+    private static TableAnchor read(TableId tableId, ResultSet result) throws SQLException {
+        return new TableAnchor(
                 tableId,
                 result.getString("world_id"),
                 result.getDouble("x"),

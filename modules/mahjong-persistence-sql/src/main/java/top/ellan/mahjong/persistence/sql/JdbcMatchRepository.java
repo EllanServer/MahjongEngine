@@ -16,6 +16,7 @@ import java.util.Set;
 import top.ellan.mahjong.domain.MatchBinding;
 import top.ellan.mahjong.domain.MatchId;
 import top.ellan.mahjong.domain.ParticipantRole;
+import top.ellan.mahjong.domain.TableAnchor;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.domain.TableLifecycle;
 import top.ellan.mahjong.domain.TableParticipant;
@@ -67,7 +68,7 @@ public final class JdbcMatchRepository {
             MatchInstanceRecord match,
             List<TableParticipant> participants,
             RuleStateSnapshot initialSnapshot) throws SQLException {
-        createRecoverableMatch(match, participants, initialSnapshot, Optional.empty());
+        createRecoverableMatch(match, participants, initialSnapshot, Optional.empty(), false);
     }
 
     /** Creates provenance, participants, the initial snapshot and anchor in one transaction. */
@@ -75,19 +76,35 @@ public final class JdbcMatchRepository {
             MatchInstanceRecord match,
             List<TableParticipant> participants,
             RuleStateSnapshot initialSnapshot,
-            StoredTableAnchor anchor) throws SQLException {
+            TableAnchor anchor) throws SQLException {
         createRecoverableMatch(
                 match,
                 participants,
                 initialSnapshot,
-                Optional.of(Objects.requireNonNull(anchor, "anchor")));
+                Optional.of(Objects.requireNonNull(anchor, "anchor")),
+                false);
+    }
+
+    /** Atomically replaces a durable lobby with the pinned initial match boundary. */
+    public void createRecoverableMatchFromLobby(
+            MatchInstanceRecord match,
+            List<TableParticipant> participants,
+            RuleStateSnapshot initialSnapshot,
+            TableAnchor anchor) throws SQLException {
+        createRecoverableMatch(
+                match,
+                participants,
+                initialSnapshot,
+                Optional.of(Objects.requireNonNull(anchor, "anchor")),
+                true);
     }
 
     private void createRecoverableMatch(
             MatchInstanceRecord match,
             List<TableParticipant> participants,
             RuleStateSnapshot initialSnapshot,
-            Optional<StoredTableAnchor> anchor) throws SQLException {
+            Optional<TableAnchor> anchor,
+            boolean consumeLobby) throws SQLException {
         participants = List.copyOf(Objects.requireNonNull(participants, "participants"));
         Objects.requireNonNull(initialSnapshot, "initialSnapshot");
         Objects.requireNonNull(anchor, "anchor");
@@ -115,6 +132,11 @@ public final class JdbcMatchRepository {
                 if (anchor.isPresent()) {
                     insertOrVerifyAnchor(connection, anchor.orElseThrow());
                 }
+                if (consumeLobby
+                        && !JdbcTableLobbyRepository.deleteWithin(connection, match.tableId())) {
+                    throw new PersistenceConflictException(
+                            "lobby disappeared before match activation");
+                }
                 connection.commit();
             } catch (SQLException | RuntimeException failure) {
                 connection.rollback();
@@ -123,15 +145,15 @@ public final class JdbcMatchRepository {
         }
     }
 
-    private static void insertOrVerifyAnchor(Connection connection, StoredTableAnchor anchor)
+    private static void insertOrVerifyAnchor(Connection connection, TableAnchor anchor)
             throws SQLException {
         try (PreparedStatement select = connection.prepareStatement(
                 "SELECT world_id, x, y, z, yaw, pitch FROM table_anchor WHERE table_id = ?")) {
             select.setString(1, anchor.tableId().toString());
             try (ResultSet result = select.executeQuery()) {
                 if (result.next()) {
-                    StoredTableAnchor existing =
-                            new StoredTableAnchor(
+                    TableAnchor existing =
+                            new TableAnchor(
                                     anchor.tableId(),
                                     result.getString("world_id"),
                                     result.getDouble("x"),

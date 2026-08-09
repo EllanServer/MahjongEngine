@@ -124,7 +124,19 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                         visibility,
                         "phase",
                         projection.publicView().phase()));
-        if (overheadEnabled) {
+        addHudAttributes(
+                nodes,
+                visibility,
+                viewerKey,
+                "public",
+                projection.publicView().attributes());
+        addHudAttributes(
+                nodes,
+                visibility,
+                viewerKey,
+                "private",
+                privateView.attributes());
+        if (overheadEnabled && projection.lifecycle().acceptsRuleActions()) {
             SceneNodeId cameraId = new SceneNodeId("camera/" + viewerKey + "/river");
             nodes.put(
                     cameraId,
@@ -181,7 +193,7 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                         resolvedLayout);
             }
         }
-        if (overheadEnabled) {
+        if (overheadEnabled && projection.lifecycle().acceptsRuleActions()) {
             for (Map.Entry<PlayerId, PrivateRuleView> entry : projection.privateViews().entrySet()) {
                 addViewInteraction(
                         nodes,
@@ -192,6 +204,39 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                         resolvedLayout);
             }
         }
+    }
+
+    private static void addHudAttributes(
+            Map<SceneNodeId, SceneNode> nodes,
+            SceneVisibility visibility,
+            String viewerKey,
+            String namespace,
+            Map<String, String> attributes) {
+        if (attributes.size() > 64) {
+            throw new IllegalArgumentException("rule view exposes too many HUD attributes");
+        }
+        attributes.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(
+                        entry -> {
+                            String material = namespace + ':' + entry.getKey();
+                            String stable = UUID.nameUUIDFromBytes(
+                                            material.getBytes(StandardCharsets.UTF_8))
+                                    .toString()
+                                    .replace("-", "");
+                            SceneNodeId id = new SceneNodeId(
+                                    "hud/" + viewerKey + '/' + namespace + '/' + stable);
+                            if (nodes.putIfAbsent(
+                                            id,
+                                            new HudNode(
+                                                    id,
+                                                    visibility,
+                                                    material,
+                                                    entry.getValue()))
+                                    != null) {
+                                throw new IllegalStateException("HUD attribute id collision");
+                            }
+                        });
     }
 
     private void addViewInteraction(

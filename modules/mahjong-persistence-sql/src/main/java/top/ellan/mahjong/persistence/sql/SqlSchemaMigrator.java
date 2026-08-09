@@ -10,7 +10,7 @@ import java.util.Objects;
 
 /** Creates the platform-neutral event, snapshot, result and rank projection tables. */
 public final class SqlSchemaMigrator {
-    public static final int SCHEMA_VERSION = 1;
+    public static final int SCHEMA_VERSION = 2;
 
     private final SqlConnectionFactory connections;
 
@@ -55,9 +55,17 @@ public final class SqlSchemaMigrator {
             }
         }
         if (existing != null) {
-            if (existing != SCHEMA_VERSION) {
+            if (existing < 1 || existing > SCHEMA_VERSION) {
                 throw new SQLException(
                         "Database schema is incompatible with MahjongPaper 2.0: " + existing);
+            }
+            if (existing < SCHEMA_VERSION) {
+                try (PreparedStatement update = connection.prepareStatement(
+                        "UPDATE mahjong_schema_version SET schema_version = ? WHERE component = ?")) {
+                    update.setInt(1, SCHEMA_VERSION);
+                    update.setString(2, "event-store");
+                    update.executeUpdate();
+                }
             }
             return;
         }
@@ -103,6 +111,23 @@ public final class SqlSchemaMigrator {
                         + "table_id VARCHAR(36) PRIMARY KEY, world_id VARCHAR(128) NOT NULL, "
                         + "x DOUBLE NOT NULL, y DOUBLE NOT NULL, z DOUBLE NOT NULL, "
                         + "yaw REAL NOT NULL, pitch REAL NOT NULL)",
+                "CREATE TABLE IF NOT EXISTS table_lobby ("
+                        + "table_id VARCHAR(36) PRIMARY KEY, owner_id VARCHAR(36) NOT NULL, "
+                        + "rule_id VARCHAR(32) NOT NULL, profile_id VARCHAR(64) NOT NULL, "
+                        + "configuration_payload "
+                        + binary
+                        + " NOT NULL, seat_count INT NOT NULL, revision BIGINT NOT NULL, "
+                        + "phase VARCHAR(16) NOT NULL, created_at TIMESTAMP(6) NOT NULL, "
+                        + "updated_at TIMESTAMP(6) NOT NULL)",
+                "CREATE TABLE IF NOT EXISTS table_lobby_seat ("
+                        + "table_id VARCHAR(36) NOT NULL, seat_index INT NOT NULL, "
+                        + "player_id VARCHAR(36), ready BOOLEAN NOT NULL, "
+                        + "PRIMARY KEY (table_id, seat_index), "
+                        + "FOREIGN KEY (table_id) REFERENCES table_lobby(table_id))",
+                "CREATE TABLE IF NOT EXISTS table_lobby_spectator ("
+                        + "table_id VARCHAR(36) NOT NULL, player_id VARCHAR(36) NOT NULL, "
+                        + "PRIMARY KEY (table_id, player_id), "
+                        + "FOREIGN KEY (table_id) REFERENCES table_lobby(table_id))",
                 "CREATE TABLE IF NOT EXISTS match_snapshot ("
                         + "match_id VARCHAR(36) NOT NULL, snapshot_sequence BIGINT NOT NULL, "
                         + "state_revision BIGINT NOT NULL, "

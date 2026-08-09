@@ -39,7 +39,7 @@ import top.ellan.mahjong.spi.TransitionDisposition;
  * Per-table single-writer actor. Event threads only perform a bounded offer; rule work, persistence,
  * and scene work are continuations and never block ingress.
  */
-public final class TableActor implements AutoCloseable {
+public final class TableActor implements TableActionEndpoint {
     private final Executor dispatcher;
     private final FairRuleExecutor ruleExecutor;
     private final RulePackProvider provider;

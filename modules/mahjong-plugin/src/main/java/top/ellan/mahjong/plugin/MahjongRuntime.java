@@ -28,13 +28,17 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.momirealms.craftengine.bukkit.api.CraftEngineItems;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
-import org.bukkit.World;
 import org.bukkit.plugin.Plugin;
 import top.ellan.mahjong.application.BoundedDeadlineScheduler;
 import top.ellan.mahjong.application.FairRuleExecutor;
 import top.ellan.mahjong.application.InteractionRouter;
 import top.ellan.mahjong.application.TableActionResult;
 import top.ellan.mahjong.application.TableActorRegistry;
+import top.ellan.mahjong.application.lobby.port.LobbyRepositoryPort;
+import top.ellan.mahjong.application.lobby.runtime.HostedLobby;
+import top.ellan.mahjong.application.lobby.runtime.LobbyTableDirectory;
+import top.ellan.mahjong.application.lobby.usecase.CreateLobbyRequest;
+import top.ellan.mahjong.application.lobby.usecase.LobbyUseCases;
 import top.ellan.mahjong.craftengine.CraftEngineBackendConfig;
 import top.ellan.mahjong.craftengine.CraftEngineBundleInstaller;
 import top.ellan.mahjong.craftengine.CraftEngineInteractionListener;
@@ -44,18 +48,22 @@ import top.ellan.mahjong.craftengine.CraftEngineVersion;
 import top.ellan.mahjong.craftengine.DirectCraftEngineMutationGateway;
 import top.ellan.mahjong.craftengine.SparrowPrivateProjectionGateway;
 import top.ellan.mahjong.domain.CompetitionRef;
+import top.ellan.mahjong.domain.TableAnchor;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.domain.TableLifecycle;
 import top.ellan.mahjong.persistence.sql.JdbcEventStore;
 import top.ellan.mahjong.persistence.sql.JdbcMatchRepository;
 import top.ellan.mahjong.persistence.sql.JdbcTableAnchorRepository;
+import top.ellan.mahjong.persistence.sql.JdbcTableLobbyRepository;
 import top.ellan.mahjong.persistence.sql.MatchInstanceRecord;
 import top.ellan.mahjong.persistence.sql.SqlConnectionFactory;
 import top.ellan.mahjong.persistence.sql.SqlSchemaMigrator;
-import top.ellan.mahjong.persistence.sql.StoredTableAnchor;
 import top.ellan.mahjong.platform.paper.BoundedPlatformExecutors;
 import top.ellan.mahjong.platform.paper.PaperRegionScheduler;
+import top.ellan.mahjong.platform.paper.PaperTableAnchorService;
 import top.ellan.mahjong.platform.paper.PaperTableAnchorRegistry;
+import top.ellan.mahjong.plugin.lobby.LobbyRuntimeCoordinator;
+import top.ellan.mahjong.plugin.lobby.LobbyRuntimeServices;
 import top.ellan.mahjong.presentation.DefaultTableSceneMapper;
 import top.ellan.mahjong.presentation.LatestSceneProjector;
 import top.ellan.mahjong.presentation.SceneGraphDiffer;
@@ -91,10 +99,12 @@ public final class MahjongRuntime implements AutoCloseable {
     private final TableActorRegistry actors = new TableActorRegistry();
     private final InteractionRouter interactions;
     private final PaperTableAnchorRegistry paperAnchors = new PaperTableAnchorRegistry();
+    private final PaperTableAnchorService paperAnchorService;
     private final LiveTableDirectory liveTables = new LiveTableDirectory();
     private final SparrowPrivateProjectionGateway privateProjection;
     private final CraftEngineSceneBackend sceneBackend;
     private final LatestSceneProjector sceneProjector;
+    private final LobbyRuntimeCoordinator lobbyRuntime;
     private final AtomicReference<Services> services = new AtomicReference<>();
     private final AtomicReference<State> state = new AtomicReference<>(State.STARTING);
     private final AtomicReference<String> detail = new AtomicReference<>("initializing");
@@ -112,8 +122,8 @@ public final class MahjongRuntime implements AutoCloseable {
                         Math.max(2, Math.min(processors, 8)), 1_024, "mahjong-rule");
         deadlines =
                 new BoundedDeadlineScheduler(8_192, executors.actor(), "mahjong-deadline");
-
         Plugin craftEngine = requireCraftEngine();
+        paperAnchorService = new PaperTableAnchorService(plugin, paperAnchors);
         privateProjection = new SparrowPrivateProjectionGateway(
                 plugin,
                 paperAnchors,
@@ -151,6 +161,18 @@ public final class MahjongRuntime implements AutoCloseable {
                         sceneBackend,
                         new SceneGraphDiffer(),
                         deadlines);
+        lobbyRuntime =
+                new LobbyRuntimeCoordinator(
+                        executors.actor(),
+                        executors.io(),
+                        actors,
+                        sceneProjector,
+                        sceneProjector,
+                        sceneBackend,
+                        paperAnchorService,
+                        liveTables,
+                        Clock.systemUTC(),
+                        plugin.getLogger());
         registerPlatformListeners(mutations);
         installCraftEngineBundle(craftEngine);
     }
@@ -211,12 +233,32 @@ public final class MahjongRuntime implements AutoCloseable {
 
     public String status() {
         Services current = services.get();
-        String suffix = current == null ? "" : ", tables=" + liveTables.list().size();
+        String suffix =
+                current == null
+                        ? ""
+                        : ", matches="
+                                + liveTables.list().size()
+                                + ", lobbies="
+                                + lobbyRuntime.directory().list().size();
         return state.get() + ": " + detail.get() + suffix;
     }
 
     public LiveTableDirectory liveTables() {
         return liveTables;
+    }
+
+    public LobbyTableDirectory lobbyTables() {
+        return lobbyRuntime.directory();
+    }
+
+    public LobbyUseCases lobbyUseCases() {
+        return lobbyRuntime.useCases();
+    }
+
+    public CompletionStage<HostedLobby> createLobby(
+            CreateLobbyRequest request, Location paperAnchor) {
+        requireServices();
+        return lobbyRuntime.create(request, paperAnchor);
     }
 
     public CompletionStage<StartedRulePackMatch> create(
@@ -257,6 +299,10 @@ public final class MahjongRuntime implements AutoCloseable {
     public CompletionStage<Void> remove(TableId tableId) {
         Objects.requireNonNull(tableId, "tableId");
         Services current = requireServices();
+        Optional<CompletionStage<Void>> lobbyRemoval = lobbyRuntime.remove(tableId);
+        if (lobbyRemoval.isPresent()) {
+            return lobbyRemoval.orElseThrow();
+        }
         StartedRulePackMatch match =
                 liveTables
                         .remove(tableId)
@@ -344,12 +390,20 @@ public final class MahjongRuntime implements AutoCloseable {
                         database.dataSource(),
                         database.matches(),
                         database.anchors(),
+                        database.lobbies(),
                         database.events(),
                         rules.runtime(),
                         rules.admin(),
                         rules.inventory(),
                         coordinator);
         services.set(initialized);
+        lobbyRuntime.bind(
+                new LobbyRuntimeServices(
+                        database.lobbies(),
+                        database.anchors(),
+                        database.matches(),
+                        coordinator));
+        lobbyRuntime.recover().toCompletableFuture().join();
         if (coordinator.isPresent()) {
             recoverMatches(initialized, coordinator.orElseThrow()).toCompletableFuture().join();
         } else if (database.matches().isPresent()) {
@@ -459,6 +513,7 @@ public final class MahjongRuntime implements AutoCloseable {
                     Optional.of(opened),
                     Optional.of(new JdbcMatchRepository(connections)),
                     Optional.of(new JdbcTableAnchorRepository(connections)),
+                    Optional.of(new JdbcTableLobbyRepository(connections)),
                     Optional.of(events));
         } catch (RuntimeException | SQLException failure) {
             if (dataSource != null) {
@@ -470,7 +525,11 @@ public final class MahjongRuntime implements AutoCloseable {
                             "Database unavailable; matches cannot start or advance",
                             failure);
             return new DatabaseServices(
-                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty());
         }
     }
 
@@ -479,7 +538,7 @@ public final class MahjongRuntime implements AutoCloseable {
         JdbcMatchRepository matches = initialized.matches().orElseThrow();
         JdbcTableAnchorRepository anchors = initialized.anchorRepository().orElseThrow();
         List<MatchInstanceRecord> recoverable;
-        Map<TableId, StoredTableAnchor> anchorsByTable = new HashMap<>();
+        Map<TableId, TableAnchor> anchorsByTable = new HashMap<>();
         try {
             recoverable = matches.recoverableMatches();
             anchors.list().forEach(value -> anchorsByTable.put(value.tableId(), value));
@@ -512,7 +571,7 @@ public final class MahjongRuntime implements AutoCloseable {
 
     private CompletionStage<Void> recoverOne(
             MatchInstanceRecord match,
-            StoredTableAnchor anchor,
+            TableAnchor anchor,
             RulePackMatchCoordinator coordinator,
             JdbcMatchRepository matches) {
         if (match.status() == TableLifecycle.NEEDS_ADMIN_REVIEW) {
@@ -521,7 +580,7 @@ public final class MahjongRuntime implements AutoCloseable {
         if (anchor == null) {
             return markReview(match, "missing table anchor", matches);
         }
-        return registerPaperAnchor(anchor)
+        return paperAnchorService.restore(anchor)
                 .thenCompose(
                         ignored ->
                                 coordinator.recover(
@@ -538,35 +597,6 @@ public final class MahjongRuntime implements AutoCloseable {
                                     "participant or table recovery conflict",
                                     matches);
                         });
-    }
-
-    private CompletionStage<Void> registerPaperAnchor(StoredTableAnchor anchor) {
-        CompletableFuture<Void> result = new CompletableFuture<>();
-        try {
-            Bukkit.getGlobalRegionScheduler()
-                    .execute(
-                            plugin,
-                            () -> {
-                                try {
-                                    World world = resolveWorld(anchor.worldId());
-                                    paperAnchors.register(
-                                            anchor.tableId(),
-                                            new Location(
-                                                    world,
-                                                    anchor.x(),
-                                                    anchor.y(),
-                                                    anchor.z(),
-                                                    anchor.yaw(),
-                                                    anchor.pitch()));
-                                    result.complete(null);
-                                } catch (RuntimeException failure) {
-                                    result.completeExceptionally(failure);
-                                }
-                            });
-        } catch (RuntimeException failure) {
-            result.completeExceptionally(failure);
-        }
-        return result;
     }
 
     private CompletionStage<Void> markReview(
@@ -607,6 +637,7 @@ public final class MahjongRuntime implements AutoCloseable {
                 .getPluginManager()
                 .registerEvents(
                         new CraftEngineInteractionListener(
+                                plugin,
                                 interactions,
                                 (player, result, failure) -> {
                                     Component message = interactionFeedback(result, failure);
@@ -620,7 +651,10 @@ public final class MahjongRuntime implements AutoCloseable {
                                                             player.sendActionBar(message),
                                                     null);
                                 },
+                                lobbyRuntime.seatInteractions(),
                                 mutations.managedKey(),
+                                mutations.tableKey(),
+                                mutations.nodeKey(),
                                 mutations.interactionKey()),
                         plugin);
         plugin.getServer()
@@ -762,20 +796,6 @@ public final class MahjongRuntime implements AutoCloseable {
                 executors.io());
     }
 
-    private static World resolveWorld(String worldId) {
-        java.util.UUID worldUuid;
-        try {
-            worldUuid = java.util.UUID.fromString(worldId);
-        } catch (IllegalArgumentException invalid) {
-            throw new IllegalStateException("Stored world id is not a UUID: " + worldId, invalid);
-        }
-        World world = Bukkit.getWorld(worldUuid);
-        if (world == null) {
-            throw new IllegalStateException("World is not loaded: " + worldId);
-        }
-        return world;
-    }
-
     private static Throwable unwrap(Throwable failure) {
         Throwable current = failure;
         while ((current instanceof CompletionException
@@ -807,6 +827,7 @@ public final class MahjongRuntime implements AutoCloseable {
             return;
         }
         state.set(State.STOPPING);
+        lobbyRuntime.close();
         List<CompletionStage<Void>> drains = actors.closeAll();
         CompletableFuture<?>[] futures =
                 drains.stream()
@@ -856,12 +877,14 @@ public final class MahjongRuntime implements AutoCloseable {
             Optional<HikariDataSource> dataSource,
             Optional<JdbcMatchRepository> matches,
             Optional<JdbcTableAnchorRepository> anchors,
+            Optional<LobbyRepositoryPort> lobbies,
             Optional<JdbcEventStore> events) {}
 
     private record Services(
             Optional<HikariDataSource> dataSource,
             Optional<JdbcMatchRepository> matches,
             Optional<JdbcTableAnchorRepository> anchorRepository,
+            Optional<LobbyRepositoryPort> lobbyRepository,
             Optional<JdbcEventStore> events,
             Optional<RulePackRuntime> ruleRuntime,
             Optional<RulePackAdminService> admin,

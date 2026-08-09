@@ -8,6 +8,7 @@ import java.util.Optional;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.domain.TableParticipant;
 import top.ellan.mahjong.spi.PlayerId;
+import top.ellan.mahjong.spi.SeatId;
 
 /** Small synchronized ownership index; it is touched only on table lifecycle boundaries. */
 public final class LiveTableDirectory {
@@ -68,6 +69,22 @@ public final class LiveTableDirectory {
     public synchronized Optional<StartedRulePackMatch> findByPlayer(PlayerId playerId) {
         TableId tableId = tableByPlayer.get(Objects.requireNonNull(playerId, "playerId"));
         return tableId == null ? Optional.empty() : Optional.ofNullable(tables.get(tableId));
+    }
+
+    public synchronized boolean ownsPlayer(PlayerId playerId) {
+        return tableByPlayer.containsKey(Objects.requireNonNull(playerId, "playerId"));
+    }
+
+    public synchronized Optional<SeatId> seatOf(TableId tableId, PlayerId playerId) {
+        Objects.requireNonNull(playerId, "playerId");
+        StartedRulePackMatch table = tables.get(Objects.requireNonNull(tableId, "tableId"));
+        if (table == null) {
+            return Optional.empty();
+        }
+        return table.participants().stream()
+                .filter(participant -> participant.playerId().equals(playerId))
+                .flatMap(participant -> participant.seat().stream())
+                .findFirst();
     }
 
     public synchronized List<StartedRulePackMatch> list() {

@@ -21,6 +21,7 @@ import top.ellan.mahjong.application.SecureActionTokenIssuer;
 import top.ellan.mahjong.application.TableActor;
 import top.ellan.mahjong.application.TableActorConfig;
 import top.ellan.mahjong.application.TableActorRegistry;
+import top.ellan.mahjong.application.TableActionEndpoint;
 import top.ellan.mahjong.application.TaskScheduler;
 import top.ellan.mahjong.domain.CompetitionRef;
 import top.ellan.mahjong.domain.MatchBinding;
@@ -81,7 +82,21 @@ public final class RulePackMatchCoordinator {
     }
 
     public CompletionStage<StartedRulePackMatch> create(NewRulePackMatch command) {
+        return create(command, Optional.empty(), false);
+    }
+
+    public CompletionStage<StartedRulePackMatch> createFromLobby(
+            NewRulePackMatch command, TableActionEndpoint lobbyEndpoint) {
+        Objects.requireNonNull(lobbyEndpoint, "lobbyEndpoint");
+        return create(command, Optional.of(lobbyEndpoint), true);
+    }
+
+    private CompletionStage<StartedRulePackMatch> create(
+            NewRulePackMatch command,
+            Optional<TableActionEndpoint> replacedEndpoint,
+            boolean consumeLobby) {
         Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(replacedEndpoint, "replacedEndpoint");
         if (!events.available()) {
             return CompletableFuture.failedFuture(
                     new IllegalStateException(
@@ -131,7 +146,9 @@ public final class RulePackMatchCoordinator {
                                         created.state(),
                                         created.snapshot(),
                                         0,
-                                        0));
+                                        0,
+                                        replacedEndpoint,
+                                        consumeLobby));
     }
 
     public CompletionStage<StartedRulePackMatch> recover(
@@ -179,7 +196,9 @@ public final class RulePackMatchCoordinator {
             RuleState state,
             RuleStateSnapshot initial,
             long stateRevision,
-            long eventSequence) {
+            long eventSequence,
+            Optional<TableActionEndpoint> replacedEndpoint,
+            boolean consumeLobby) {
         MatchInstanceRecord metadata =
                 new MatchInstanceRecord(
                         binding,
@@ -190,11 +209,19 @@ public final class RulePackMatchCoordinator {
         return CompletableFuture.runAsync(
                         () -> {
                             try {
-                                matches.createRecoverableMatch(
-                                        metadata,
-                                        command.participants(),
-                                        initial,
-                                        command.anchor());
+                                if (consumeLobby) {
+                                    matches.createRecoverableMatchFromLobby(
+                                            metadata,
+                                            command.participants(),
+                                            initial,
+                                            command.anchor());
+                                } else {
+                                    matches.createRecoverableMatch(
+                                            metadata,
+                                            command.participants(),
+                                            initial,
+                                            command.anchor());
+                                }
                             } catch (java.sql.SQLException failure) {
                                 throw new CompletionException(failure);
                             }
@@ -211,7 +238,8 @@ public final class RulePackMatchCoordinator {
                                         state,
                                         TableLifecycle.ACTIVE,
                                         stateRevision,
-                                        eventSequence));
+                                        eventSequence,
+                                        replacedEndpoint));
     }
 
     private CompletionStage<StartedRulePackMatch> restoreActor(
@@ -259,7 +287,8 @@ public final class RulePackMatchCoordinator {
                                         verified.state(),
                                         TableLifecycle.ACTIVE,
                                         verified.stateRevision(),
-                                        verified.eventSequence()));
+                                        verified.eventSequence(),
+                                        Optional.empty()));
     }
 
     private CompletionStage<StartedRulePackMatch> createActorOrMarkReview(
@@ -271,7 +300,8 @@ public final class RulePackMatchCoordinator {
             RuleState state,
             TableLifecycle lifecycle,
             long stateRevision,
-            long eventSequence) {
+            long eventSequence,
+            Optional<TableActionEndpoint> replacedEndpoint) {
         return CompletableFuture.supplyAsync(
                 () -> {
                     try {
@@ -285,7 +315,8 @@ public final class RulePackMatchCoordinator {
                                         state,
                                         lifecycle,
                                         stateRevision,
-                                        eventSequence);
+                                        eventSequence,
+                                        replacedEndpoint);
                         return new StartedRulePackMatch(binding, tableId, participants, actor);
                     } catch (RuntimeException failure) {
                         try {
@@ -311,7 +342,8 @@ public final class RulePackMatchCoordinator {
             RuleState state,
             TableLifecycle lifecycle,
             long stateRevision,
-            long eventSequence) {
+            long eventSequence,
+            Optional<TableActionEndpoint> replacedEndpoint) {
         TableAggregate aggregate =
                 new TableAggregate(
                         tableId,
@@ -337,7 +369,13 @@ public final class RulePackMatchCoordinator {
                         state,
                         eventSequence);
         try {
-            actors.register(tableId, actor);
+            if (replacedEndpoint.isPresent()) {
+                if (!actors.replace(tableId, replacedEndpoint.orElseThrow(), actor)) {
+                    throw new IllegalStateException("Lobby actor was replaced during activation");
+                }
+            } else {
+                actors.register(tableId, actor);
+            }
             actor.start();
             return actor;
         } catch (RuntimeException failure) {

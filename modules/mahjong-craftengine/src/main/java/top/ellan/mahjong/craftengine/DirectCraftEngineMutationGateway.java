@@ -106,6 +106,14 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
         return managedKey;
     }
 
+    public NamespacedKey tableKey() {
+        return tableKey;
+    }
+
+    public NamespacedKey nodeKey() {
+        return nodeKey;
+    }
+
     public NamespacedKey interactionKey() {
         return interactionKey;
     }

@@ -9,9 +9,10 @@ import top.ellan.mahjong.domain.TableId;
 
 /** Lock-free table lookup used by the interaction router. */
 public final class TableActorRegistry {
-    private final ConcurrentHashMap<TableId, TableActor> actors = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<TableId, TableActionEndpoint> actors =
+            new ConcurrentHashMap<>();
 
-    public void register(TableId tableId, TableActor actor) {
+    public void register(TableId tableId, TableActionEndpoint actor) {
         Objects.requireNonNull(tableId, "tableId");
         Objects.requireNonNull(actor, "actor");
         if (actors.putIfAbsent(tableId, actor) != null) {
@@ -19,11 +20,21 @@ public final class TableActorRegistry {
         }
     }
 
-    public Optional<TableActor> find(TableId tableId) {
+    public Optional<TableActionEndpoint> find(TableId tableId) {
         return Optional.ofNullable(actors.get(Objects.requireNonNull(tableId, "tableId")));
     }
 
-    public boolean remove(TableId tableId, TableActor expected) {
+    public boolean replace(
+            TableId tableId,
+            TableActionEndpoint expected,
+            TableActionEndpoint replacement) {
+        return actors.replace(
+                Objects.requireNonNull(tableId, "tableId"),
+                Objects.requireNonNull(expected, "expected"),
+                Objects.requireNonNull(replacement, "replacement"));
+    }
+
+    public boolean remove(TableId tableId, TableActionEndpoint expected) {
         return actors.remove(
                 Objects.requireNonNull(tableId, "tableId"),
                 Objects.requireNonNull(expected, "expected"));
@@ -34,8 +45,8 @@ public final class TableActorRegistry {
     }
 
     public List<CompletionStage<Void>> closeAll() {
-        List<TableActor> snapshot = List.copyOf(actors.values());
+        List<TableActionEndpoint> snapshot = List.copyOf(actors.values());
         actors.clear();
-        return snapshot.stream().map(TableActor::closeAndDrain).toList();
+        return snapshot.stream().map(TableActionEndpoint::closeAndDrain).toList();
     }
 }
