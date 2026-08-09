@@ -24,6 +24,7 @@ import top.ellan.mahjong.application.table.TableActionEndpoint;
 import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.application.table.TableActorConfig;
 import top.ellan.mahjong.application.table.TableActorSnapshot;
+import top.ellan.mahjong.application.table.TableAuthorityActionEndpoint;
 import top.ellan.mahjong.domain.table.TableAggregate;
 import top.ellan.mahjong.spi.ActionToken;
 import top.ellan.mahjong.spi.PlayerId;
@@ -36,7 +37,8 @@ import top.ellan.mahjong.spi.ScheduledRuleAction;
  * Bounded per-table actor shell. The inbox owns concurrency, the state machine owns match state,
  * and rule calls run through a fair bounded launcher.
  */
-public final class TableActor implements TableActionEndpoint, TableAutomationEndpoint {
+public final class TableActor
+        implements TableActionEndpoint, TableAutomationEndpoint, TableAuthorityActionEndpoint {
     private final Executor dispatcher;
     private final TableActorConfig config;
     private final TableActorInbox inbox;
@@ -128,6 +130,29 @@ public final class TableActor implements TableActionEndpoint, TableAutomationEnd
         return response;
     }
 
+    /** O(1), bounded ingress for a platform-authorized, revision-bound rule action. */
+    @Override
+    public CompletionStage<TableActionResult> submitAuthority(
+            PlayerId authority, long expectedRevision, RuleAction action) {
+        Objects.requireNonNull(authority, "authority");
+        Objects.requireNonNull(action, "action");
+        if (expectedRevision < 0) {
+            throw new IllegalArgumentException("expectedRevision must be non-negative");
+        }
+        if (closed.get()) {
+            return CompletableFuture.completedFuture(
+                    publishedResult(TableActionCode.TABLE_CLOSED, "closed"));
+        }
+        CompletableFuture<TableActionResult> response = new CompletableFuture<>();
+        if (!inbox.offerAuthority(authority, expectedRevision, action, response)) {
+            response.complete(
+                    publishedResult(TableActionCode.MAILBOX_FULL, "authority-mailbox-full"));
+            return response;
+        }
+        scheduleDrain();
+        return response;
+    }
+
     /** O(1), bounded trustee-control ingress; fixed bot seats are controlled from construction. */
     @Override
     public CompletionStage<TableActionResult> setAutomated(PlayerId playerId, boolean enabled) {
@@ -197,6 +222,8 @@ public final class TableActor implements TableActionEndpoint, TableAutomationEnd
                     handleAction(envelope);
                 } else if (ingress instanceof AutomationControlEnvelope automationControl) {
                     handleAutomationControl(automationControl);
+                } else if (ingress instanceof AuthorityActionEnvelope authorityAction) {
+                    handleAuthorityAction(authorityAction);
                 } else {
                     handleScheduledAction((ScheduledActionTrigger) ingress);
                 }
@@ -226,6 +253,43 @@ public final class TableActor implements TableActionEndpoint, TableAutomationEnd
                 envelope.actor(),
                 admission.action(),
                 Optional.of(envelope),
+                Optional.empty(),
+                Optional.empty());
+    }
+
+    private void handleAuthorityAction(AuthorityActionEnvelope envelope) {
+        if (closed.get()) {
+            envelope.response().complete(stateMachine.result(TableActionCode.TABLE_CLOSED, "closed"));
+            return;
+        }
+        if (stateMachine.lifecycle().terminal()) {
+            envelope.response().complete(
+                    stateMachine.result(TableActionCode.TABLE_FINISHED, "match-ended"));
+            return;
+        }
+        if (!stateMachine.lifecycle().acceptsRuleActions()) {
+            TableActionCode code = stateMachine.lifecycle()
+                            == top.ellan.mahjong.domain.table.TableLifecycle.PAUSED_PERSISTENCE
+                    ? TableActionCode.TABLE_PAUSED
+                    : TableActionCode.TABLE_BLOCKED;
+            envelope.response().complete(stateMachine.result(code, "table-not-active"));
+            return;
+        }
+        if (ruleInFlight) {
+            envelope.response().complete(stateMachine.result(
+                    TableActionCode.RULE_BUSY, "rule-calculation-in-flight"));
+            return;
+        }
+        if (envelope.expectedRevision() != stateMachine.revision()) {
+            envelope.response().complete(
+                    stateMachine.result(TableActionCode.STALE_TOKEN, "stale-revision"));
+            return;
+        }
+        submitTransition(
+                envelope.authority(),
+                envelope.action(),
+                Optional.empty(),
+                Optional.of(envelope),
                 Optional.empty());
     }
 
@@ -240,6 +304,7 @@ public final class TableActor implements TableActionEndpoint, TableAutomationEnd
         submitTransition(
                 scheduledAction.actor(),
                 scheduledAction.action(),
+                Optional.empty(),
                 Optional.empty(),
                 Optional.of(trigger));
     }
@@ -291,6 +356,7 @@ public final class TableActor implements TableActionEndpoint, TableAutomationEnd
             PlayerId actor,
             RuleAction action,
             Optional<TableActionEnvelope> envelope,
+            Optional<AuthorityActionEnvelope> authorityEnvelope,
             Optional<ScheduledActionTrigger> scheduledTrigger) {
         stateMachine.pauseScheduledAction();
         ruleInFlight = true;
@@ -304,12 +370,16 @@ public final class TableActor implements TableActionEndpoint, TableAutomationEnd
                     stateMachine.nextAcceptedAction(),
                     automation.automatedPlayers(),
                     envelope,
+                    authorityEnvelope,
                     scheduledTrigger,
                     this::signalRuleCompletion);
         } catch (RejectedExecutionException failure) {
             ruleInFlight = false;
             if (envelope.isPresent()) {
                 envelope.orElseThrow().response().complete(stateMachine.result(
+                        TableActionCode.RULE_POOL_SATURATED, "rule-pool-saturated"));
+            } else if (authorityEnvelope.isPresent()) {
+                authorityEnvelope.orElseThrow().response().complete(stateMachine.result(
                         TableActionCode.RULE_POOL_SATURATED, "rule-pool-saturated"));
             } else {
                 stateMachine.block("scheduled-rule-pool-saturated");
@@ -331,6 +401,8 @@ public final class TableActor implements TableActionEndpoint, TableAutomationEnd
         ruleInFlight = false;
         if (closed.get()) {
             completion.envelope().ifPresent(value -> value.response().complete(
+                    stateMachine.result(TableActionCode.TABLE_CLOSED, "closed")));
+            completion.authorityEnvelope().ifPresent(value -> value.response().complete(
                     stateMachine.result(TableActionCode.TABLE_CLOSED, "closed")));
             return;
         }
@@ -358,6 +430,11 @@ public final class TableActor implements TableActionEndpoint, TableAutomationEnd
             automationControl.response().complete(
                     stateMachine.result(TableActionCode.TABLE_CLOSED, "closed"));
         }
+        AuthorityActionEnvelope authorityAction;
+        while ((authorityAction = inbox.pollAuthorityForClose()) != null) {
+            authorityAction.response().complete(
+                    stateMachine.result(TableActionCode.TABLE_CLOSED, "closed"));
+        }
     }
 
     private void failQueuedActions(TableActionCode code, String reason) {
@@ -368,6 +445,10 @@ public final class TableActor implements TableActionEndpoint, TableAutomationEnd
         AutomationControlEnvelope automationControl;
         while ((automationControl = inbox.pollAutomationForClose()) != null) {
             automationControl.response().complete(publishedResult(code, reason));
+        }
+        AuthorityActionEnvelope authorityAction;
+        while ((authorityAction = inbox.pollAuthorityForClose()) != null) {
+            authorityAction.response().complete(publishedResult(code, reason));
         }
     }
 

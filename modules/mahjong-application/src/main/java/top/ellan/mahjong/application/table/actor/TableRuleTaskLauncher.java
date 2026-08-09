@@ -43,6 +43,7 @@ final class TableRuleTaskLauncher {
                         expectedRevision,
                         Optional.empty(),
                         Optional.empty(),
+                        Optional.empty(),
                         computed,
                         failure)));
     }
@@ -56,6 +57,7 @@ final class TableRuleTaskLauncher {
             long nextAcceptedAction,
             List<PlayerId> automatedPlayers,
             Optional<TableActionEnvelope> envelope,
+            Optional<AuthorityActionEnvelope> authorityEnvelope,
             Optional<ScheduledActionTrigger> scheduledTrigger,
             Consumer<RuleTaskCompletion> completion) {
         List<PlayerId> automationSnapshot = List.copyOf(automatedPlayers);
@@ -72,6 +74,7 @@ final class TableRuleTaskLauncher {
                 .whenComplete((computed, failure) -> completion.accept(new RuleTaskCompletion(
                         expectedRevision,
                         envelope,
+                        authorityEnvelope,
                         scheduledTrigger,
                         computed,
                         failure)));

@@ -28,7 +28,12 @@ class TableActorInboxTest {
 
         RuleTaskCompletion completion =
                 new RuleTaskCompletion(
-                        0, Optional.empty(), Optional.empty(), null, null);
+                        0,
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        null,
+                        null);
         OutboxHealth health = new OutboxHealth(3, Duration.ofMillis(5), 7, false, Optional.empty());
         inbox.completeRule(completion);
         inbox.updateOutbox(health);
@@ -42,9 +47,9 @@ class TableActorInboxTest {
     void duplicateRuleContinuationFailsClosed() {
         TableActorInbox inbox = new TableActorInbox(1);
         inbox.completeRule(new RuleTaskCompletion(
-                0, Optional.empty(), Optional.empty(), null, null));
+                0, Optional.empty(), Optional.empty(), Optional.empty(), null, null));
         inbox.completeRule(new RuleTaskCompletion(
-                0, Optional.empty(), Optional.empty(), null, null));
+                0, Optional.empty(), Optional.empty(), Optional.empty(), null, null));
 
         assertTrue(inbox.duplicateRuleCompletion());
         assertTrue(inbox.takeCloseRequest());
@@ -72,6 +77,17 @@ class TableActorInboxTest {
         assertTrue(inbox.offerAutomation(PLAYER, true, response));
         assertTrue(offer(inbox, 0));
         assertTrue(inbox.pollIngress() instanceof AutomationControlEnvelope);
+        assertTrue(inbox.pollIngress() instanceof TableActionEnvelope);
+    }
+
+    @Test
+    void authorityActionsHaveIndependentCapacityAndPreserveArrivalOrder() {
+        TableActorInbox inbox = new TableActorInbox(1);
+        CompletableFuture<TableActionResult> response = new CompletableFuture<>();
+        assertTrue(inbox.offerAuthority(
+                PLAYER, 7, new RuleAction("referee.penalty", new byte[0]), response));
+        assertTrue(offer(inbox, 7));
+        assertTrue(inbox.pollIngress() instanceof AuthorityActionEnvelope);
         assertTrue(inbox.pollIngress() instanceof TableActionEnvelope);
     }
 

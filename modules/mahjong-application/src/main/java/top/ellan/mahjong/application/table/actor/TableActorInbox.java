@@ -19,12 +19,15 @@ import top.ellan.mahjong.spi.ScheduledRuleAction;
 final class TableActorInbox {
     private static final int SCHEDULED_TRIGGER_CAPACITY = 4;
     private static final int AUTOMATION_CONTROL_CAPACITY = 8;
+    private static final int AUTHORITY_ACTION_CAPACITY = 8;
 
     private final ArrayBlockingQueue<TableActionEnvelope> actions;
     private final ArrayBlockingQueue<ScheduledActionTrigger> scheduledTriggers =
             new ArrayBlockingQueue<>(SCHEDULED_TRIGGER_CAPACITY);
     private final ArrayBlockingQueue<AutomationControlEnvelope> automationControls =
             new ArrayBlockingQueue<>(AUTOMATION_CONTROL_CAPACITY);
+    private final ArrayBlockingQueue<AuthorityActionEnvelope> authorityActions =
+            new ArrayBlockingQueue<>(AUTHORITY_ACTION_CAPACITY);
     private final AtomicLong ingressOrder = new AtomicLong();
     private final AtomicReference<RuleTaskCompletion> ruleCompletion = new AtomicReference<>();
     private final AtomicReference<OutboxHealth> outboxHealth = new AtomicReference<>();
@@ -63,18 +66,34 @@ final class TableActorInbox {
                 ingressOrder.getAndIncrement(), playerId, enabled, response));
     }
 
+    boolean offerAuthority(
+            PlayerId authority,
+            long expectedRevision,
+            top.ellan.mahjong.spi.RuleAction action,
+            java.util.concurrent.CompletableFuture<TableActionResult> response) {
+        return authorityActions.offer(new AuthorityActionEnvelope(
+                ingressOrder.getAndIncrement(), authority, expectedRevision, action, response));
+    }
+
     TableIngress pollIngress() {
         TableActionEnvelope action = actions.peek();
         ScheduledActionTrigger scheduled = scheduledTriggers.peek();
         AutomationControlEnvelope automation = automationControls.peek();
+        AuthorityActionEnvelope authority = authorityActions.peek();
         long actionOrder = action == null ? Long.MAX_VALUE : action.ingressOrder();
         long scheduledOrder = scheduled == null ? Long.MAX_VALUE : scheduled.ingressOrder();
         long automationOrder = automation == null ? Long.MAX_VALUE : automation.ingressOrder();
-        if (actionOrder <= scheduledOrder && actionOrder <= automationOrder) {
+        long authorityOrder = authority == null ? Long.MAX_VALUE : authority.ingressOrder();
+        if (actionOrder <= scheduledOrder
+                && actionOrder <= automationOrder
+                && actionOrder <= authorityOrder) {
             return actions.poll();
         }
-        if (automationOrder <= scheduledOrder) {
+        if (automationOrder <= scheduledOrder && automationOrder <= authorityOrder) {
             return automationControls.poll();
+        }
+        if (authorityOrder <= scheduledOrder) {
+            return authorityActions.poll();
         }
         return scheduledTriggers.poll();
     }
@@ -85,6 +104,10 @@ final class TableActorInbox {
 
     AutomationControlEnvelope pollAutomationForClose() {
         return automationControls.poll();
+    }
+
+    AuthorityActionEnvelope pollAuthorityForClose() {
+        return authorityActions.poll();
     }
 
     void clearScheduledTriggers() {
@@ -135,7 +158,7 @@ final class TableActorInbox {
     }
 
     int actionCount() {
-        return actions.size() + automationControls.size();
+        return actions.size() + automationControls.size() + authorityActions.size();
     }
 
     boolean hasPendingWork() {
@@ -145,6 +168,7 @@ final class TableActorInbox {
                 || outboxHealth.get() != null
                 || !actions.isEmpty()
                 || !automationControls.isEmpty()
+                || !authorityActions.isEmpty()
                 || !scheduledTriggers.isEmpty();
     }
 }

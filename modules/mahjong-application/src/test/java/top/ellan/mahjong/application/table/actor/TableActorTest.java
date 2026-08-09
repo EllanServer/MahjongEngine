@@ -78,6 +78,60 @@ import top.ellan.mahjong.spi.TransitionDisposition;
 class TableActorTest {
     private static final PlayerId PLAYER =
             new PlayerId(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+    private static final PlayerId REFEREE =
+            new PlayerId(UUID.fromString("00000000-0000-0000-0000-000000000099"));
+
+    @Test
+    void authorityActionUsesActorSerializationAndRejectsStaleRevision() throws Exception {
+        ThreadPoolExecutor dispatcher = new ThreadPoolExecutor(
+                1,
+                1,
+                0,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(32),
+                new ThreadPoolExecutor.AbortPolicy());
+        try (dispatcher; FairRuleExecutor rules = new FairRuleExecutor(1, 8, "authority-rule-test")) {
+            MatchId matchId = MatchId.random();
+            TaskScheduler neverRuns = (task, delay) -> () -> true;
+            PersistenceOutbox outbox = new PersistenceOutbox(
+                    matchId, 0, new ImmediateStore(), neverRuns, Clock.systemUTC());
+            ArrayBlockingQueue<TableProjection> projections = new ArrayBlockingQueue<>(4);
+            TableActor actor = new TableActor(
+                    dispatcher,
+                    rules,
+                    new CounterProvider(),
+                    outbox,
+                    neverRuns,
+                    projections::offer,
+                    TablePresentationCuePort.NONE,
+                    TableOpeningPresentationPort.NONE,
+                    true,
+                    new SecureActionTokenIssuer(),
+                    Clock.systemUTC(),
+                    TableActorConfig.DEFAULT,
+                    aggregate(matchId),
+                    new CounterState(0),
+                    0);
+            actor.start();
+            assertNotNull(projections.poll(2, TimeUnit.SECONDS));
+
+            TableActionResult accepted = actor.submitAuthority(
+                            REFEREE, 0, new RuleAction("referee.penalty", new byte[] {24}))
+                    .toCompletableFuture()
+                    .get(2, TimeUnit.SECONDS);
+            assertEquals(TableActionCode.ACCEPTED_MEMORY, accepted.code());
+            assertEquals(1, accepted.revision());
+            assertEquals(1, projections.poll(2, TimeUnit.SECONDS).revision());
+
+            TableActionResult stale = actor.submitAuthority(
+                            REFEREE, 0, new RuleAction("referee.penalty", new byte[] {24}))
+                    .toCompletableFuture()
+                    .get(2, TimeUnit.SECONDS);
+            assertEquals(TableActionCode.STALE_TOKEN, stale.code());
+            assertEquals(1, stale.revision());
+            actor.close();
+        }
+    }
 
     @Test
     void scheduledRuleActionReturnsThroughActorAndCommitsOneRevision() throws Exception {

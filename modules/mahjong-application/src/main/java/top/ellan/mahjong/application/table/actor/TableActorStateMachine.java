@@ -84,8 +84,8 @@ final class TableActorStateMachine {
 
     void handleRuleCompletion(RuleTaskCompletion completion) {
         if (completion.expectedRevision() != aggregate.revision()) {
-            completion.envelope().ifPresent(value -> value.response().complete(
-                    result(TableActionCode.STALE_TOKEN, "revision-advanced")));
+            completeResponse(
+                    completion, result(TableActionCode.STALE_TOKEN, "revision-advanced"));
             return;
         }
         if (completion.failure() != null || completion.computed() == null) {
@@ -93,8 +93,8 @@ final class TableActorStateMachine {
                     ? "null-rule-result"
                     : completion.failure().getClass().getSimpleName();
             block(failure);
-            completion.envelope().ifPresent(value -> value.response().complete(
-                    result(TableActionCode.RULE_PACK_FAILURE, failureCode)));
+            completeResponse(
+                    completion, result(TableActionCode.RULE_PACK_FAILURE, failureCode));
             return;
         }
         RuleComputation computed = completion.computed();
@@ -137,6 +137,10 @@ final class TableActorStateMachine {
         TableActionEnvelope envelope;
         while ((envelope = inbox.pollActionForClose()) != null) {
             envelope.response().complete(result(TableActionCode.TABLE_CLOSED, "closed"));
+        }
+        AuthorityActionEnvelope authorityAction;
+        while ((authorityAction = inbox.pollAuthorityForClose()) != null) {
+            authorityAction.response().complete(result(TableActionCode.TABLE_CLOSED, "closed"));
         }
         outbox.close();
         outbox.awaitDrained().whenComplete((ignored, failure) -> {
@@ -216,9 +220,9 @@ final class TableActorStateMachine {
             block("scheduled-action-rejected-" + transition.reasonCode());
             return;
         }
-        TableActionEnvelope envelope = completion.envelope().orElseThrow();
         installFrame(computed.frame(), false);
-        envelope.response().complete(
+        completeResponse(
+                completion,
                 result(TableActionCode.REJECTED_BY_RULES, transition.reasonCode()));
     }
 
@@ -227,6 +231,7 @@ final class TableActorStateMachine {
             RuleComputation computed,
             RuleTransition transition) {
         Optional<TableActionEnvelope> envelope = completion.envelope();
+        Optional<AuthorityActionEnvelope> authorityEnvelope = completion.authorityEnvelope();
         PlayerId actor;
         RuleAction action;
         if (envelope.isPresent()) {
@@ -236,6 +241,10 @@ final class TableActorStateMachine {
                     .get(playerAction.token().value())
                     .legalAction()
                     .action();
+        } else if (authorityEnvelope.isPresent()) {
+            AuthorityActionEnvelope authorityAction = authorityEnvelope.orElseThrow();
+            actor = authorityAction.authority();
+            action = authorityAction.action();
         } else {
             ScheduledRuleAction scheduled = completion.scheduledTrigger()
                     .orElseThrow()
@@ -257,8 +266,8 @@ final class TableActorStateMachine {
             }
             outboxHealth = write.health();
             aggregate = aggregate.withLifecycle(TableLifecycle.PAUSED_PERSISTENCE);
-            envelope.ifPresent(value -> value.response().complete(
-                    result(TableActionCode.TABLE_PAUSED, write.failureCode())));
+            completeResponse(
+                    completion, result(TableActionCode.TABLE_PAUSED, write.failureCode()));
             republishLifecycle();
             return;
         }
@@ -274,8 +283,9 @@ final class TableActorStateMachine {
         }
         installFrame(computed.frame(), false);
         presentationCues.publish(aggregate.revision(), transition.presentationCues());
-        envelope.ifPresent(value -> value.response().complete(
-                result(TableActionCode.ACCEPTED_MEMORY, "accepted-memory-first")));
+        completeResponse(
+                completion,
+                result(TableActionCode.ACCEPTED_MEMORY, "accepted-memory-first"));
     }
 
     private void installFrame(RuleFrame frame, boolean ruleInFlight) {
@@ -301,5 +311,11 @@ final class TableActorStateMachine {
         if (!projectionFailure.isEmpty()) {
             failureCode = projectionFailure;
         }
+    }
+
+    private static void completeResponse(
+            RuleTaskCompletion completion, TableActionResult result) {
+        completion.envelope().ifPresent(value -> value.response().complete(result));
+        completion.authorityEnvelope().ifPresent(value -> value.response().complete(result));
     }
 }
