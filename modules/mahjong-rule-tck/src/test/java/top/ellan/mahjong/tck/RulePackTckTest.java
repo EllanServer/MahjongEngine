@@ -58,6 +58,13 @@ class RulePackTckTest {
                 () -> RulePackTck.verify(new CounterProvider(true), fixture()));
     }
 
+    @Test
+    void rejectsAProviderThatAuthorizesUnseatedPlayers() {
+        assertThrows(
+                RulePackContractViolation.class,
+                () -> RulePackTck.verify(new CounterProvider(false, true), fixture()));
+    }
+
     private static RulePackTckCase fixture() {
         MatchSetup setup = new MatchSetup(
                 PROFILE,
@@ -82,10 +89,16 @@ class RulePackTckTest {
                 List.of(new RuleProfileDescriptor(PROFILE, "Standard", "{}")),
                 Set.of());
         private final boolean nondeterministic;
+        private final boolean authorizesOutsiders;
         private int creations;
 
         private CounterProvider(boolean nondeterministic) {
+            this(nondeterministic, false);
+        }
+
+        private CounterProvider(boolean nondeterministic, boolean authorizesOutsiders) {
             this.nondeterministic = nondeterministic;
+            this.authorizesOutsiders = authorizesOutsiders;
         }
 
         @Override
@@ -101,6 +114,9 @@ class RulePackTckTest {
         @Override
         public RuleTransition transition(RuleState state, PlayerId actor, RuleAction action) {
             CounterState current = (CounterState) state;
+            if (!seated(actor) && !authorizesOutsiders) {
+                return RuleTransition.rejected(state, "actor-not-seated");
+            }
             if (!action.type().equals("advance")) {
                 return RuleTransition.rejected(state, "illegal-action");
             }
@@ -113,6 +129,9 @@ class RulePackTckTest {
 
         @Override
         public List<LegalAction> legalActions(RuleState state, PlayerId actor) {
+            if (!seated(actor) && !authorizesOutsiders) {
+                return List.of();
+            }
             return List.of(new LegalAction(
                     "advance", new RuleAction("advance", new byte[] {1}), Map.of()));
         }
@@ -124,7 +143,14 @@ class RulePackTckTest {
 
         @Override
         public PrivateRuleView privateView(RuleState state, PlayerId viewer, long revision) {
+            if (!seated(viewer) && !authorizesOutsiders) {
+                throw new IllegalArgumentException("viewer is not seated");
+            }
             return new PrivateRuleView(revision, viewer, List.of(), Map.of());
+        }
+
+        private static boolean seated(PlayerId player) {
+            return FIRST.equals(player) || SECOND.equals(player);
         }
 
         @Override

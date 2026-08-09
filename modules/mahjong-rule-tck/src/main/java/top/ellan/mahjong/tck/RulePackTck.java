@@ -3,10 +3,13 @@ package top.ellan.mahjong.tck;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import top.ellan.mahjong.spi.LegalAction;
 import top.ellan.mahjong.spi.MatchPlayer;
@@ -20,6 +23,7 @@ import top.ellan.mahjong.spi.RulePackProvider;
 import top.ellan.mahjong.spi.RuleState;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
 import top.ellan.mahjong.spi.RuleTransition;
+import top.ellan.mahjong.spi.RuleViewTile;
 import top.ellan.mahjong.spi.SpiVersion;
 import top.ellan.mahjong.spi.TransitionDisposition;
 
@@ -34,6 +38,7 @@ public final class RulePackTck {
         Objects.requireNonNull(provider, "provider");
         Objects.requireNonNull(testCase, "testCase");
         RulePackDescriptor descriptor = require(provider.descriptor(), "null descriptor");
+        check(descriptor.equals(provider.descriptor()), "descriptor is not deterministic");
         check(
                 SpiVersion.CURRENT.equals(descriptor.spiVersion()),
                 "provider uses an unsupported SPI version");
@@ -49,9 +54,10 @@ public final class RulePackTck {
                 "same seed/configuration produced different states");
 
         int snapshots = 0;
-        verifySnapshot(provider, first, 0, initialHash);
+        verifySnapshot(provider, testCase, first, 0, initialHash);
         snapshots++;
-        RuleStateSnapshot laterSequence = verifySnapshot(provider, first, 17, initialHash);
+        RuleStateSnapshot laterSequence =
+                verifySnapshot(provider, testCase, first, 17, initialHash);
         snapshots++;
         RuleStateSnapshot initialSnapshot = provider.snapshot(first, 0);
         check(Arrays.equals(initialSnapshot.payload(), laterSequence.payload()),
@@ -61,6 +67,7 @@ public final class RulePackTck {
         check(publicView.stateRevision() == 0, "public view has the wrong revision");
         check(publicView.equals(provider.publicView(second, 0)),
                 "public view is not deterministic");
+        verifyUniqueViewObjects(publicView.tiles(), "public view");
 
         int legalActionCount = 0;
         PlayerId selectedActor = null;
@@ -74,6 +81,7 @@ public final class RulePackTck {
             check(privateView.stateRevision() == 0, "private view has the wrong revision");
             check(privateView.equals(provider.privateView(second, playerId, 0)),
                     "private view is not deterministic");
+            verifyUniqueViewObjects(privateView.tiles(), "private view for " + playerId);
             List<LegalAction> firstActions =
                     List.copyOf(require(provider.legalActions(first, playerId), "null action list"));
             List<LegalAction> secondActions =
@@ -89,9 +97,30 @@ public final class RulePackTck {
                 selectedAction = firstActions.getFirst().action();
             }
         }
+        PlayerId outsider = outsider(testCase);
+        check(
+                List.copyOf(require(provider.legalActions(first, outsider),
+                                "null outsider action list"))
+                        .isEmpty(),
+                "unseated player received legal actions");
+        boolean privateViewDenied = false;
+        try {
+            provider.privateView(first, outsider, 0);
+        } catch (IllegalArgumentException expected) {
+            privateViewDenied = true;
+        }
+        check(privateViewDenied, "unseated player received a private view");
         check(initialHash.equals(checkedHash(provider.stateHash(first))),
                 "view or legal-action generation mutated the initial state");
         check(selectedAction != null, "fixture exposes no legal action");
+
+        RuleTransition outsiderTransition = require(
+                provider.transition(first, outsider, selectedAction),
+                "null outsider transition");
+        check(outsiderTransition.disposition() == TransitionDisposition.REJECTED,
+                "unseated player submitted a generated action");
+        check(outsiderTransition.nextState() == first && outsiderTransition.events().isEmpty(),
+                "unseated-player rejection had side effects");
 
         RuleTransition firstTransition = require(
                 provider.transition(first, selectedActor, selectedAction), "null transition");
@@ -112,6 +141,7 @@ public final class RulePackTck {
         long resultingSequence = firstTransition.events().size();
         verifySnapshot(
                 provider,
+                testCase,
                 firstTransition.nextState(),
                 resultingSequence,
                 checkedHash(provider.stateHash(firstTransition.nextState())));
@@ -137,7 +167,11 @@ public final class RulePackTck {
     }
 
     private static RuleStateSnapshot verifySnapshot(
-            RulePackProvider provider, RuleState state, long sequence, String expectedStateHash) {
+            RulePackProvider provider,
+            RulePackTckCase testCase,
+            RuleState state,
+            long sequence,
+            String expectedStateHash) {
         RuleStateSnapshot first = require(provider.snapshot(state, sequence), "null snapshot");
         RuleStateSnapshot second = require(provider.snapshot(state, sequence), "null repeated snapshot");
         check(first.equals(second), "snapshot encoding is not deterministic");
@@ -149,7 +183,57 @@ public final class RulePackTck {
         RuleState restored = require(provider.restore(first), "null restored state");
         check(expectedStateHash.equals(checkedHash(provider.stateHash(restored))),
                 "snapshot restore changed canonical state");
+        long viewRevision = 31;
+        PublicRuleView statePublic =
+                require(provider.publicView(state, viewRevision), "null pre-snapshot public view");
+        PublicRuleView restoredPublic =
+                require(provider.publicView(restored, viewRevision), "null restored public view");
+        verifyUniqueViewObjects(statePublic.tiles(), "pre-snapshot public view");
+        verifyUniqueViewObjects(restoredPublic.tiles(), "restored public view");
+        check(statePublic.equals(restoredPublic),
+                "snapshot restore changed the public view");
+        for (MatchPlayer player : testCase.setup().players()) {
+            PlayerId playerId = player.playerId();
+            PrivateRuleView statePrivate = require(
+                    provider.privateView(state, playerId, viewRevision),
+                    "null pre-snapshot private view");
+            PrivateRuleView restoredPrivate = require(
+                    provider.privateView(restored, playerId, viewRevision),
+                    "null restored private view");
+            verifyUniqueViewObjects(
+                    statePrivate.tiles(), "pre-snapshot private view for " + playerId);
+            verifyUniqueViewObjects(
+                    restoredPrivate.tiles(), "restored private view for " + playerId);
+            check(statePrivate.equals(restoredPrivate),
+                    "snapshot restore changed a private view");
+            List<LegalAction> stateActions = List.copyOf(require(
+                    provider.legalActions(state, playerId),
+                    "null pre-snapshot action list"));
+            List<LegalAction> restoredActions = List.copyOf(require(
+                    provider.legalActions(restored, playerId),
+                    "null restored action list"));
+            check(stateActions.equals(restoredActions),
+                    "snapshot restore changed legal actions");
+        }
         return first;
+    }
+
+    private static void verifyUniqueViewObjects(List<RuleViewTile> tiles, String label) {
+        Set<top.ellan.mahjong.spi.TileInstanceId> ids = new HashSet<>();
+        for (RuleViewTile tile : tiles) {
+            check(ids.add(tile.instanceId()), label + " contains a duplicate instance id");
+        }
+    }
+
+    private static PlayerId outsider(RulePackTckCase testCase) {
+        Set<UUID> seated = new HashSet<>();
+        testCase.setup().players().forEach(player -> seated.add(player.playerId().value()));
+        long suffix = -1;
+        UUID candidate;
+        do {
+            candidate = new UUID(-1, suffix--);
+        } while (seated.contains(candidate));
+        return new PlayerId(candidate);
     }
 
     private static boolean eventsEqual(List<RuleEvent> first, List<RuleEvent> second) {
