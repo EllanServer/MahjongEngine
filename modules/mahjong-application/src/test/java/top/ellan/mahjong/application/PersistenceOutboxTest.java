@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.RejectedExecutionException;
 import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.domain.MatchId;
 import top.ellan.mahjong.spi.PlayerId;
@@ -57,6 +58,24 @@ class PersistenceOutboxTest {
         slow.offer(events(slowMatch, 1, 32, clock.instant()), Optional.empty());
         assertTrue(slow.health().paused());
         assertFalse(healthy.health().paused());
+    }
+
+    @Test
+    void deadlineCapacityFailurePausesOnlyThatOutboxWithoutSplittingTheOffer() {
+        Clock clock = Clock.fixed(Instant.parse("2026-08-08T00:00:00Z"), ZoneOffset.UTC);
+        MatchId matchId = MatchId.random();
+        TaskScheduler rejecting = (task, delay) -> {
+            throw new RejectedExecutionException("full");
+        };
+        PersistenceOutbox outbox =
+                new PersistenceOutbox(matchId, 0, new ImmediateStore(), rejecting, clock);
+
+        OutboxHealth health =
+                outbox.offer(events(matchId, 1, 1, clock.instant()), Optional.empty());
+
+        assertEquals(1, health.unpersistedEvents());
+        assertTrue(health.paused());
+        assertEquals(Optional.of("scheduler-capacity"), health.lastFailure());
     }
 
     private static List<MatchEventRecord> events(

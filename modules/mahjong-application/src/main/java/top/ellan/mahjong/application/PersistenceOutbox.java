@@ -278,7 +278,12 @@ public final class PersistenceOutbox implements AutoCloseable {
         if (remaining.isNegative()) {
             remaining = Duration.ZERO;
         }
-        ageTask = scheduler.schedule(this::publishHealth, remaining);
+        try {
+            ageTask = scheduler.schedule(this::publishHealth, remaining);
+        } catch (RejectedExecutionException failure) {
+            ageTask = null;
+            lastFailure = "scheduler-capacity";
+        }
     }
 
     private synchronized Duration oldestAge() {
