@@ -58,6 +58,29 @@ class CraftEngineSceneBackendTest {
         assertFalse(failures.isEmpty());
         assertEquals(4, gateway.upserted.getOrDefault(healthy, 0));
         assertEquals(0, gateway.upserted.getOrDefault(broken, 0));
+
+        scheduler.runOneTick(REGION);
+        assertEquals(1, failures.size());
+    }
+
+    @Test
+    void eightTablesInOneRegionAdvanceFairlyWithinPerTableTickCaps() {
+        ManualRegionScheduler scheduler = new ManualRegionScheduler();
+        RecordingGateway gateway = new RecordingGateway();
+        CraftEngineSceneBackend backend = backend(gateway, scheduler, ignored -> {});
+        List<TableId> tables = java.util.stream.IntStream.range(0, 8)
+                .mapToObj(ignored -> TableId.random())
+                .toList();
+        tables.forEach(table -> backend.submit(diff(table, 20)));
+        backend.onCraftEngineReloaded();
+
+        scheduler.runOneTick(REGION);
+
+        tables.forEach(table -> assertEquals(16, gateway.upserted.getOrDefault(table, 0)));
+        assertTrue(scheduler.hasTasks(REGION));
+
+        scheduler.runOneTick(REGION);
+        tables.forEach(table -> assertEquals(20, gateway.upserted.getOrDefault(table, 0)));
     }
 
     @Test

@@ -58,6 +58,9 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
             if (diff.toRevision() < table.desiredRevision) {
                 return;
             }
+            if (diff.toRevision() > table.desiredRevision) {
+                table.failed = false;
+            }
             for (SceneNodeId removal : diff.removals()) {
                 table.desired.remove(removal);
                 table.dirty.add(removal);
@@ -293,6 +296,9 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
             }
             return true;
         } catch (RuntimeException failure) {
+            synchronized (table) {
+                table.failed = true;
+            }
             failureSink.accept(
                     new CraftEngineTableFailure(
                             tableId,
