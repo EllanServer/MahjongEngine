@@ -196,9 +196,14 @@ public final class MahjongRuntime implements AutoCloseable {
                     new IllegalStateException("A participant already belongs to a live table"));
         }
         paperAnchors.register(command.tableId(), paperAnchor);
-        CompletionStage<StartedRulePackMatch> creation =
-                CompletableFuture.supplyAsync(() -> coordinator.create(command), executors.actor())
-                        .thenCompose(value -> value);
+        CompletionStage<StartedRulePackMatch> creation;
+        try {
+            creation = coordinator.create(command);
+        } catch (RuntimeException failure) {
+            liveTables.releaseReservation(command.tableId());
+            paperAnchors.remove(command.tableId());
+            return CompletableFuture.failedFuture(failure);
+        }
         return creation.whenComplete(
                 (startedMatch, failure) -> {
                     if (failure == null) {
