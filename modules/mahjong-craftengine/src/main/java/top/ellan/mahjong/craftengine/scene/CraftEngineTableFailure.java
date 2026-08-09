@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.scene;
 
 import java.util.Objects;
 import top.ellan.mahjong.domain.TableId;

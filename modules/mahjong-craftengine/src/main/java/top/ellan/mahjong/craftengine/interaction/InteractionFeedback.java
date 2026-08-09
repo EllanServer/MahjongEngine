@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.interaction;
 
 import org.bukkit.entity.Player;
 import top.ellan.mahjong.application.table.TableActionResult;

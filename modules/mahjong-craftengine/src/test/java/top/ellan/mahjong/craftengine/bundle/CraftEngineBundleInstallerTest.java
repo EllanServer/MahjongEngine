@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.bundle;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;

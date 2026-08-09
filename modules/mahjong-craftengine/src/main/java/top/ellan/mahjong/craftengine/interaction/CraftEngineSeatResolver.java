@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.interaction;
 
 import java.util.Optional;
 import net.momirealms.craftengine.core.entity.furniture.hitbox.FurnitureHitBox;

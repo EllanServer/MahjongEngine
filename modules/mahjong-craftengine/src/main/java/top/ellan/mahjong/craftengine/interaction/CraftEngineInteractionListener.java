@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.interaction;
 
 import java.util.Objects;
 import java.util.UUID;

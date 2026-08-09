@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.bundle;
 
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
@@ -6,6 +6,7 @@ import net.momirealms.craftengine.bukkit.api.event.CraftEngineReloadEvent;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import top.ellan.mahjong.craftengine.scene.CraftEngineSceneBackend;
 
 /** Opens scene mutation only after CraftEngine confirms that the installed bundle is live. */
 public final class CraftEngineReloadListener implements Listener {

@@ -26,7 +26,7 @@ import top.ellan.mahjong.application.lobby.runtime.LobbyTableDirectory;
 import top.ellan.mahjong.application.lobby.usecase.CreateLobbyRequest;
 import top.ellan.mahjong.application.lobby.usecase.LobbySeatInteractionService;
 import top.ellan.mahjong.application.lobby.usecase.LobbyUseCases;
-import top.ellan.mahjong.craftengine.CraftEngineSceneBackend;
+import top.ellan.mahjong.craftengine.scene.CraftEngineSceneBackend;
 import top.ellan.mahjong.domain.TableAnchor;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.domain.TableLobby;

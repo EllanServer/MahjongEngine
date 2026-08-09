@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.port;
 
 import top.ellan.mahjong.domain.TableId;
 

@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.scene;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -14,6 +14,9 @@ import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.application.interaction.InteractionHandle;
 import top.ellan.mahjong.application.interaction.InteractionRouter;
 import top.ellan.mahjong.application.table.TableActorRegistry;
+import top.ellan.mahjong.craftengine.port.CraftEngineMutationGateway;
+import top.ellan.mahjong.craftengine.port.RegionKey;
+import top.ellan.mahjong.craftengine.port.RegionSchedulerPort;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.presentation.SceneInteractionBinding;
 import top.ellan.mahjong.presentation.FurnitureNode;

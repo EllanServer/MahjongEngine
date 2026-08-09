@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.scene;
 
 import java.util.ArrayDeque;
 import java.util.HashMap;
@@ -14,6 +14,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import top.ellan.mahjong.application.interaction.InteractionRouteBinding;
 import top.ellan.mahjong.application.interaction.InteractionRouter;
+import top.ellan.mahjong.craftengine.port.CraftEngineMutationGateway;
+import top.ellan.mahjong.craftengine.port.RegionKey;
+import top.ellan.mahjong.craftengine.port.RegionSchedulerPort;
+import top.ellan.mahjong.craftengine.port.TableRegionResolver;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.presentation.SceneBackendPort;
 import top.ellan.mahjong.presentation.SceneDiff;

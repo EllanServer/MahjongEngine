@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.bundle;
 
 /** Hard compatibility gate for CraftEngine 26.7+. */
 public final class CraftEngineVersion {

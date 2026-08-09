@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.privateview;
 
 import static net.momirealms.sparrow.reflection.field.matcher.FieldMatchers.fAllOf;
 import static net.momirealms.sparrow.reflection.field.matcher.FieldMatchers.fInstance;

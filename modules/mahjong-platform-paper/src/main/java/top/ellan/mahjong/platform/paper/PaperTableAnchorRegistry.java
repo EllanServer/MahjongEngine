@@ -7,9 +7,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
-import top.ellan.mahjong.craftengine.RegionKey;
-import top.ellan.mahjong.craftengine.TableRegionResolver;
-import top.ellan.mahjong.craftengine.TableAnchorLookup;
+import top.ellan.mahjong.craftengine.port.RegionKey;
+import top.ellan.mahjong.craftengine.port.TableRegionResolver;
+import top.ellan.mahjong.craftengine.port.TableAnchorLookup;
 import top.ellan.mahjong.domain.TableId;
 
 /** Immutable-value anchor lookup shared by Paper and the CE region budget coordinator. */

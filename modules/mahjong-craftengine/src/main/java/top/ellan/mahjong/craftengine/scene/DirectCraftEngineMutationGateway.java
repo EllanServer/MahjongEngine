@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.scene;
 
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -11,6 +11,9 @@ import org.bukkit.entity.Entity;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 import top.ellan.mahjong.application.interaction.InteractionHandle;
+import top.ellan.mahjong.craftengine.port.CraftEngineMutationGateway;
+import top.ellan.mahjong.craftengine.port.PrivateProjectionGateway;
+import top.ellan.mahjong.craftengine.port.TableAnchorLookup;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.presentation.FurnitureNode;
 import top.ellan.mahjong.presentation.InteractionNode;

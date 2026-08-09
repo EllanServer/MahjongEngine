@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.scene;
 
 /** Explicit render limits. */
 public record CraftEngineBackendConfig(

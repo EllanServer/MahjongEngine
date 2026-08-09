@@ -33,6 +33,8 @@ application/
 
 `MahjongRuntime` 只负责生命周期与用例委派。SQL 初始化位于 `plugin/bootstrap/sql`，规则包初始化位于 `plugin/bootstrap/rules`，CraftEngine/Paper 装配位于 `plugin/platform`，恢复位于 `plugin/recovery`。架构检查会拒绝 application 根包类、超过责任上限的 application 类，以及重新塞回 `MahjongRuntime` 的 JDBC、HTTP 或 CraftEngine 具体初始化代码。
 
+`mahjong-craftengine` 同样没有根包杂糅：`bundle` 只管理构建产物安装与 reload 门禁，`interaction` 只把 CE 交互转为平台中立输入，`port` 保存跨平台边界，`scene` 执行公开家具差分，`privateview` 只负责本人暗手、HUD 与相机。Paper/Folia 适配只能依赖 `port`，不能反向依赖 CE 的具体场景实现。
+
 规则包只通过父 classloader 提供的 SPI 通信。规则包是完整 JVM 受信代码；Ed25519 签名验证来源，不宣称提供 Java 沙箱。
 
 ## 动作链路

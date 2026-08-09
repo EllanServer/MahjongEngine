@@ -99,6 +99,19 @@ val architectureCheck =
                         "$relative is unclassified; application types must live in a responsibility package"
                 }
                 if (
+                    module == "mahjong-craftengine" &&
+                        relative.startsWith(
+                            "modules/mahjong-craftengine/src/main/java/top/ellan/mahjong/craftengine/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-craftengine/src/main/java/top/ellan/mahjong/craftengine/",
+                            ).contains('/').not()
+                ) {
+                    violations +=
+                        "$relative is unclassified; CraftEngine types must live in bundle/interaction/port/scene/privateview"
+                }
+                if (
                     module == "mahjong-application" &&
                         text.lineSequence().count() > 550
                 ) {

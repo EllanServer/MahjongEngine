@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.privateview;
 
 import java.util.Comparator;
 import java.util.Map;
@@ -31,6 +31,8 @@ import org.bukkit.plugin.Plugin;
 import org.spigotmc.event.entity.EntityDismountEvent;
 import top.ellan.mahjong.application.interaction.HandTileSelectionPort;
 import top.ellan.mahjong.application.interaction.OverheadViewPort;
+import top.ellan.mahjong.craftengine.port.PrivateProjectionGateway;
+import top.ellan.mahjong.craftengine.port.TableAnchorLookup;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.presentation.ActionLabelNode;
 import top.ellan.mahjong.presentation.CameraNode;

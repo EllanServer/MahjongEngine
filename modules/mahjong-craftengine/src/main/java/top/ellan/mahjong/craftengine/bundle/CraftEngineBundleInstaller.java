@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.bundle;
 
 import java.io.IOException;
 import java.io.InputStream;

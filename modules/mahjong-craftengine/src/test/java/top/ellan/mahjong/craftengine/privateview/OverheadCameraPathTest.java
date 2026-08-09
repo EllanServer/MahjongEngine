@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine;
+package top.ellan.mahjong.craftengine.privateview;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
