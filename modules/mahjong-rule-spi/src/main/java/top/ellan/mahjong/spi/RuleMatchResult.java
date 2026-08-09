@@ -12,7 +12,9 @@ public record RuleMatchResult(String rankSystem, List<RulePlayerResult> players)
 
     public RuleMatchResult {
         rankSystem = Objects.requireNonNull(rankSystem, "rankSystem");
-        players = List.copyOf(Objects.requireNonNull(players, "players"));
+        List<RulePlayerResult> normalizedPlayers =
+                List.copyOf(Objects.requireNonNull(players, "players"));
+        players = normalizedPlayers;
         if (!VALID_RANK_SYSTEM.matcher(rankSystem).matches()) {
             throw new IllegalArgumentException("Invalid rank system: " + rankSystem);
         }
@@ -25,7 +27,8 @@ public record RuleMatchResult(String rankSystem, List<RulePlayerResult> players)
                         != players.size()) {
             throw new IllegalArgumentException("Result players and seats must be unique");
         }
-        if (players.stream().anyMatch(result -> result.placement() > players.size())) {
+        if (normalizedPlayers.stream()
+                .anyMatch(result -> result.placement() > normalizedPlayers.size())) {
             throw new IllegalArgumentException("Placement exceeds player count");
         }
     }
