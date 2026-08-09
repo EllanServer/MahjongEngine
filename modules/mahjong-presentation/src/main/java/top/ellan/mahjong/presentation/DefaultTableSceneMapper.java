@@ -2,11 +2,12 @@ package top.ellan.mahjong.presentation;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import top.ellan.mahjong.application.InteractionHandle;
 import top.ellan.mahjong.application.TableProjection;
@@ -54,17 +55,15 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                             resolvedLayout.tile(tile, publicCounts.count(tile))));
         }
 
-        List<Map.Entry<PlayerId, PrivateRuleView>> privateEntries =
-                projection.privateViews().entrySet().stream()
-                        .sorted(Comparator.comparing(entry -> entry.getKey().toString()))
-                        .toList();
-        for (Map.Entry<PlayerId, PrivateRuleView> entry : privateEntries) {
+        Set<TileInstanceId> publiclyRevealedHands = publiclyRevealedHands(projection);
+        for (Map.Entry<PlayerId, PrivateRuleView> entry : projection.privateViews().entrySet()) {
             addPrivateView(
                     nodes,
                     projection,
                     entry.getKey(),
                     entry.getValue(),
-                    resolvedLayout);
+                    resolvedLayout,
+                    publiclyRevealedHands);
         }
         addInteractions(nodes, bindings, projection, resolvedLayout);
         return new SceneGraph(projection.tableId(), projection.revision(), nodes, bindings);
@@ -75,11 +74,15 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
             TableProjection projection,
             PlayerId viewer,
             PrivateRuleView privateView,
-            ResolvedTableLayout resolvedLayout) {
+            ResolvedTableLayout resolvedLayout,
+            Set<TileInstanceId> publiclyRevealedHands) {
         SceneVisibility visibility = SceneVisibility.privateTo(viewer);
         ZoneCounts counts = ZoneCounts.from(privateView.tiles());
         String viewerKey = compact(viewer);
         for (RuleViewTile tile : privateView.tiles()) {
+            if (publiclyRevealedHands.contains(tile.instanceId())) {
+                continue;
+            }
             SceneNodeId id = new SceneNodeId(
                     "tile/private/" + viewerKey + '/' + tile.instanceId().value());
             nodes.put(
@@ -88,7 +91,7 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                             id,
                             visibility,
                             tile.visualId(),
-                            resolvedLayout.tile(tile, counts.count(tile))));
+                            resolvedLayout.privateTile(tile, counts.count(tile))));
         }
 
         SceneNodeId phaseId = new SceneNodeId("hud/" + viewerKey + "/phase");
@@ -113,11 +116,8 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
             List<SceneInteractionBinding> bindings,
             TableProjection projection,
             ResolvedTableLayout resolvedLayout) {
-        List<Map.Entry<PlayerId, List<AuthorizedAction>>> entries =
-                projection.authorizedActions().entrySet().stream()
-                        .sorted(Comparator.comparing(entry -> entry.getKey().toString()))
-                        .toList();
-        for (Map.Entry<PlayerId, List<AuthorizedAction>> entry : entries) {
+        for (Map.Entry<PlayerId, List<AuthorizedAction>> entry
+                : projection.authorizedActions().entrySet()) {
             PlayerId player = entry.getKey();
             PrivateRuleView privateView = projection.privateViews().get(player);
             if (privateView == null) {
@@ -188,7 +188,7 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                 SceneVisibility.publicToAll(),
                 handle,
                 assets.handInteractionFurniture(),
-                resolvedLayout.tile(tile, counts.count(tile)));
+                resolvedLayout.privateTile(tile, counts.count(tile)));
         if (nodes.putIfAbsent(id, node) != null) {
             throw new IllegalArgumentException("more than one direct action targets the same hand tile");
         }
@@ -268,6 +268,19 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
 
     private static String compact(PlayerId player) {
         return player.toString().replace("-", "");
+    }
+
+    private static Set<TileInstanceId> publiclyRevealedHands(TableProjection projection) {
+        HashSet<TileInstanceId> revealed = null;
+        for (RuleViewTile tile : projection.publicView().tiles()) {
+            if (tile.zone() == RuleViewZone.HAND && tile.faceUp()) {
+                if (revealed == null) {
+                    revealed = new HashSet<>();
+                }
+                revealed.add(tile.instanceId());
+            }
+        }
+        return revealed == null ? Set.of() : revealed;
     }
 
     private static final class ZoneCounts {

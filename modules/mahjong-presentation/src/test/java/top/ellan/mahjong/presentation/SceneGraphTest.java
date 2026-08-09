@@ -99,6 +99,49 @@ class SceneGraphTest {
     }
 
     @Test
+    void privateFaceSitsJustOutsideTheReusablePublicBack() {
+        SceneGraph graph = mapper().map(projection(TableId.random(), 4, "playing"));
+        FurnitureNode publicBack = (FurnitureNode) graph.nodes().get(
+                new SceneNodeId("tile/public/1"));
+        String viewer = PLAYER.toString().replace("-", "");
+        PrivateItemNode privateFace = (PrivateItemNode) graph.nodes().get(
+                new SceneNodeId("tile/private/" + viewer + "/1"));
+
+        assertEquals(publicBack.transform().x(), privateFace.transform().x());
+        assertTrue(privateFace.transform().z() > publicBack.transform().z());
+        assertTrue(privateFace.transform().z() - publicBack.transform().z() < 0.01D);
+    }
+
+    @Test
+    void publiclyRevealedHandDoesNotCreateARedundantPrivateOverlay() {
+        TableProjection base = projection(TableId.random(), 4, "settlement");
+        RuleViewTile revealed =
+                tile(1, "riichi:tile/m5_red", RuleViewZone.HAND, 0, true, 0);
+        TableProjection projection = new TableProjection(
+                base.tableId(),
+                base.revision(),
+                base.lifecycle(),
+                new PublicRuleView(
+                        base.revision(),
+                        "settlement",
+                        List.of(revealed),
+                        Map.of(),
+                        table(136)),
+                base.privateViews(),
+                Map.of());
+
+        SceneGraph graph = mapper().map(projection);
+
+        assertTrue(graph.nodes().values().stream()
+                .noneMatch(PrivateItemNode.class::isInstance));
+        assertTrue(graph.nodes().values().stream()
+                .filter(FurnitureNode.class::isInstance)
+                .map(FurnitureNode.class::cast)
+                .anyMatch(node -> node.assetId()
+                        .equals("mahjongpaper:tile_standing_m5_red")));
+    }
+
+    @Test
     void privateFurnitureIsRejectedAtConstruction() {
         assertThrows(
                 IllegalArgumentException.class,

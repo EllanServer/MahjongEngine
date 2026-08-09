@@ -8,5 +8,8 @@ import top.ellan.mahjong.spi.SeatId;
 public interface ResolvedTableLayout {
     SceneTransform tile(RuleViewTile tile, int groupSize);
 
+    /** Client-private replacement for a public tile, separated just enough to avoid z-fighting. */
+    SceneTransform privateTile(RuleViewTile tile, int groupSize);
+
     SceneTransform action(SeatId seat, ActionPlacement placement, int index);
 }

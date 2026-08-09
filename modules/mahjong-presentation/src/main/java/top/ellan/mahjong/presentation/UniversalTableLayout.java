@@ -82,6 +82,11 @@ public final class UniversalTableLayout implements TableLayout {
         }
 
         @Override
+        public SceneTransform privateTile(RuleViewTile tile, int groupSize) {
+            return plan.privateTile(tile, groupSize);
+        }
+
+        @Override
         public SceneTransform action(SeatId seat, ActionPlacement placement, int index) {
             return plan.action(seat, placement, index);
         }
@@ -136,6 +141,23 @@ public final class UniversalTableLayout implements TableLayout {
                         auxiliary, groupSize, presentation.layoutIndex(), "auxiliary");
             };
             return decorate(base, presentation);
+        }
+
+        private SceneTransform privateTile(RuleViewTile tile, int groupSize) {
+            SceneTransform base = tile(tile, groupSize);
+            if (tile.zone() != top.ellan.mahjong.spi.RuleViewZone.HAND) {
+                return base;
+            }
+            Axis axis = axis(owner(tile));
+            double offset = Math.max(0.0005D, geometry.tileGap() * 0.5D);
+            return new SceneTransform(
+                    base.x() + axis.outX() * offset,
+                    base.y(),
+                    base.z() + axis.outZ() * offset,
+                    base.yawDegrees(),
+                    base.pitchDegrees(),
+                    base.rollDegrees(),
+                    base.scale());
         }
 
         private SceneTransform action(SeatId seat, ActionPlacement placement, int index) {
