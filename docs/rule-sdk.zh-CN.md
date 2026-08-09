@@ -1,65 +1,14 @@
-# 规则包 SDK 与发布边界
+# 规则 SPI 与 TCK
 
-`mahjong-rule-spi` 是核心插件与三个官方规则包共享的 Java 21 父类加载器契约，
-`mahjong-rule-tck` 是规则包发布前必须执行的兼容性检查工具。当前 SDK 版本为
-`1.0.0`：
+`mahjong-rule-spi` 只依赖 `java.base`，定义 ID、动作、事件、公开/私有视图、合法动作 token 与版本化二进制快照。
 
-```kotlin
-dependencies {
-    compileOnly("top.ellan.mahjong:mahjong-rule-spi:1.0.0")
-    testImplementation("top.ellan.mahjong:mahjong-rule-tck:1.0.0")
-}
-```
+`RulePackProvider` 必须满足：
 
-规则包的 fat JAR 必须排除以上两个制品。核心通过父类加载器提供 SPI；把 SPI 类重复打包会被
-`RulePackLoader` 拒绝，以防止类型身份分裂。SPI 和 TCK 的 `jdeps` 结果均只有
-`java.base`，不引入 Bukkit、CraftEngine、JDBC、Kotlin 或具体玩法类型。
+- 同一 seed、profile、配置和动作序列产生完全相同结果；
+- 状态不可变；拒绝动作返回同一状态实例且无事件；
+- 不访问平台、文件、网络、系统时钟或线程；
+- 私有视图只返回指定 viewer 的秘密；
+- 快照可恢复并重放到相同状态哈希；
+- 支付与排名投影遵守玩法自己的守恒约束。
 
-## 规则包的固定入口
-
-每个规则包 JAR 必须同时包含：
-
-- `META-INF/services/top.ellan.mahjong.spi.RulePackProvider`，且只声明一个 provider；
-- `META-INF/mahjong-rule-pack.properties`；
-- manifest 中 `requiredResources` 声明的全部资源。
-
-manifest 只接受以下六个字段，额外或缺失字段都会使安装失败：
-
-```properties
-id=sichuan
-version=1.0.0
-spiVersion=1.0.0
-requiredCoreVersion=>=2.0.0
-stateSchemaVersion=1
-requiredResources=
-```
-
-`id` 只能是 `riichi`、`mcr` 或 `sichuan`。provider 的描述符、JAR manifest、签名
-registry 与实际制品哈希必须一致。规则包不得访问平台 API、文件、网络、系统时钟，不得自行
-创建线程；同一场比赛的调用由核心串行化，不同比赛可被并发调用。
-
-## 本地验证
-
-在主仓运行：
-
-```powershell
-.\gradlew.bat `
-  :mahjong-rule-spi:check `
-  :mahjong-rule-tck:check `
-  :mahjong-rule-spi:publishAllPublicationsToTestRepository `
-  :mahjong-rule-tck:publishAllPublicationsToTestRepository
-```
-
-候选 Maven 仓库生成在 `build/rule-sdk-repository`。每个官方规则仓还必须调用
-`RulePackTck.verify(...)`，覆盖确定性种子、状态不可变、非法动作零副作用、公开/私有视图、
-快照恢复与重放。
-
-## 发布规则
-
-普通 `2.0` 分支推送和 PR 只运行验证并上传候选制品，不会写入包仓库。正式 SDK 只由
-不可变标签 `rule-spi-v1.0.0` 触发并发布到 EllanServer 的 GitHub Packages；创建该标签前
-必须确认三个规则仓已通过同一候选版本的 TCK。标签发布后不得覆盖相同版本，破坏性契约变更
-必须提升 SPI 主版本。
-
-GitHub Packages 的凭据只从 Actions 的 `GITHUB_TOKEN` 或开发者环境读取，不写入源码。
-规则包签名私钥与 SDK 发布凭据是两套独立的发布环境输入。
+SDK 发布工作流位于 `.github/workflows/rule-sdk.yml`。规则 fat JAR 必须排除 SPI，让核心 classloader 提供唯一协议类型。

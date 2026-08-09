@@ -129,7 +129,7 @@ public final class MahjongRuntime implements AutoCloseable {
                                                 "CraftEngine table failure "
                                                         + failure.tableId()
                                                         + ": "
-                                                        + failure.reason()));
+                                                        + failure.failureType()));
         sceneProjector =
                 new LatestSceneProjector(
                         executors.render(),

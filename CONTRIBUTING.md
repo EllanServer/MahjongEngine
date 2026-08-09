@@ -1,32 +1,24 @@
 # Contributing
 
-MahjongPaper currently mixes Java and Kotlin deliberately. Keep the split visible when adding production code.
+MahjongPaper production code is Java 21. Gradle Kotlin DSL and the CraftEngine bundle generator are the only Kotlin build-time code.
 
-## Java/Kotlin Boundary
+Dependency direction:
 
-Use Java by default for Paper/Bukkit integration, plugin bootstrap, commands, table/session orchestration, rendering, UI, database, runtime scheduling, CraftEngine compatibility, configuration, i18n, and metrics.
+```text
+mahjong-plugin
+  -> Paper / CraftEngine / SQL / rule-runtime adapters
+  -> mahjong-application
+       -> mahjong-domain + mahjong-rule-spi
+```
 
-Use Kotlin only where it keeps rule or data-heavy code clearer:
+Rules:
 
-- pure Riichi rule logic, scoring helpers, and state models under `src/main/kotlin/top/ellan/mahjong/riichi`
-- GB native request/response DTOs under `src/main/kotlin/top/ellan/mahjong/gb/jni`
-- future pure algorithm or serialization model packages, after updating `ArchitectureBoundaryTest` and this document in the same change
+- Do not add game-specific rule types or implementations to the core repository.
+- Do not add unbounded queues, per-table threads, blocking waits on a Paper/Folia region thread, or global per-tick table scans.
+- Do not put secret tile faces in Bukkit/CraftEngine world entities.
+- Prefer CraftEngine YAML for furniture models, variants, hitboxes, seats, interactions, and culling. Java should only coordinate state, security and diffs that configuration cannot express.
+- Rule-pack code may not access Bukkit, files, network, clocks or threads through the SPI.
+- All accepted actions must be persisted through the ordered outbox and must be recoverable from the last committed sequence.
+- Build and test changes through GitHub Actions on branch `2.0`; release artifacts must remain Java 21 and platform-independent.
 
-Production Kotlin should not import Bukkit, Paper, Kyori UI/presentation APIs, CraftEngine compatibility classes, plugin bootstrap classes, database services, runtime schedulers, or table/session coordinator internals. Tests may use Kotlin freely.
-
-## Package Boundaries
-
-Keep these dependency directions in mind:
-
-- `bootstrap` wires services and entry points; avoid reaching into command/render/ui internals.
-- `command` talks to the public table and service surface through `MahjongCommandContext`.
-- `table` owns session orchestration and may call render/UI services through narrow interfaces.
-- `render` owns display entity specs/layout and must stay free of `table` and `bootstrap`.
-- `riichi` and `gb` should stay rules-focused and free of platform/presentation dependencies.
-- `compat` hides CraftEngine and Paper reflection details behind service facades.
-
-If a new feature needs to cross one of these boundaries, prefer introducing a small DTO or interface near the caller instead of importing a concrete internal class from another layer.
-
-## Build Logic
-
-Keep root `build.gradle.kts` focused on task wiring. Resource generation, native helper logic, and bundle generation belong in `buildSrc`.
+The root `architectureCheck` task enforces the most important boundaries.

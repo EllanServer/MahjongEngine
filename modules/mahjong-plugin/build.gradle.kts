@@ -62,6 +62,9 @@ dependencies {
     implementation("org.mariadb.jdbc:mariadb-java-client:3.5.9")
     implementation("com.mysql:mysql-connector-j:9.7.0")
     implementation("net.momirealms:sparrow-heart:0.72")
+    implementation("net.momirealms:sparrow-reflection:0.33")
+    implementation("net.momirealms:sparrow-yaml:1.0.7")
+    implementation("org.ow2.asm:asm:9.10.1")
 }
 
 sourceSets.main {
@@ -85,6 +88,9 @@ tasks.processResources {
     from(rootProject.file("resourcepack/ATTRIBUTION.md")) {
         into("META-INF")
         rename { "RESOURCEPACK_ATTRIBUTION.md" }
+    }
+    from(rootProject.file("third-party-licenses")) {
+        into("META-INF/licenses")
     }
 }
 
