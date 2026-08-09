@@ -12,6 +12,8 @@ import java.util.concurrent.locks.ReentrantLock;
 
 /** A single timer thread backed by a manually bounded heap. Tasks execute on a supplied executor. */
 public final class BoundedDeadlineScheduler implements TaskScheduler, AutoCloseable {
+    private static final long INITIAL_RETRY_NANOS = 1_000_000L;
+    private static final long MAX_RETRY_NANOS = 250_000_000L;
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition changed = lock.newCondition();
     private final PriorityQueue<Deadline> deadlines =
@@ -126,13 +128,38 @@ public final class BoundedDeadlineScheduler implements TaskScheduler, AutoClosea
             lock.unlock();
         }
         if (!due.cancelled().get()) {
+            AtomicBoolean started = new AtomicBoolean();
             try {
-                target.execute(due.task());
-            } catch (RejectedExecutionException ignored) {
-                // Shutdown races are intentionally isolated from the timer thread.
+                target.execute(
+                        () -> {
+                            started.set(true);
+                            if (!due.cancelled().get()) {
+                                due.task().run();
+                            }
+                        });
+            } catch (RuntimeException rejected) {
+                if (!started.get()) {
+                    retry(due);
+                }
             }
         }
         return true;
+    }
+
+    private void retry(Deadline deadline) {
+        lock.lock();
+        try {
+            if (!running || deadline.cancelled().get()) {
+                return;
+            }
+            deadline.backOffFrom(System.nanoTime());
+            // The timer owns at most one removed deadline, so this internal retry slot keeps the
+            // heap bounded by capacity + 1 even if producers fill the public capacity meanwhile.
+            deadlines.add(deadline);
+            changed.signal();
+        } finally {
+            lock.unlock();
+        }
     }
 
     @Override
@@ -149,10 +176,38 @@ public final class BoundedDeadlineScheduler implements TaskScheduler, AutoClosea
         timerThread.interrupt();
     }
 
-    private record Deadline(
-            long dueNanos, long order, Runnable task, AtomicBoolean cancelled) {
+    private static final class Deadline {
+        private long dueNanos;
+        private final long order;
+        private final Runnable task;
+        private final AtomicBoolean cancelled = new AtomicBoolean();
+        private long retryNanos = INITIAL_RETRY_NANOS;
+
         private Deadline(long dueNanos, long order, Runnable task) {
-            this(dueNanos, order, task, new AtomicBoolean());
+            this.dueNanos = dueNanos;
+            this.order = order;
+            this.task = task;
+        }
+
+        private long dueNanos() {
+            return dueNanos;
+        }
+
+        private long order() {
+            return order;
+        }
+
+        private Runnable task() {
+            return task;
+        }
+
+        private AtomicBoolean cancelled() {
+            return cancelled;
+        }
+
+        private void backOffFrom(long now) {
+            dueNanos = retryNanos > Long.MAX_VALUE - now ? Long.MAX_VALUE : now + retryNanos;
+            retryNanos = Math.min(MAX_RETRY_NANOS, retryNanos * 2);
         }
     }
 }
