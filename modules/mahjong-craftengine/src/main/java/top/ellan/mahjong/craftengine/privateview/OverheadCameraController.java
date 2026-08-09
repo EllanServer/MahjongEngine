@@ -15,7 +15,7 @@ import org.bukkit.plugin.Plugin;
 import top.ellan.mahjong.application.interaction.OverheadViewPort;
 import top.ellan.mahjong.craftengine.port.TableAnchorLookup;
 import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.presentation.CameraNode;
+import top.ellan.mahjong.presentation.node.CameraNode;
 import top.ellan.mahjong.spi.PlayerId;
 
 /** Owns pending/active overhead camera sessions independently from private tile rendering. */

@@ -33,7 +33,7 @@ import top.ellan.mahjong.domain.TableLobby;
 import top.ellan.mahjong.persistence.sql.match.MatchInstanceRecord;
 import top.ellan.mahjong.platform.paper.PaperTableAnchorService;
 import top.ellan.mahjong.plugin.LiveTableDirectory;
-import top.ellan.mahjong.presentation.LatestSceneProjector;
+import top.ellan.mahjong.presentation.projection.LatestSceneProjector;
 
 /** Facade for pre-match lifecycle; the plugin composition root only delegates to this component. */
 public final class LobbyRuntimeCoordinator implements AutoCloseable {

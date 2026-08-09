@@ -1,4 +1,4 @@
-package top.ellan.mahjong.presentation;
+package top.ellan.mahjong.presentation.node;
 
 /** Closed node family lets backends enforce public-world/private-client separation exhaustively. */
 public sealed interface SceneNode

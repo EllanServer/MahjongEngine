@@ -273,7 +273,7 @@ public final class JdbcTableLobbyRepository implements LobbyRepositoryPort {
 
     private static void replaceMembers(Connection connection, TableLobby lobby)
             throws SQLException {
-        deleteMembers(connection, lobby.tableId());
+        LobbySqlTransactions.deleteMembers(connection, lobby.tableId());
         try (PreparedStatement insert = connection.prepareStatement(
                 "INSERT INTO table_lobby_seat (table_id, seat_index, player_id, ready) "
                         + "VALUES (?, ?, ?, ?)")) {

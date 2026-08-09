@@ -1,4 +1,4 @@
-package top.ellan.mahjong.presentation;
+package top.ellan.mahjong.presentation.node;
 
 /** Platform-neutral pose in table-local coordinates. */
 public record SceneTransform(

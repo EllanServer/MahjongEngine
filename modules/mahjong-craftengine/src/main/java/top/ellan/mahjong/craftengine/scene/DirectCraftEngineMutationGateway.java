@@ -15,11 +15,11 @@ import top.ellan.mahjong.craftengine.port.CraftEngineMutationGateway;
 import top.ellan.mahjong.craftengine.port.PrivateProjectionGateway;
 import top.ellan.mahjong.craftengine.port.TableAnchorLookup;
 import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.presentation.FurnitureNode;
-import top.ellan.mahjong.presentation.InteractionNode;
-import top.ellan.mahjong.presentation.SceneNode;
-import top.ellan.mahjong.presentation.SceneNodeId;
-import top.ellan.mahjong.presentation.SceneTransform;
+import top.ellan.mahjong.presentation.node.FurnitureNode;
+import top.ellan.mahjong.presentation.node.InteractionNode;
+import top.ellan.mahjong.presentation.node.SceneNode;
+import top.ellan.mahjong.presentation.node.SceneNodeId;
+import top.ellan.mahjong.presentation.node.SceneTransform;
 
 /** Direct CE 26.7 furniture adapter. Absence or API failure throws; there is no display-entity fallback. */
 public final class DirectCraftEngineMutationGateway implements CraftEngineMutationGateway {

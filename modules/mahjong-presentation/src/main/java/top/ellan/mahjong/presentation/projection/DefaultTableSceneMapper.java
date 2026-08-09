@@ -1,4 +1,4 @@
-package top.ellan.mahjong.presentation;
+package top.ellan.mahjong.presentation.projection;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -11,6 +11,22 @@ import java.util.Set;
 import java.util.UUID;
 import top.ellan.mahjong.application.interaction.InteractionHandle;
 import top.ellan.mahjong.application.projection.TableProjection;
+import top.ellan.mahjong.presentation.asset.TableSceneAssets;
+import top.ellan.mahjong.presentation.asset.TileAssetName;
+import top.ellan.mahjong.presentation.layout.ResolvedTableLayout;
+import top.ellan.mahjong.presentation.layout.TableLayout;
+import top.ellan.mahjong.presentation.node.ActionLabelNode;
+import top.ellan.mahjong.presentation.node.CameraNode;
+import top.ellan.mahjong.presentation.node.FurnitureNode;
+import top.ellan.mahjong.presentation.node.HudNode;
+import top.ellan.mahjong.presentation.node.InteractionNode;
+import top.ellan.mahjong.presentation.node.PrivateItemNode;
+import top.ellan.mahjong.presentation.node.SceneNode;
+import top.ellan.mahjong.presentation.node.SceneNodeId;
+import top.ellan.mahjong.presentation.node.SceneTransform;
+import top.ellan.mahjong.presentation.node.SceneVisibility;
+import top.ellan.mahjong.presentation.scene.SceneGraph;
+import top.ellan.mahjong.presentation.scene.SceneInteractionBinding;
 import top.ellan.mahjong.spi.ActionPlacement;
 import top.ellan.mahjong.spi.AuthorizedAction;
 import top.ellan.mahjong.spi.PlayerId;

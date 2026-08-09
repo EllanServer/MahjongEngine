@@ -1,4 +1,4 @@
-package top.ellan.mahjong.presentation;
+package top.ellan.mahjong.presentation.asset;
 
 import java.util.Objects;
 import top.ellan.mahjong.spi.TileVisualId;

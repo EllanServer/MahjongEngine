@@ -1,4 +1,4 @@
-package top.ellan.mahjong.presentation;
+package top.ellan.mahjong.presentation.projection;
 
 import java.time.Duration;
 import java.util.Objects;
@@ -12,6 +12,11 @@ import top.ellan.mahjong.application.projection.SceneProjectionPort;
 import top.ellan.mahjong.application.projection.TableProjection;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.presentation.node.SceneNode;
+import top.ellan.mahjong.presentation.port.SceneBackendPort;
+import top.ellan.mahjong.presentation.scene.SceneDiff;
+import top.ellan.mahjong.presentation.scene.SceneGraph;
+import top.ellan.mahjong.presentation.scene.SceneGraphDiffer;
 
 /** Per-table latest-only scene precomputation. Superseded frames are discarded before mapping. */
 public final class LatestSceneProjector implements SceneProjectionPort {

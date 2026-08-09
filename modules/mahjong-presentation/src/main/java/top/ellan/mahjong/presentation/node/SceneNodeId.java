@@ -1,4 +1,4 @@
-package top.ellan.mahjong.presentation;
+package top.ellan.mahjong.presentation.node;
 
 import java.util.Objects;
 import java.util.regex.Pattern;

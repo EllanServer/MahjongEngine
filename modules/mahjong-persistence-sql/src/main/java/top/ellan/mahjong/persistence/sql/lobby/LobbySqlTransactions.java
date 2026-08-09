@@ -22,7 +22,7 @@ public final class LobbySqlTransactions {
         }
     }
 
-    private static void deleteMembers(Connection connection, TableId tableId)
+    static void deleteMembers(Connection connection, TableId tableId)
             throws SQLException {
         try (PreparedStatement delete =
                 connection.prepareStatement(

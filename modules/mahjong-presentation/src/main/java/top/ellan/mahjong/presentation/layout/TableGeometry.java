@@ -1,4 +1,4 @@
-package top.ellan.mahjong.presentation;
+package top.ellan.mahjong.presentation.layout;
 
 /** Reusable physical dimensions shared by every rule mode and supplied by plugin configuration. */
 public record TableGeometry(

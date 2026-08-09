@@ -30,12 +30,12 @@ import top.ellan.mahjong.application.interaction.OverheadViewPort;
 import top.ellan.mahjong.craftengine.port.PrivateProjectionGateway;
 import top.ellan.mahjong.craftengine.port.TableAnchorLookup;
 import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.presentation.ActionLabelNode;
-import top.ellan.mahjong.presentation.CameraNode;
-import top.ellan.mahjong.presentation.HudNode;
-import top.ellan.mahjong.presentation.PrivateItemNode;
-import top.ellan.mahjong.presentation.SceneNode;
-import top.ellan.mahjong.presentation.SceneNodeId;
+import top.ellan.mahjong.presentation.node.ActionLabelNode;
+import top.ellan.mahjong.presentation.node.CameraNode;
+import top.ellan.mahjong.presentation.node.HudNode;
+import top.ellan.mahjong.presentation.node.PrivateItemNode;
+import top.ellan.mahjong.presentation.node.SceneNode;
+import top.ellan.mahjong.presentation.node.SceneNodeId;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.TileInstanceId;
 

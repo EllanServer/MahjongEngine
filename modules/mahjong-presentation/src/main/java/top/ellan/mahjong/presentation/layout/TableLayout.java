@@ -1,4 +1,4 @@
-package top.ellan.mahjong.presentation;
+package top.ellan.mahjong.presentation.layout;
 
 import top.ellan.mahjong.spi.RuleTablePresentation;
 

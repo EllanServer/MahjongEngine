@@ -1,8 +1,10 @@
-package top.ellan.mahjong.presentation;
+package top.ellan.mahjong.presentation.scene;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import top.ellan.mahjong.presentation.node.SceneNode;
+import top.ellan.mahjong.presentation.node.SceneNodeId;
 
 /** Stable deterministic scene differ. */
 public final class SceneGraphDiffer {

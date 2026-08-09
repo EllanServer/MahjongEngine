@@ -1,7 +1,7 @@
 package top.ellan.mahjong.craftengine.privateview;
 
 import org.bukkit.Location;
-import top.ellan.mahjong.presentation.SceneTransform;
+import top.ellan.mahjong.presentation.node.SceneTransform;
 
 /** Converts the shared table-local coordinate system into one Paper world location. */
 final class PrivateSceneGeometry {

@@ -19,10 +19,10 @@ import top.ellan.mahjong.craftengine.port.RegionKey;
 import top.ellan.mahjong.craftengine.port.RegionSchedulerPort;
 import top.ellan.mahjong.craftengine.port.TableRegionResolver;
 import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.presentation.SceneBackendPort;
-import top.ellan.mahjong.presentation.SceneDiff;
-import top.ellan.mahjong.presentation.SceneNode;
-import top.ellan.mahjong.presentation.SceneNodeId;
+import top.ellan.mahjong.presentation.port.SceneBackendPort;
+import top.ellan.mahjong.presentation.scene.SceneDiff;
+import top.ellan.mahjong.presentation.node.SceneNode;
+import top.ellan.mahjong.presentation.node.SceneNodeId;
 
 /**
  * Latest-state CE backend. Region tasks round-robin dirty tables under one shared nanosecond budget;

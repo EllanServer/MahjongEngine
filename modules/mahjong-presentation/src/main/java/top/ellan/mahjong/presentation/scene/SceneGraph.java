@@ -1,4 +1,4 @@
-package top.ellan.mahjong.presentation;
+package top.ellan.mahjong.presentation.scene;
 
 import java.util.LinkedHashMap;
 import java.util.HashSet;
@@ -7,6 +7,9 @@ import java.util.Map;
 import java.util.Objects;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.application.interaction.InteractionHandle;
+import top.ellan.mahjong.presentation.node.InteractionNode;
+import top.ellan.mahjong.presentation.node.SceneNode;
+import top.ellan.mahjong.presentation.node.SceneNodeId;
 import top.ellan.mahjong.spi.PlayerId;
 
 /** Complete immutable desired scene for one table revision. */

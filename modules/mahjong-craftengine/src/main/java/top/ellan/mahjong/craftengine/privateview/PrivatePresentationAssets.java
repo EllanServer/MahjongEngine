@@ -1,8 +1,8 @@
 package top.ellan.mahjong.craftengine.privateview;
 
-import top.ellan.mahjong.presentation.ActionLabelNode;
-import top.ellan.mahjong.presentation.PrivateItemNode;
-import top.ellan.mahjong.presentation.TileAssetName;
+import top.ellan.mahjong.presentation.node.ActionLabelNode;
+import top.ellan.mahjong.presentation.node.PrivateItemNode;
+import top.ellan.mahjong.presentation.asset.TileAssetName;
 
 /** Stateless mapping from semantic private nodes to CE assets and translated label JSON. */
 final class PrivatePresentationAssets {

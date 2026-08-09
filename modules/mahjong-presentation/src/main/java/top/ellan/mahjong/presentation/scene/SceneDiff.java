@@ -1,8 +1,10 @@
-package top.ellan.mahjong.presentation;
+package top.ellan.mahjong.presentation.scene;
 
 import java.util.List;
 import java.util.Objects;
 import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.presentation.node.SceneNode;
+import top.ellan.mahjong.presentation.node.SceneNodeId;
 
 /** Minimal node mutation set plus replacement interaction bindings. */
 public record SceneDiff(

@@ -7,8 +7,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import top.ellan.mahjong.application.interaction.HandTileSelectionPort;
 import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.presentation.PrivateItemNode;
-import top.ellan.mahjong.presentation.SceneTransform;
+import top.ellan.mahjong.presentation.node.PrivateItemNode;
+import top.ellan.mahjong.presentation.node.SceneTransform;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.TileInstanceId;
 

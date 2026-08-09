@@ -1,4 +1,4 @@
-package top.ellan.mahjong.presentation;
+package top.ellan.mahjong.presentation.node;
 
 import java.util.Objects;
 import top.ellan.mahjong.spi.TileInstanceId;

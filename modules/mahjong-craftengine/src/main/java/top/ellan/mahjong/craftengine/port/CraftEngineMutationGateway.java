@@ -1,8 +1,8 @@
 package top.ellan.mahjong.craftengine.port;
 
 import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.presentation.SceneNode;
-import top.ellan.mahjong.presentation.SceneNodeId;
+import top.ellan.mahjong.presentation.node.SceneNode;
+import top.ellan.mahjong.presentation.node.SceneNodeId;
 
 /**
  * Concrete adapter boundary for CraftEngine furniture/culling and private Sparrow packets. Every

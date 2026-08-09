@@ -139,6 +139,26 @@ val architectureCheck =
                         "$relative exceeds the 550-line SQL responsibility limit"
                 }
                 if (
+                    module == "mahjong-presentation" &&
+                        relative.startsWith(
+                            "modules/mahjong-presentation/src/main/java/top/ellan/mahjong/presentation/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-presentation/src/main/java/top/ellan/mahjong/presentation/",
+                            ).contains('/').not()
+                ) {
+                    violations +=
+                        "$relative is unclassified; presentation types must live in asset/layout/node/port/projection/scene"
+                }
+                if (
+                    module == "mahjong-presentation" &&
+                        text.lineSequence().count() > 550
+                ) {
+                    violations +=
+                        "$relative exceeds the 550-line presentation responsibility limit"
+                }
+                if (
                     module == "mahjong-application" &&
                         text.lineSequence().count() > 550
                 ) {

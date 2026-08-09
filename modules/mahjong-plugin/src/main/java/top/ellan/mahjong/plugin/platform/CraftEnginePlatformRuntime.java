@@ -33,12 +33,12 @@ import top.ellan.mahjong.platform.paper.PaperTableAnchorService;
 import top.ellan.mahjong.plugin.MahjongPaperPlugin;
 import top.ellan.mahjong.plugin.PluginConfiguration;
 import top.ellan.mahjong.plugin.runtime.FailureSupport;
-import top.ellan.mahjong.presentation.DefaultTableSceneMapper;
-import top.ellan.mahjong.presentation.LatestSceneProjector;
-import top.ellan.mahjong.presentation.SceneGraphDiffer;
-import top.ellan.mahjong.presentation.TableGeometry;
-import top.ellan.mahjong.presentation.TableSceneAssets;
-import top.ellan.mahjong.presentation.UniversalTableLayout;
+import top.ellan.mahjong.presentation.projection.DefaultTableSceneMapper;
+import top.ellan.mahjong.presentation.projection.LatestSceneProjector;
+import top.ellan.mahjong.presentation.scene.SceneGraphDiffer;
+import top.ellan.mahjong.presentation.layout.TableGeometry;
+import top.ellan.mahjong.presentation.asset.TableSceneAssets;
+import top.ellan.mahjong.presentation.layout.UniversalTableLayout;
 
 /** Owns the Paper/CraftEngine presentation boundary and its restart-scoped resources. */
 public final class CraftEnginePlatformRuntime implements AutoCloseable {
