@@ -11,7 +11,7 @@ plugins {
     kotlin("plugin.serialization") version "2.4.10"
     id("com.gradleup.shadow") version "9.6.1" apply false
     id("io.papermc.paperweight.userdev") version "2.0.0-SNAPSHOT"
-    id("com.diffplug.spotless") version "8.8.0"
+    id("com.diffplug.spotless") version "8.9.0"
     id("dev.detekt") version "2.0.0-alpha.5"
 }
 
@@ -42,7 +42,7 @@ val toolchainJavaVersion =
 val kotlinRuntimeVersion = "2.4.10"
 val kotlinSerializationVersion = "1.11.0"
 val mahjongUtilsVersion = "0.7.7"
-val mariadbVersion = "3.5.9"
+val mariadbVersion = "3.5.10"
 val mysqlVersion = "9.7.0"
 val h2Version = "2.4.240"
 val hikariVersion = "7.1.0"
