@@ -33,10 +33,7 @@ import top.ellan.mahjong.spi.RulePackProvider;
 import top.ellan.mahjong.spi.RuleState;
 import top.ellan.mahjong.spi.ScheduledRuleAction;
 
-/**
- * Bounded per-table actor shell. The inbox owns concurrency, the state machine owns match state,
- * and rule calls run through a fair bounded launcher.
- */
+/** Bounded per-table actor shell; state and pure-rule work remain delegated. */
 public final class TableActor
         implements TableActionEndpoint, TableAutomationEndpoint, TableAuthorityActionEndpoint {
     private final Executor dispatcher;
@@ -45,6 +42,8 @@ public final class TableActor
     private final TableRuleTaskLauncher ruleTasks;
     private final TableActorStateMachine stateMachine;
     private final TableAutomationRoster automation;
+    private final TableAuthorityActionController authorityActions;
+    private final TableExternalIngressController externalIngress;
     private final AtomicBoolean scheduled = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final AtomicReference<TableActorSnapshot> publishedSnapshot = new AtomicReference<>();
@@ -77,6 +76,10 @@ public final class TableActor
             throw new IllegalArgumentException("lastEventSequence must be non-negative");
         }
         inbox = new TableActorInbox(config.mailboxCapacity());
+        authorityActions = new TableAuthorityActionController(
+                inbox, closed::get, this::publishedResult, this::scheduleDrain);
+        externalIngress = new TableExternalIngressController(
+                inbox, closed::get, this::publishedResult, this::scheduleDrain);
         TableScheduledActionController scheduledActions = new TableScheduledActionController(
                 Objects.requireNonNull(deadlineScheduler, "deadlineScheduler"),
                 inbox,
@@ -115,59 +118,18 @@ public final class TableActor
 
     /** O(1), non-blocking ingress method safe for Paper and CraftEngine event threads. */
     public CompletionStage<TableActionResult> submit(PlayerId actor, ActionToken token) {
-        Objects.requireNonNull(actor, "actor");
-        Objects.requireNonNull(token, "token");
-        if (closed.get()) {
-            return CompletableFuture.completedFuture(
-                    publishedResult(TableActionCode.TABLE_CLOSED, "closed"));
-        }
-        CompletableFuture<TableActionResult> response = new CompletableFuture<>();
-        if (!inbox.offerAction(actor, token, response)) {
-            response.complete(publishedResult(TableActionCode.MAILBOX_FULL, "mailbox-full"));
-            return response;
-        }
-        scheduleDrain();
-        return response;
+        return externalIngress.submit(actor, token);
     }
 
-    /** O(1), bounded ingress for a platform-authorized, revision-bound rule action. */
     @Override
     public CompletionStage<TableActionResult> submitAuthority(
             PlayerId authority, long expectedRevision, RuleAction action) {
-        Objects.requireNonNull(authority, "authority");
-        Objects.requireNonNull(action, "action");
-        if (expectedRevision < 0) {
-            throw new IllegalArgumentException("expectedRevision must be non-negative");
-        }
-        if (closed.get()) {
-            return CompletableFuture.completedFuture(
-                    publishedResult(TableActionCode.TABLE_CLOSED, "closed"));
-        }
-        CompletableFuture<TableActionResult> response = new CompletableFuture<>();
-        if (!inbox.offerAuthority(authority, expectedRevision, action, response)) {
-            response.complete(
-                    publishedResult(TableActionCode.MAILBOX_FULL, "authority-mailbox-full"));
-            return response;
-        }
-        scheduleDrain();
-        return response;
+        return authorityActions.submit(authority, expectedRevision, action);
     }
 
-    /** O(1), bounded trustee-control ingress; fixed bot seats are controlled from construction. */
     @Override
     public CompletionStage<TableActionResult> setAutomated(PlayerId playerId, boolean enabled) {
-        Objects.requireNonNull(playerId, "playerId");
-        if (closed.get()) {
-            return CompletableFuture.completedFuture(
-                    publishedResult(TableActionCode.TABLE_CLOSED, "closed"));
-        }
-        CompletableFuture<TableActionResult> response = new CompletableFuture<>();
-        if (!inbox.offerAutomation(playerId, enabled, response)) {
-            response.complete(publishedResult(TableActionCode.MAILBOX_FULL, "automation-mailbox-full"));
-            return response;
-        }
-        scheduleDrain();
-        return response;
+        return externalIngress.setAutomated(playerId, enabled);
     }
 
     public TableActorSnapshot snapshot() {
@@ -258,31 +220,10 @@ public final class TableActor
     }
 
     private void handleAuthorityAction(AuthorityActionEnvelope envelope) {
-        if (closed.get()) {
-            envelope.response().complete(stateMachine.result(TableActionCode.TABLE_CLOSED, "closed"));
-            return;
-        }
-        if (stateMachine.lifecycle().terminal()) {
+        ActionAdmission admission = authorityActions.admit(envelope, stateMachine, ruleInFlight);
+        if (!admission.accepted()) {
             envelope.response().complete(
-                    stateMachine.result(TableActionCode.TABLE_FINISHED, "match-ended"));
-            return;
-        }
-        if (!stateMachine.lifecycle().acceptsRuleActions()) {
-            TableActionCode code = stateMachine.lifecycle()
-                            == top.ellan.mahjong.domain.table.TableLifecycle.PAUSED_PERSISTENCE
-                    ? TableActionCode.TABLE_PAUSED
-                    : TableActionCode.TABLE_BLOCKED;
-            envelope.response().complete(stateMachine.result(code, "table-not-active"));
-            return;
-        }
-        if (ruleInFlight) {
-            envelope.response().complete(stateMachine.result(
-                    TableActionCode.RULE_BUSY, "rule-calculation-in-flight"));
-            return;
-        }
-        if (envelope.expectedRevision() != stateMachine.revision()) {
-            envelope.response().complete(
-                    stateMachine.result(TableActionCode.STALE_TOKEN, "stale-revision"));
+                    stateMachine.result(admission.rejectionCode(), admission.reasonCode()));
             return;
         }
         submitTransition(
@@ -423,33 +364,13 @@ public final class TableActor
         if (inbox.scheduledTriggerOverflow()) {
             stateMachine.recordFailure("scheduled-trigger-overflow");
         }
-        stateMachine.close(
-                inbox.duplicateRuleCompletion(), inbox, shutdownComplete);
-        AutomationControlEnvelope automationControl;
-        while ((automationControl = inbox.pollAutomationForClose()) != null) {
-            automationControl.response().complete(
-                    stateMachine.result(TableActionCode.TABLE_CLOSED, "closed"));
-        }
-        AuthorityActionEnvelope authorityAction;
-        while ((authorityAction = inbox.pollAuthorityForClose()) != null) {
-            authorityAction.response().complete(
-                    stateMachine.result(TableActionCode.TABLE_CLOSED, "closed"));
-        }
+        stateMachine.close(inbox.duplicateRuleCompletion(), shutdownComplete);
+        TableQueuedResponseDrainer.complete(
+                inbox, TableActionCode.TABLE_CLOSED, "closed", stateMachine::result);
     }
 
     private void failQueuedActions(TableActionCode code, String reason) {
-        TableActionEnvelope envelope;
-        while ((envelope = inbox.pollActionForClose()) != null) {
-            envelope.response().complete(publishedResult(code, reason));
-        }
-        AutomationControlEnvelope automationControl;
-        while ((automationControl = inbox.pollAutomationForClose()) != null) {
-            automationControl.response().complete(publishedResult(code, reason));
-        }
-        AuthorityActionEnvelope authorityAction;
-        while ((authorityAction = inbox.pollAuthorityForClose()) != null) {
-            authorityAction.response().complete(publishedResult(code, reason));
-        }
+        TableQueuedResponseDrainer.complete(inbox, code, reason, this::publishedResult);
     }
 
     private TableActionResult publishedResult(TableActionCode code, String reason) {
@@ -470,7 +391,7 @@ public final class TableActor
         scheduleDrain();
     }
 
-    /** Requests actor shutdown and completes after this table's persistence outbox drains. */
+    /** Completes after this table's persistence outbox drains. */
     public CompletionStage<Void> closeAndDrain() {
         close();
         return shutdownComplete;

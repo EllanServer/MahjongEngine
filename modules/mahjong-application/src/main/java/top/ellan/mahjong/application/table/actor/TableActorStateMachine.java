@@ -127,21 +127,12 @@ final class TableActorStateMachine {
 
     void close(
             boolean duplicateRuleCompletion,
-            TableActorInbox inbox,
             CompletableFuture<Void> shutdownComplete) {
         if (duplicateRuleCompletion) {
             failureCode = "duplicate-rule-completion";
         }
         actionCatalog.clear();
         scheduledActions.clear();
-        TableActionEnvelope envelope;
-        while ((envelope = inbox.pollActionForClose()) != null) {
-            envelope.response().complete(result(TableActionCode.TABLE_CLOSED, "closed"));
-        }
-        AuthorityActionEnvelope authorityAction;
-        while ((authorityAction = inbox.pollAuthorityForClose()) != null) {
-            authorityAction.response().complete(result(TableActionCode.TABLE_CLOSED, "closed"));
-        }
         outbox.close();
         outbox.awaitDrained().whenComplete((ignored, failure) -> {
             if (failure == null) {
