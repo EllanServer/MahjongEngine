@@ -394,8 +394,8 @@ public final class UniversalTableLayout implements TableLayout {
                 int side = sideOf(physicalStack, sideStartStacks);
                 int stackWithinSide = physicalStack - sideStartStacks[side];
                 int sideStacks = key.wallStacks().get(side);
-                double tangent = (sideStacks - 1) * tileStep() / 2.0D
-                        - stackWithinSide * tileStep();
+                double tangent = stackWithinSide * tileStep()
+                        - (sideStacks - 1) * tileStep() / 2.0D;
                 Axis axis = axis(side);
                 for (int tileInStack = 0; tileInStack < 2; tileInStack++) {
                     int layer = 1 - tileInStack;

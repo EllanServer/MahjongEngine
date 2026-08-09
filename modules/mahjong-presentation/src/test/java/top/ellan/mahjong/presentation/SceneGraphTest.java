@@ -303,6 +303,26 @@ class SceneGraphTest {
     }
 
     @Test
+    void clockwiseWallSlotsRemainAdjacentWhenCrossingEveryCorner() {
+        ResolvedTableLayout layout =
+                new UniversalTableLayout(GEOMETRY).resolve(table(136));
+        SceneTransform sideZeroEnd = layout.tile(wallTile(1, 32), 136);
+        SceneTransform sideOneStart = layout.tile(wallTile(2, 34), 136);
+        SceneTransform sideOneEnd = layout.tile(wallTile(3, 66), 136);
+        SceneTransform sideTwoStart = layout.tile(wallTile(4, 68), 136);
+        SceneTransform sideTwoEnd = layout.tile(wallTile(5, 100), 136);
+        SceneTransform sideThreeStart = layout.tile(wallTile(6, 102), 136);
+        SceneTransform sideThreeEnd = layout.tile(wallTile(7, 134), 136);
+        SceneTransform sideZeroStart = layout.tile(wallTile(8, 0), 136);
+
+        double maximumCornerGap = (GEOMETRY.tileWidth() + GEOMETRY.tileGap()) * 1.5D;
+        assertTrue(distance(sideZeroEnd, sideOneStart) < maximumCornerGap);
+        assertTrue(distance(sideOneEnd, sideTwoStart) < maximumCornerGap);
+        assertTrue(distance(sideTwoEnd, sideThreeStart) < maximumCornerGap);
+        assertTrue(distance(sideThreeEnd, sideZeroStart) < maximumCornerGap);
+    }
+
+    @Test
     void discardRiverWrapsAfterSixTiles() {
         ResolvedTableLayout layout =
                 new UniversalTableLayout(GEOMETRY).resolve(table(144));
@@ -535,6 +555,10 @@ class SceneGraphTest {
                 layoutIndex,
                 false,
                 RuleTilePresentation.natural(layoutIndex));
+    }
+
+    private static double distance(SceneTransform first, SceneTransform second) {
+        return Math.hypot(first.x() - second.x(), first.z() - second.z());
     }
 
     private static RuleViewTile tile(
