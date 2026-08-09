@@ -3,13 +3,20 @@
 import java.io.File
 
 object CraftEngineBundleGenerator {
+    private fun StringBuilder.appendCullingConfig(viewDistance: Int = 48) {
+        appendLine("            entity_culling:")
+        appendLine("              aabb_expansion: 0.25")
+        appendLine("              view_distance: $viewDistance")
+        appendLine("              ray_tracing: true")
+    }
+
     private fun formatTileLabel(name: String): String =
         name.split('_').joinToString(" ") { part ->
             part.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
         }
 
     fun writeCraftEngineBundle(
-        enumSource: File,
+        tileItemsDir: File,
         resourcepackDir: File,
         attributionFile: File,
         outputDir: File,
@@ -20,12 +27,17 @@ object CraftEngineBundleGenerator {
         val outputAssetsDir = outputResourcepackDir.resolve("assets")
         val outputConfigDir = outputRoot.resolve("configuration").resolve("items")
         val tileNames =
-            MahjongCodegen
-                .parseMahjongTileNames(enumSource)
-                .toMutableSet()
-                .apply {
-                    add("back")
-                }.sorted()
+            tileItemsDir
+                .listFiles { file -> file.isFile && file.extension == "json" }
+                .orEmpty()
+                .map { it.nameWithoutExtension }
+                .onEach { name ->
+                    require(name.matches(Regex("[a-z0-9_]+"))) {
+                        "Invalid CraftEngine tile asset name: $name"
+                    }
+                }.distinct()
+                .sorted()
+        require(tileNames.isNotEmpty()) { "No tile item definitions found in $tileItemsDir" }
 
         outputRoot.deleteRecursively()
         outputAssetsDir.mkdirs()
@@ -79,6 +91,7 @@ object CraftEngineBundleGenerator {
                 appendLine("            hit: minecraft:block.wood.hit")
                 appendLine("        variants:")
                 appendLine("          ground:")
+                appendCullingConfig()
                 appendLine("            elements:")
                 appendLine("              - item: mahjongpaper:table_visual_model")
                 appendLine("                display-transform: none")
@@ -146,6 +159,7 @@ object CraftEngineBundleGenerator {
 
                         appendLine("        variants:")
                         appendLine("          ground:")
+                        appendCullingConfig()
                         appendLine("            elements:")
                         appendLine("              - item: mahjongpaper:$suffix")
                         appendLine("                display-transform: none")
@@ -181,6 +195,7 @@ object CraftEngineBundleGenerator {
                 appendLine("            hit: minecraft:block.wood.hit")
                 appendLine("        variants:")
                 appendLine("          ground:")
+                appendCullingConfig()
                 appendLine("            elements:")
                 appendLine("              - item: mahjongpaper:back")
                 appendLine("                display-transform: none")
@@ -230,6 +245,7 @@ object CraftEngineBundleGenerator {
 
                 appendLine("        variants:")
                 appendLine("          ground:")
+                appendCullingConfig()
                 appendLine("            elements:")
                 appendLine("              - item: mahjongpaper:back")
                 appendLine("                display-transform: none")
@@ -274,6 +290,7 @@ object CraftEngineBundleGenerator {
 
                 appendLine("        variants:")
                 appendLine("          ground:")
+                appendCullingConfig()
                 appendLine("            elements:")
                 appendLine("              - item: mahjongpaper:seat_chair_model")
                 appendLine("                display-transform: none")
@@ -310,6 +327,7 @@ object CraftEngineBundleGenerator {
 
                 appendLine("        variants:")
                 appendLine("          ground:")
+                appendCullingConfig()
                 appendLine("            elements:")
                 appendLine("              - item: mahjongpaper:back")
                 appendLine("                display-transform: none")
@@ -363,6 +381,7 @@ object CraftEngineBundleGenerator {
 
                         appendLine("        variants:")
                         appendLine("          ground:")
+                        appendCullingConfig()
                         appendLine("            elements:")
                         appendLine("              - item: mahjongpaper:${if (faceDown) "back" else tileName}")
                         appendLine("                display-transform: head")

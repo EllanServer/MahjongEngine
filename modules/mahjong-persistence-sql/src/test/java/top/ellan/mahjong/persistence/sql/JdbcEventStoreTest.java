@@ -19,7 +19,6 @@ import top.ellan.mahjong.application.MatchWriteBatch;
 import top.ellan.mahjong.domain.MatchBinding;
 import top.ellan.mahjong.domain.MatchId;
 import top.ellan.mahjong.domain.ParticipantRole;
-import top.ellan.mahjong.domain.RuleMigrationMode;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.domain.TableLifecycle;
 import top.ellan.mahjong.domain.TableParticipant;
@@ -102,7 +101,6 @@ class JdbcEventStoreTest {
                         matchId,
                         reference,
                         new ProfileId("standard"),
-                        RuleMigrationMode.RULE_PACK,
                         "b".repeat(64),
                         now);
         return new MatchInstanceRecord(

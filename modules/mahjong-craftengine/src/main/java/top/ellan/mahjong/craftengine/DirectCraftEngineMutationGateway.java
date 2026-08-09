@@ -27,7 +27,6 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
 
     private final TableAnchorLookup anchors;
     private final PrivateProjectionGateway privateProjection;
-    private final CullingRegistration culling;
     private final String interactionFurnitureAsset;
     private final NamespacedKey managedKey;
     private final NamespacedKey tableKey;
@@ -39,12 +38,10 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
             Plugin plugin,
             TableAnchorLookup anchors,
             PrivateProjectionGateway privateProjection,
-            CullingRegistration culling,
             String interactionFurnitureAsset) {
         Objects.requireNonNull(plugin, "plugin");
         this.anchors = Objects.requireNonNull(anchors, "anchors");
         this.privateProjection = Objects.requireNonNull(privateProjection, "privateProjection");
-        this.culling = Objects.requireNonNull(culling, "culling");
         this.interactionFurnitureAsset =
                 Objects.requireNonNull(interactionFurnitureAsset, "interactionFurnitureAsset");
         if (!interactionFurnitureAsset.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
@@ -102,7 +99,6 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
                     interactionKey, PersistentDataType.STRING, handle.value().toString());
         }
         worldEntities.put(key, entity);
-        culling.register(entity);
     }
 
     @Override
@@ -126,7 +122,6 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
         if (entity == null) {
             return;
         }
-        culling.unregister(entity);
         if (entity.isValid() && CraftEngineFurniture.isFurniture(entity)) {
             if (!CraftEngineFurniture.remove(entity, false, false)) {
                 throw new IllegalStateException("CraftEngine refused to remove managed furniture");

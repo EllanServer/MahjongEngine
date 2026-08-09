@@ -9,7 +9,7 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
-rootProject.name = "mahjong-plugin"
+rootProject.name = "MahjongPaper"
 
 include(
     ":mahjong-rule-spi",
@@ -21,6 +21,7 @@ include(
     ":mahjong-persistence-sql",
     ":mahjong-platform-paper",
     ":mahjong-craftengine",
+    ":mahjong-plugin",
 )
 
 project(":mahjong-rule-spi").projectDir = file("modules/mahjong-rule-spi")
@@ -32,3 +33,4 @@ project(":mahjong-presentation").projectDir = file("modules/mahjong-presentation
 project(":mahjong-persistence-sql").projectDir = file("modules/mahjong-persistence-sql")
 project(":mahjong-platform-paper").projectDir = file("modules/mahjong-platform-paper")
 project(":mahjong-craftengine").projectDir = file("modules/mahjong-craftengine")
+project(":mahjong-plugin").projectDir = file("modules/mahjong-plugin")

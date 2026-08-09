@@ -1,387 +1,58 @@
-name: Release
+name: Release 2.0
 
 on:
-  # pull_request_target is intentional: pull_request workflows are suppressed when the
-  # promoted dev HEAD carries a CI skip marker. The release job still rejects everything
-  # except an already-merged, same-repository dev -> main pull request.
-  pull_request_target:
-    branches:
-      - main
-    types:
-      - closed
+  push:
+    tags:
+      - "v2.*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to publish a release for (e.g. v0.9.1-beta.1)"
+        description: Existing v2.x.y tag to republish
         required: true
         type: string
 
-concurrency:
-  group: release-main
-  queue: max
-
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  prepare-release:
-    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'dev' && github.event.pull_request.head.repo.full_name == github.repository)
+  release:
     runs-on: ubuntu-latest
-    outputs:
-      prerelease: ${{ steps.metadata.outputs.prerelease }}
-      source_sha: ${{ steps.metadata.outputs.source_sha }}
-      tag: ${{ steps.metadata.outputs.tag }}
-      version: ${{ steps.metadata.outputs.version }}
-
     steps:
-      - name: Checkout release source
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.pull_request.merge_commit_sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
-
-      - name: Resolve and validate release metadata
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6
+      - run: chmod +x ./gradlew
+      - name: Validate immutable release version
         id: metadata
         shell: bash
-        env:
-          REQUESTED_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-
-          SOURCE_SHA="$(git rev-parse HEAD)"
-          BUILD_VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' build.gradle.kts | head -n 1)"
-          if [[ ! "$BUILD_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::build.gradle.kts has an invalid release version: $BUILD_VERSION"
-            exit 1
-          fi
-          if [[ "$BUILD_VERSION" == *SNAPSHOT* ]]; then
-            echo "::error::Snapshot versions cannot be released: $BUILD_VERSION"
-            exit 1
-          fi
-
-          TAG="v$BUILD_VERSION"
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            if [[ ! "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-              echo "::error::Invalid release tag: $REQUESTED_TAG"
-              exit 1
-            fi
-            if [[ "$REQUESTED_TAG" != "$TAG" ]]; then
-              echo "::error::Requested tag $REQUESTED_TAG does not match build.gradle.kts version $BUILD_VERSION"
-              exit 1
-            fi
-          fi
-
-          if [[ ! -f CHANGELOG.md ]] || ! grep -Eq "^## ${BUILD_VERSION//./\\.}([[:space:]]|$)" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no section for $BUILD_VERSION"
-            exit 1
-          fi
-
-          REMOTE_TAG_SHA="$(git ls-remote --tags origin "refs/tags/$TAG^{}" | awk 'NR == 1 { print $1 }')"
-          if [[ -z "$REMOTE_TAG_SHA" ]]; then
-            REMOTE_TAG_SHA="$(git ls-remote --tags origin "refs/tags/$TAG" | awk 'NR == 1 { print $1 }')"
-          fi
-
-          if [[ -n "$REMOTE_TAG_SHA" && "$REMOTE_TAG_SHA" != "$SOURCE_SHA" ]]; then
-            echo "::error::$TAG already points to $REMOTE_TAG_SHA instead of release source $SOURCE_SHA"
-            exit 1
-          fi
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -z "$REMOTE_TAG_SHA" ]]; then
-            echo "::error::Manual recovery requires an existing tag: $TAG"
-            exit 1
-          fi
-
-          if [[ "$BUILD_VERSION" == *-* ]]; then
-            PRERELEASE=true
-          else
-            PRERELEASE=false
-          fi
-          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
-          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' build.gradle.kts | head -n 1)"
+          TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          [[ "$VERSION" =~ ^2\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          [[ "$VERSION" != *SNAPSHOT* ]]
+          [[ "$TAG" = "v$VERSION" ]]
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$BUILD_VERSION" >> "$GITHUB_OUTPUT"
-
-  build-platform:
-    needs: prepare-release
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux-x86_64
-            artifact: linux
-            gradle: ./gradlew
-            needs_chmod: true
-          - os: windows-latest
-            platform: windows-x86_64
-            artifact: windows
-            gradle: .\gradlew.bat
-            needs_chmod: false
-          - os: macos-15-intel
-            platform: macos-x86_64
-            artifact: macos
-            gradle: ./gradlew
-            needs_chmod: true
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare-release.outputs.source_sha }}
-
-      - name: Set up Windows native toolchain
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-
-      - name: Add MSYS2 tools to PATH
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          "C:\msys64\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          "C:\msys64\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Set up JDK 25
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "25"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-
-      - name: Make Gradle wrapper executable
-        if: matrix.needs_chmod
-        run: chmod +x ./gradlew
-
-      - name: Build platform plugin
-        # Pin to the lowest supported Paper baseline so the released jar stays runtime-compatible
-        # with Paper/Folia 1.20.1 -> 26.2. PaperCompatibility handles newer APIs at runtime.
-        # Quote each -P argument because PowerShell on Windows runners mis-parses `1.20.1-R0.1-SNAPSHOT`.
-        run: ${{ matrix.gradle }} build "-PmahjongPaperDevBundle=1.20.1-R0.1-SNAPSHOT" "-PmahjongJavaTarget=21" "-PmahjongJavaToolchain=25" "-PmahjongRequireNative=true"
-
-      - name: Verify artifact compatibility (Linux only)
-        if: runner.os == 'Linux'
+      - name: Verify and build once
+        run: ./gradlew clean check :mahjong-plugin:shadowJar --no-daemon --stacktrace
+      - name: Select release artifact
+        id: artifact
         shell: bash
         run: |
           set -euo pipefail
-          JAR="$(ls build/libs/*.jar | grep -v -E '(sources|dev)' | head -n 1)"
-          echo "Inspecting $JAR"
-          mkdir -p inspect
-          (cd inspect && jar xf "$GITHUB_WORKSPACE/$JAR" plugin.yml paper-plugin.yml)
-          for f in inspect/plugin.yml inspect/paper-plugin.yml; do
-            if ! grep -q 'api-version: "1.20"' "$f"; then
-              echo "::error::Expected api-version: \"1.20\" in $f"
-              cat "$f"
-              exit 1
-            fi
-          done
-          python3 - "$JAR" <<'PY'
-          import sys, zipfile, struct
-          jar = sys.argv[1]
-          allowed_max = 65  # Java 21
-          bad = []
-          with zipfile.ZipFile(jar) as z:
-              for n in z.namelist():
-                  if not n.endswith('.class'):
-                      continue
-                  with z.open(n) as f:
-                      head = f.read(8)
-                  if len(head) < 8 or head[:4] != b'\xca\xfe\xba\xbe':
-                      continue
-                  major = struct.unpack('>H', head[6:8])[0]
-                  if major > allowed_max:
-                      bad.append((n, major))
-          if bad:
-              print(f'::error::Found {len(bad)} class files compiled above Java 21:')
-              for n, m in bad[:20]:
-                  print(f'  {n}: major={m} (Java {m-44})')
-              sys.exit(1)
-          print('All classes compiled to Java 21 or lower.')
-          PY
-
-      - name: Upload platform jar
-        uses: actions/upload-artifact@v7
-        with:
-          name: mahjong-paper-jar-${{ matrix.artifact }}
-          path: build/libs/*.jar
-          if-no-files-found: error
-
-  package-universal:
-    needs: build-platform
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Set up JDK 25
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "25"
-
-      - name: Download Linux jar
-        uses: actions/download-artifact@v8
-        with:
-          name: mahjong-paper-jar-linux
-          path: artifacts/linux
-
-      - name: Download Windows jar
-        uses: actions/download-artifact@v8
-        with:
-          name: mahjong-paper-jar-windows
-          path: artifacts/windows
-
-      - name: Download macOS jar
-        uses: actions/download-artifact@v8
-        with:
-          name: mahjong-paper-jar-macos
-          path: artifacts/macos
-
-      - name: Assemble universal plugin jar
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build/universal extract/windows extract/macos
-          select_main_jar() {
-            find "$1" -name '*.jar' \
-              ! -name '*-sources.jar' \
-              ! -name '*-dev.jar' \
-              | sort \
-              | head -n 1
-          }
-
-          LINUX_JAR="$(select_main_jar artifacts/linux)"
-          WINDOWS_JAR="$(select_main_jar artifacts/windows)"
-          MACOS_JAR="$(select_main_jar artifacts/macos)"
-
-          if [[ -z "$LINUX_JAR" || -z "$WINDOWS_JAR" || -z "$MACOS_JAR" ]]; then
-            echo "Could not find all platform plugin jars"
-            exit 1
-          fi
-
-          UNIVERSAL_JAR="build/universal/$(basename "$LINUX_JAR" .jar)-universal.jar"
-
-          cp "$LINUX_JAR" "$UNIVERSAL_JAR"
-          (cd extract/windows && jar xf "$GITHUB_WORKSPACE/$WINDOWS_JAR" native)
-          (cd extract/macos && jar xf "$GITHUB_WORKSPACE/$MACOS_JAR" native)
-          jar uf "$UNIVERSAL_JAR" -C extract/windows native -C extract/macos native
-
-          jar tf "$UNIVERSAL_JAR" > universal-entries.txt
-          for required in \
-            native/linux-x86_64/mahjongpaper_gb.so \
-            native/windows-x86_64/mahjongpaper_gb.dll \
-            native/windows-x86_64/libwinpthread-1.dll \
-            native/macos-x86_64/mahjongpaper_gb.dylib; do
-            if ! grep -Fxq "$required" universal-entries.txt; then
-              echo "::error::Universal jar is missing $required"
-              exit 1
-            fi
-          done
-
-      - name: Upload universal jar
-        uses: actions/upload-artifact@v7
-        with:
-          name: mahjong-paper-jars
-          path: build/universal/*.jar
-          if-no-files-found: error
-
-  release:
-    needs:
-      - prepare-release
-      - package-universal
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare-release.outputs.source_sha }}
-          fetch-depth: 0
-
-      - name: Extract changelog notes
-        id: notes
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
-        run: |
-          set -euo pipefail
-          VERSION="$RELEASE_TAG"
-          VERSION="${VERSION#v}"
-          NOTES_FILE="release-notes.md"
-          if [[ -f CHANGELOG.md ]]; then
-            awk -v ver="$VERSION" '
-              $1 == "##" && $2 == ver { capture=1; next }
-              capture && /^## / { exit }
-              capture { print }
-            ' CHANGELOG.md > "$NOTES_FILE"
-          fi
-          if [[ ! -s "$NOTES_FILE" ]]; then
-            echo "Release $RELEASE_TAG" > "$NOTES_FILE"
-          fi
-          echo "file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
-
-      - name: Revalidate release source metadata
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
-          RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
-          SOURCE_SHA: ${{ needs.prepare-release.outputs.source_sha }}
-        run: |
-          set -euo pipefail
-          if [[ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]]; then
-            echo "::error::Checked out source does not match prepared release commit $SOURCE_SHA"
-            exit 1
-          fi
-          BUILD_VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' build.gradle.kts | head -n 1)"
-          if [[ -z "$BUILD_VERSION" || "$BUILD_VERSION" != "$RELEASE_VERSION" || "$RELEASE_TAG" != "v$BUILD_VERSION" ]]; then
-            echo "::error::Release metadata changed after preparation"
-            exit 1
-          fi
-          if [[ ! -f CHANGELOG.md ]] || ! grep -Eq "^## ${BUILD_VERSION//./\\.}([[:space:]]|$)" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no section for $BUILD_VERSION"
-            exit 1
-          fi
-
-      - name: Download universal jar
-        uses: actions/download-artifact@v8
-        with:
-          name: mahjong-paper-jars
-          path: release-artifacts
-
-      - name: Create release tag
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
-          SOURCE_SHA: ${{ needs.prepare-release.outputs.source_sha }}
-        run: |
-          set -euo pipefail
-          git fetch origin --tags --force
-          if git rev-parse --verify --quiet "refs/tags/$RELEASE_TAG" >/dev/null; then
-            EXISTING_SHA="$(git rev-list -n 1 "$RELEASE_TAG")"
-            if [[ "$EXISTING_SHA" != "$SOURCE_SHA" ]]; then
-              echo "::error::$RELEASE_TAG moved to $EXISTING_SHA after preparation; expected $SOURCE_SHA"
-              exit 1
-            fi
-            echo "$RELEASE_TAG already points to $SOURCE_SHA; reusing it."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag -a "$RELEASE_TAG" "$SOURCE_SHA" -m "Release $RELEASE_TAG"
-            git push origin "refs/tags/$RELEASE_TAG"
-          fi
-
+          JAR="$(find modules/mahjong-plugin/build/libs -maxdepth 1 -name '*.jar' ! -name '*-dev.jar' ! -name '*-sources.jar' -print -quit)"
+          test -n "$JAR"
+          echo "jar=$JAR" >> "$GITHUB_OUTPUT"
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ needs.prepare-release.outputs.tag }}
-          name: ${{ needs.prepare-release.outputs.tag }}
-          body_path: ${{ steps.notes.outputs.file }}
-          prerelease: ${{ needs.prepare-release.outputs.prerelease }}
-          files: release-artifacts/*.jar
+          tag_name: ${{ steps.metadata.outputs.tag }}
+          generate_release_notes: true
+          files: ${{ steps.artifact.outputs.jar }}

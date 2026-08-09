@@ -10,7 +10,7 @@ import java.util.Objects;
 
 /** Creates the platform-neutral event, snapshot, result and rank projection tables. */
 public final class SqlSchemaMigrator {
-    public static final int SCHEMA_VERSION = 3;
+    public static final int SCHEMA_VERSION = 5;
 
     private final SqlConnectionFactory connections;
 
@@ -32,6 +32,7 @@ public final class SqlSchemaMigrator {
                     }
                 }
                 ensureSnapshotStateRevision(connection);
+                removeLegacyMigrationMode(connection);
                 recordSchemaVersion(connection);
                 connection.commit();
             } catch (SQLException | RuntimeException failure) {
@@ -39,6 +40,25 @@ public final class SqlSchemaMigrator {
                 throw failure;
             } finally {
                 connection.setAutoCommit(previousAutoCommit);
+            }
+        }
+    }
+
+    private static void removeLegacyMigrationMode(Connection connection) throws SQLException {
+        boolean present = false;
+        try (ResultSet columns =
+                connection.getMetaData().getColumns(connection.getCatalog(), null, "%", "%")) {
+            while (columns.next()) {
+                if ("match_instance".equalsIgnoreCase(columns.getString("TABLE_NAME"))
+                        && "migration_mode".equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
+                    present = true;
+                    break;
+                }
+            }
+        }
+        if (present) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("ALTER TABLE match_instance DROP COLUMN migration_mode");
             }
         }
     }
@@ -93,7 +113,7 @@ public final class SqlSchemaMigrator {
                         + "match_id VARCHAR(36) PRIMARY KEY, table_id VARCHAR(36) NOT NULL, "
                         + "rule_id VARCHAR(32) NOT NULL, rule_version VARCHAR(64) NOT NULL, "
                         + "rule_jar_sha256 CHAR(64) NOT NULL, state_schema_version INT NOT NULL, "
-                        + "profile_id VARCHAR(64) NOT NULL, migration_mode VARCHAR(16) NOT NULL, "
+                        + "profile_id VARCHAR(64) NOT NULL, "
                         + "configuration_sha256 CHAR(64) NOT NULL, status VARCHAR(32) NOT NULL, "
                         + "created_at TIMESTAMP(6) NOT NULL, updated_at TIMESTAMP(6) NOT NULL, "
                         + "last_committed_sequence BIGINT NOT NULL DEFAULT 0)",
@@ -114,6 +134,10 @@ public final class SqlSchemaMigrator {
                         + "participant_role VARCHAR(16) NOT NULL, seat_id VARCHAR(32), "
                         + "PRIMARY KEY (match_id, player_id), "
                         + "FOREIGN KEY (match_id) REFERENCES match_instance(match_id))",
+                "CREATE TABLE IF NOT EXISTS table_anchor ("
+                        + "table_id VARCHAR(36) PRIMARY KEY, world_id VARCHAR(128) NOT NULL, "
+                        + "x DOUBLE NOT NULL, y DOUBLE NOT NULL, z DOUBLE NOT NULL, "
+                        + "yaw REAL NOT NULL, pitch REAL NOT NULL)",
                 "CREATE TABLE IF NOT EXISTS match_snapshot ("
                         + "match_id VARCHAR(36) NOT NULL, snapshot_sequence BIGINT NOT NULL, "
                         + "state_revision BIGINT NOT NULL, "

@@ -49,6 +49,11 @@ class SceneGraphTest {
                         .filter(node -> node instanceof FurnitureNode)
                         .map(node -> (FurnitureNode) node)
                         .anyMatch(node -> node.assetId().equals("mahjong:tile/back")));
+        assertEquals(
+                64,
+                graph.nodes().values().stream()
+                        .filter(node -> node instanceof InteractionNode)
+                        .count());
         assertTrue(
                 graph.nodes().values().stream()
                         .filter(node -> node instanceof PrivateItemNode)
@@ -72,6 +77,14 @@ class SceneGraphTest {
     }
 
     @Test
+    void rulePackNotationsMapToSharedCraftEngineAssets() {
+        assertEquals("m5_red", DefaultTableSceneMapper.normalizeTileName("5mr"));
+        assertEquals("p3", DefaultTableSceneMapper.normalizeTileName("3p"));
+        assertEquals("green_dragon", DefaultTableSceneMapper.normalizeTileName("6z"));
+        assertEquals("white_dragon", DefaultTableSceneMapper.normalizeTileName("white_dragon"));
+    }
+
+    @Test
     void differTouchesOnlyChangedStableNodes() {
         DefaultTableSceneMapper mapper =
                 new DefaultTableSceneMapper(
@@ -83,6 +96,7 @@ class SceneGraphTest {
 
         assertFalse(diff.upserts().isEmpty());
         assertTrue(diff.upserts().stream().anyMatch(node -> node instanceof HudNode));
+        assertTrue(diff.upserts().stream().noneMatch(node -> node instanceof InteractionNode));
         assertTrue(diff.mutationCount() < after.nodes().size() + before.nodes().size());
     }
 

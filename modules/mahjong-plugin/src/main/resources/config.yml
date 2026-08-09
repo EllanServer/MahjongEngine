@@ -1,0 +1,13 @@
+database:
+  # Blank uses an H2 file inside plugins/MahjongPaper/data.
+  jdbc-url: ""
+  username: "sa"
+  password: ""
+  maximum-pool-size: 8
+rules:
+  # HTTPS URL of the Ed25519-signed official registry envelope.
+  registry-url: ""
+craftengine:
+  bundle-folder: "mahjongpaper"
+  tile-back-furniture: "mahjongpaper:tile_standing_face_down_back"
+  interaction-furniture: "mahjongpaper:hand_tile_hitbox"

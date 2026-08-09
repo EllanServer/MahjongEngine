@@ -14,7 +14,6 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.domain.MatchBinding;
 import top.ellan.mahjong.domain.MatchId;
-import top.ellan.mahjong.domain.RuleMigrationMode;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.domain.TableLifecycle;
 import top.ellan.mahjong.spi.LegalAction;
@@ -84,7 +83,6 @@ class RuleStateReplayVerifierTest {
                 MatchId.random(),
                 reference,
                 new ProfileId("standard"),
-                RuleMigrationMode.RULE_PACK,
                 "b".repeat(64),
                 Instant.parse("2026-08-08T00:00:00Z"));
         MatchInstanceRecord match = new MatchInstanceRecord(

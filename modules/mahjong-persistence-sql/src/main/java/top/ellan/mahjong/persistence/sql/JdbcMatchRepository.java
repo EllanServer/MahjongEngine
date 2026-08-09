@@ -15,7 +15,6 @@ import java.util.Optional;
 import java.util.Set;
 import top.ellan.mahjong.domain.MatchBinding;
 import top.ellan.mahjong.domain.MatchId;
-import top.ellan.mahjong.domain.RuleMigrationMode;
 import top.ellan.mahjong.domain.ParticipantRole;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.domain.TableLifecycle;
@@ -68,8 +67,33 @@ public final class JdbcMatchRepository {
             MatchInstanceRecord match,
             List<TableParticipant> participants,
             RuleStateSnapshot initialSnapshot) throws SQLException {
+        createRecoverableMatch(match, participants, initialSnapshot, Optional.empty());
+    }
+
+    /** Creates provenance, participants, the initial snapshot and anchor in one transaction. */
+    public void createRecoverableMatch(
+            MatchInstanceRecord match,
+            List<TableParticipant> participants,
+            RuleStateSnapshot initialSnapshot,
+            StoredTableAnchor anchor) throws SQLException {
+        createRecoverableMatch(
+                match,
+                participants,
+                initialSnapshot,
+                Optional.of(Objects.requireNonNull(anchor, "anchor")));
+    }
+
+    private void createRecoverableMatch(
+            MatchInstanceRecord match,
+            List<TableParticipant> participants,
+            RuleStateSnapshot initialSnapshot,
+            Optional<StoredTableAnchor> anchor) throws SQLException {
         participants = List.copyOf(Objects.requireNonNull(participants, "participants"));
         Objects.requireNonNull(initialSnapshot, "initialSnapshot");
+        Objects.requireNonNull(anchor, "anchor");
+        if (anchor.isPresent() && !anchor.orElseThrow().tableId().equals(match.tableId())) {
+            throw new IllegalArgumentException("Match and anchor table ids differ");
+        }
         if (initialSnapshot.sequence() != 0
                 || initialSnapshot.schemaVersion()
                         != match.binding().rulePack().stateSchemaVersion()) {
@@ -88,11 +112,52 @@ public final class JdbcMatchRepository {
                 }
                 insertOrVerifyParticipants(connection, match.binding().matchId(), participants);
                 insertOrVerifyInitialSnapshot(connection, match, initialSnapshot);
+                if (anchor.isPresent()) {
+                    insertOrVerifyAnchor(connection, anchor.orElseThrow());
+                }
                 connection.commit();
             } catch (SQLException | RuntimeException failure) {
                 connection.rollback();
                 throw failure;
             }
+        }
+    }
+
+    private static void insertOrVerifyAnchor(Connection connection, StoredTableAnchor anchor)
+            throws SQLException {
+        try (PreparedStatement select = connection.prepareStatement(
+                "SELECT world_id, x, y, z, yaw, pitch FROM table_anchor WHERE table_id = ?")) {
+            select.setString(1, anchor.tableId().toString());
+            try (ResultSet result = select.executeQuery()) {
+                if (result.next()) {
+                    StoredTableAnchor existing =
+                            new StoredTableAnchor(
+                                    anchor.tableId(),
+                                    result.getString("world_id"),
+                                    result.getDouble("x"),
+                                    result.getDouble("y"),
+                                    result.getDouble("z"),
+                                    result.getFloat("yaw"),
+                                    result.getFloat("pitch"));
+                    if (!existing.equals(anchor)) {
+                        throw new PersistenceConflictException(
+                                "Table id already belongs to a different anchor");
+                    }
+                    return;
+                }
+            }
+        }
+        try (PreparedStatement insert = connection.prepareStatement(
+                "INSERT INTO table_anchor (table_id, world_id, x, y, z, yaw, pitch) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+            insert.setString(1, anchor.tableId().toString());
+            insert.setString(2, anchor.worldId());
+            insert.setDouble(3, anchor.x());
+            insert.setDouble(4, anchor.y());
+            insert.setDouble(5, anchor.z());
+            insert.setFloat(6, anchor.yaw());
+            insert.setFloat(7, anchor.pitch());
+            insert.executeUpdate();
         }
     }
 
@@ -168,6 +233,22 @@ public final class JdbcMatchRepository {
             }
         }
         return Set.copyOf(result);
+    }
+
+    /** Matches that must be restored or explicitly blocked during startup. */
+    public List<MatchInstanceRecord> recoverableMatches() throws SQLException {
+        String sql = "SELECT * FROM match_instance WHERE status IN ('STARTING','ACTIVE',"
+                + "'PAUSED_PERSISTENCE','BLOCKED_RULE_PACK','NEEDS_ADMIN_REVIEW') "
+                + "ORDER BY created_at, match_id";
+        List<MatchInstanceRecord> result = new ArrayList<>();
+        try (Connection connection = connections.open();
+                PreparedStatement statement = connection.prepareStatement(sql);
+                ResultSet rows = statement.executeQuery()) {
+            while (rows.next()) {
+                result.add(readMatch(rows));
+            }
+        }
+        return List.copyOf(result);
     }
 
     public MatchRecoveryData recover(MatchId matchId) throws SQLException {
@@ -261,38 +342,40 @@ public final class JdbcMatchRepository {
                 if (!result.next()) {
                     return Optional.empty();
                 }
-                RulePackRef reference =
-                        new RulePackRef(
-                                new RuleId(result.getString("rule_id")),
-                                result.getString("rule_version"),
-                                result.getString("rule_jar_sha256"),
-                                result.getInt("state_schema_version"));
-                MatchBinding binding =
-                        new MatchBinding(
-                                MatchId.parse(result.getString("match_id")),
-                                reference,
-                                new ProfileId(result.getString("profile_id")),
-                                RuleMigrationMode.valueOf(result.getString("migration_mode")),
-                                result.getString("configuration_sha256"),
-                                result.getTimestamp("created_at").toInstant());
-                return Optional.of(
-                        new MatchInstanceRecord(
-                                binding,
-                                TableId.parse(result.getString("table_id")),
-                                TableLifecycle.valueOf(result.getString("status")),
-                                result.getTimestamp("updated_at").toInstant(),
-                                result.getLong("last_committed_sequence")));
+                return Optional.of(readMatch(result));
             }
         }
+    }
+
+    private static MatchInstanceRecord readMatch(ResultSet result) throws SQLException {
+        RulePackRef reference =
+                new RulePackRef(
+                        new RuleId(result.getString("rule_id")),
+                        result.getString("rule_version"),
+                        result.getString("rule_jar_sha256"),
+                        result.getInt("state_schema_version"));
+        MatchBinding binding =
+                new MatchBinding(
+                        MatchId.parse(result.getString("match_id")),
+                        reference,
+                        new ProfileId(result.getString("profile_id")),
+                        result.getString("configuration_sha256"),
+                        result.getTimestamp("created_at").toInstant());
+        return new MatchInstanceRecord(
+                binding,
+                TableId.parse(result.getString("table_id")),
+                TableLifecycle.valueOf(result.getString("status")),
+                result.getTimestamp("updated_at").toInstant(),
+                result.getLong("last_committed_sequence"));
     }
 
     private static void insert(Connection connection, MatchInstanceRecord match)
             throws SQLException {
         String sql =
                 "INSERT INTO match_instance (match_id, table_id, rule_id, rule_version, "
-                        + "rule_jar_sha256, state_schema_version, profile_id, migration_mode, "
+                        + "rule_jar_sha256, state_schema_version, profile_id, "
                         + "configuration_sha256, status, created_at, updated_at, "
-                        + "last_committed_sequence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                        + "last_committed_sequence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             MatchBinding binding = match.binding();
             statement.setString(1, binding.matchId().toString());
@@ -302,12 +385,11 @@ public final class JdbcMatchRepository {
             statement.setString(5, binding.rulePack().jarSha256());
             statement.setInt(6, binding.rulePack().stateSchemaVersion());
             statement.setString(7, binding.profile().value());
-            statement.setString(8, binding.migrationMode().name());
-            statement.setString(9, binding.configurationSha256());
-            statement.setString(10, match.status().name());
-            statement.setTimestamp(11, Timestamp.from(binding.createdAt()));
-            statement.setTimestamp(12, Timestamp.from(match.updatedAt()));
-            statement.setLong(13, match.lastCommittedSequence());
+            statement.setString(8, binding.configurationSha256());
+            statement.setString(9, match.status().name());
+            statement.setTimestamp(10, Timestamp.from(binding.createdAt()));
+            statement.setTimestamp(11, Timestamp.from(match.updatedAt()));
+            statement.setLong(12, match.lastCommittedSequence());
             statement.executeUpdate();
         }
     }

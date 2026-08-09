@@ -14,7 +14,8 @@ on:
       - "modules/mahjong-rule-tck/**"
   pull_request:
     branches:
-      - dev
+      - main
+      - "2.0"
     paths:
       - ".github/workflows/rule-sdk.yml"
       - "build.gradle.kts"

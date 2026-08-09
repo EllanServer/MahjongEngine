@@ -23,7 +23,6 @@ import top.ellan.mahjong.domain.CompetitionRef;
 import top.ellan.mahjong.domain.MatchBinding;
 import top.ellan.mahjong.domain.MatchId;
 import top.ellan.mahjong.domain.ParticipantRole;
-import top.ellan.mahjong.domain.RuleMigrationMode;
 import top.ellan.mahjong.domain.TableAggregate;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.domain.TableLifecycle;
@@ -255,7 +254,6 @@ class TableActorTest {
                         matchId,
                         ref,
                         new ProfileId("standard"),
-                        RuleMigrationMode.RULE_PACK,
                         "0".repeat(64),
                         Instant.parse("2026-08-08T00:00:00Z"));
         return new TableAggregate(

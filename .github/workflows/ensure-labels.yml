@@ -22,16 +22,10 @@ jobs:
               { name: "dependencies", color: "0366d6", description: "Dependency updates" },
               { name: "gradle", color: "0e8a16", description: "Gradle build and dependency updates" },
               { name: "github-actions", color: "5319e7", description: "GitHub Actions workflow updates" },
-              { name: "performance-ab", color: "d4c5f9", description: "Run the base-owned paired performance gate" },
-              { name: "performance-snapshot", color: "bfdadc", description: "Use the viewer snapshot performance profile" },
-              { name: "performance-gb-bot", color: "bfdadc", description: "Use the GB bot decision performance profile" },
-              { name: "performance-region-fingerprint", color: "bfdadc", description: "Use the table region fingerprint performance profile" },
-              { name: "performance-display-spawn", color: "bfdadc", description: "Use the display entity spawn performance profile" },
-              { name: "performance-region-queue", color: "bfdadc", description: "Use the region update queue performance profile" },
-              { name: "performance-region-keys", color: "bfdadc", description: "Use the region key plan performance profile" },
-              { name: "performance-layout", color: "bfdadc", description: "Use the all-variant table layout performance profile" },
-              { name: "performance-scheduler-reflection", color: "bfdadc", description: "Use the scheduler reflection performance profile" },
-              { name: "performance-ray-proxy", color: "bfdadc", description: "Use the client ray-proxy performance profile" }
+              { name: "architecture", color: "6f42c1", description: "MahjongPaper 2.0 architecture boundary" },
+              { name: "concurrency", color: "1d76db", description: "Actor, Folia or isolation behavior" },
+              { name: "rule-pack", color: "0e8a16", description: "Signed rule-pack SPI and runtime" },
+              { name: "craftengine", color: "fbca04", description: "CraftEngine configuration and scene projection" }
             ];
 
             for (const label of labels) {

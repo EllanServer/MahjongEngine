@@ -1,0 +1,23 @@
+name: MahjongPaper
+main: top.ellan.mahjong.plugin.MahjongPaperPlugin
+version: ${version}
+api-version: "1.20"
+folia-supported: true
+description: CraftEngine-first Mahjong core with signed external rule packs.
+authors:
+  - ellan
+dependencies:
+  server:
+    CraftEngine:
+      load: BEFORE
+      required: true
+commands:
+  mahjong:
+    description: MahjongPaper 2.0 administration and match commands.
+    usage: /mahjong <create|list|state|remove|rules>
+    permission: mahjongpaper.command
+permissions:
+  mahjongpaper.command:
+    default: true
+  mahjongpaper.admin:
+    default: op
