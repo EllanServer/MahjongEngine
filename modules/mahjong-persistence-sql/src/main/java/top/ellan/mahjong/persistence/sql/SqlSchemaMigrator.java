@@ -10,7 +10,7 @@ import java.util.Objects;
 
 /** Creates the platform-neutral event, snapshot, result and rank projection tables. */
 public final class SqlSchemaMigrator {
-    public static final int SCHEMA_VERSION = 5;
+    public static final int SCHEMA_VERSION = 1;
 
     private final SqlConnectionFactory connections;
 
@@ -31,8 +31,6 @@ public final class SqlSchemaMigrator {
                         statement.execute(ddl);
                     }
                 }
-                ensureSnapshotStateRevision(connection);
-                removeLegacyMigrationMode(connection);
                 recordSchemaVersion(connection);
                 connection.commit();
             } catch (SQLException | RuntimeException failure) {
@@ -44,60 +42,27 @@ public final class SqlSchemaMigrator {
         }
     }
 
-    private static void removeLegacyMigrationMode(Connection connection) throws SQLException {
-        boolean present = false;
-        try (ResultSet columns =
-                connection.getMetaData().getColumns(connection.getCatalog(), null, "%", "%")) {
-            while (columns.next()) {
-                if ("match_instance".equalsIgnoreCase(columns.getString("TABLE_NAME"))
-                        && "migration_mode".equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
-                    present = true;
-                    break;
-                }
-            }
-        }
-        if (present) {
-            try (Statement statement = connection.createStatement()) {
-                statement.execute("ALTER TABLE match_instance DROP COLUMN migration_mode");
-            }
-        }
-    }
-
-    private static void ensureSnapshotStateRevision(Connection connection) throws SQLException {
-        boolean present = false;
-        try (ResultSet columns = connection.getMetaData().getColumns(
-                connection.getCatalog(), null, "%", "%")) {
-            while (columns.next()) {
-                if ("match_snapshot".equalsIgnoreCase(columns.getString("TABLE_NAME"))
-                        && "state_revision".equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
-                    present = true;
-                    break;
-                }
-            }
-        }
-        if (!present) {
-            try (Statement statement = connection.createStatement()) {
-                statement.execute(
-                        "ALTER TABLE match_snapshot ADD state_revision BIGINT NOT NULL DEFAULT 0");
-            }
-        }
-    }
-
     private static void recordSchemaVersion(Connection connection) throws SQLException {
-        boolean exists;
+        Integer existing = null;
         try (PreparedStatement select =
                         connection.prepareStatement(
                                 "SELECT schema_version FROM mahjong_schema_version WHERE component = ?")) {
             select.setString(1, "event-store");
             try (ResultSet result = select.executeQuery()) {
-                exists = result.next();
+                if (result.next()) {
+                    existing = result.getInt(1);
+                }
             }
         }
-        String sql =
-                exists
-                        ? "UPDATE mahjong_schema_version SET schema_version = ? WHERE component = ?"
-                        : "INSERT INTO mahjong_schema_version (schema_version, component) VALUES (?, ?)";
-        try (PreparedStatement write = connection.prepareStatement(sql)) {
+        if (existing != null) {
+            if (existing != SCHEMA_VERSION) {
+                throw new SQLException(
+                        "Database schema is incompatible with MahjongPaper 2.0: " + existing);
+            }
+            return;
+        }
+        try (PreparedStatement write = connection.prepareStatement(
+                "INSERT INTO mahjong_schema_version (schema_version, component) VALUES (?, ?)")) {
             write.setInt(1, SCHEMA_VERSION);
             write.setString(2, "event-store");
             write.executeUpdate();

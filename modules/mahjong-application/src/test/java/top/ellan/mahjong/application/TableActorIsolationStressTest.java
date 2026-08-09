@@ -20,6 +20,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import top.ellan.mahjong.spi.ActionPresentation;
 import top.ellan.mahjong.domain.CompetitionRef;
 import top.ellan.mahjong.domain.MatchBinding;
 import top.ellan.mahjong.domain.MatchId;
@@ -43,6 +44,9 @@ import top.ellan.mahjong.spi.RulePackRef;
 import top.ellan.mahjong.spi.RuleProfileDescriptor;
 import top.ellan.mahjong.spi.RuleState;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
+import top.ellan.mahjong.spi.RuleTablePresentation;
+import top.ellan.mahjong.spi.RuleWallDirection;
+import top.ellan.mahjong.spi.RuleWallPresentation;
 import top.ellan.mahjong.spi.RuleTransition;
 import top.ellan.mahjong.spi.SeatId;
 import top.ellan.mahjong.spi.SpiVersion;
@@ -230,17 +234,35 @@ class TableActorIsolationStressTest {
         @Override
         public List<LegalAction> legalActions(RuleState state, PlayerId actor) {
             return List.of(new LegalAction(
-                    "advance", new RuleAction("advance", new byte[] {1}), Map.of()));
+                    "advance",
+                    new RuleAction("advance", new byte[] {1}),
+                    ActionPresentation.actionRow("advance")));
         }
 
         @Override
         public PublicRuleView publicView(RuleState state, long revision) {
-            return new PublicRuleView(revision, "playing", List.of(), Map.of());
+            return new PublicRuleView(
+                    revision,
+                    "playing",
+                    List.of(),
+                    Map.of(),
+                    new RuleTablePresentation(
+                            4,
+                            new RuleWallPresentation(
+                                    List.of(17, 17, 17, 17),
+                                    0,
+                                    RuleWallDirection.CLOCKWISE),
+                            6,
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty()));
         }
 
         @Override
         public PrivateRuleView privateView(RuleState state, PlayerId viewer, long revision) {
-            return new PrivateRuleView(revision, viewer, List.of(), Map.of());
+            int seat = Math.floorMod((int) viewer.value().getLeastSignificantBits() - 1, 4);
+            return new PrivateRuleView(
+                    revision, viewer, new SeatId(seat), List.of(), Map.of());
         }
 
         @Override

@@ -9,5 +9,31 @@ rules:
   registry-url: ""
 craftengine:
   bundle-folder: "mahjongpaper"
-  tile-back-furniture: "mahjongpaper:tile_standing_face_down_back"
-  interaction-furniture: "mahjongpaper:hand_tile_hitbox"
+  assets:
+    table: "mahjongpaper:table_visual"
+    standing-back: "mahjongpaper:tile_standing_face_down_back"
+    flat-back: "mahjongpaper:tile_flat_face_down_back"
+    hand-hitbox: "mahjongpaper:hand_tile_hitbox"
+    action-hitbox: "mahjongpaper:action_button_hitbox"
+presentation:
+  # Dynamic placement dimensions shared by all rule packs. Static furniture and hitboxes stay in CE YAML.
+  geometry:
+    tile-width: 0.1125
+    tile-height: 0.15
+    tile-depth: 0.075
+    tile-gap: 0.0025
+    surface-height: 0.52
+    hand-radius: 1.225
+    wall-radius: 1.0
+    table-half-length: 1.4375
+    emphasis-raise: 0.06
+    action-column-spacing: 0.55
+    action-row-spacing: 0.24
+    secondary-action-offset: 0.34
+  capacity:
+    hand-tiles: 18
+    discards: 48
+    meld-tiles: 24
+    point-sticks: 64
+    auxiliary-tiles: 32
+    actions: 64

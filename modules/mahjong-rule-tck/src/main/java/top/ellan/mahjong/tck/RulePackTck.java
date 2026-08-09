@@ -3,6 +3,7 @@ package top.ellan.mahjong.tck;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import top.ellan.mahjong.spi.ActionPlacement;
 import top.ellan.mahjong.spi.LegalAction;
 import top.ellan.mahjong.spi.MatchPlayer;
 import top.ellan.mahjong.spi.PlayerId;
@@ -68,6 +70,7 @@ public final class RulePackTck {
         check(publicView.equals(provider.publicView(second, 0)),
                 "public view is not deterministic");
         verifyUniqueViewObjects(publicView.tiles(), "public view");
+        verifyTablePresentation(publicView, testCase);
 
         int legalActionCount = 0;
         PlayerId selectedActor = null;
@@ -78,6 +81,8 @@ public final class RulePackTck {
                     require(provider.privateView(first, playerId, 0), "null private view");
             check(privateView.viewer().equals(playerId),
                     "private view is authorized for a different player");
+            check(privateView.seat().equals(player.seatId()),
+                    "private view uses a different seat");
             check(privateView.stateRevision() == 0, "private view has the wrong revision");
             check(privateView.equals(provider.privateView(second, playerId, 0)),
                     "private view is not deterministic");
@@ -91,6 +96,7 @@ public final class RulePackTck {
                     firstActions.stream().map(LegalAction::key).distinct().count()
                             == firstActions.size(),
                     "legal action keys are not unique for a player");
+            verifyActionPresentation(firstActions, privateView, playerId);
             legalActionCount += firstActions.size();
             if (selectedAction == null && !firstActions.isEmpty()) {
                 selectedActor = playerId;
@@ -146,6 +152,10 @@ public final class RulePackTck {
                 resultingSequence,
                 checkedHash(provider.stateHash(firstTransition.nextState())));
         snapshots++;
+        PublicRuleView transitionedView = require(
+                provider.publicView(firstTransition.nextState(), 1),
+                "null transitioned public view");
+        verifyStableWallSlots(publicView, transitionedView);
 
         int rejected = 0;
         for (Map.Entry<PlayerId, RuleAction> entry : testCase.rejectedActions().entrySet()) {
@@ -222,6 +232,67 @@ public final class RulePackTck {
         Set<top.ellan.mahjong.spi.TileInstanceId> ids = new HashSet<>();
         for (RuleViewTile tile : tiles) {
             check(ids.add(tile.instanceId()), label + " contains a duplicate instance id");
+        }
+    }
+
+    private static void verifyTablePresentation(
+            PublicRuleView publicView, RulePackTckCase testCase) {
+        int seatCount = publicView.tablePresentation().seatCount();
+        for (MatchPlayer player : testCase.setup().players()) {
+            check(player.seatId().value() < seatCount,
+                    "public table presentation omits a configured seat");
+        }
+        for (RuleViewTile tile : publicView.tiles()) {
+            tile.owner().ifPresent(owner -> check(
+                    owner.value() < seatCount,
+                    "public tile references an absent seat"));
+            if (tile.zone() == top.ellan.mahjong.spi.RuleViewZone.WALL
+                    || tile.zone() == top.ellan.mahjong.spi.RuleViewZone.INDICATOR) {
+                check(
+                        tile.presentation().layoutIndex()
+                                < publicView.tablePresentation().wall().tileCapacity(),
+                        "wall tile references a slot outside the declared physical wall");
+            }
+        }
+    }
+
+    private static void verifyStableWallSlots(
+            PublicRuleView before, PublicRuleView after) {
+        Map<top.ellan.mahjong.spi.TileInstanceId, Integer> beforeSlots = new HashMap<>();
+        for (RuleViewTile tile : before.tiles()) {
+            if (isWallTile(tile)) {
+                beforeSlots.put(tile.instanceId(), tile.presentation().layoutIndex());
+            }
+        }
+        for (RuleViewTile tile : after.tiles()) {
+            Integer previous = beforeSlots.get(tile.instanceId());
+            if (previous != null && isWallTile(tile)) {
+                check(previous == tile.presentation().layoutIndex(),
+                        "a surviving physical wall tile moved after a transition");
+            }
+        }
+    }
+
+    private static boolean isWallTile(RuleViewTile tile) {
+        return tile.zone() == top.ellan.mahjong.spi.RuleViewZone.WALL
+                || tile.zone() == top.ellan.mahjong.spi.RuleViewZone.INDICATOR;
+    }
+
+    private static void verifyActionPresentation(
+            List<LegalAction> actions, PrivateRuleView privateView, PlayerId player) {
+        Set<top.ellan.mahjong.spi.TileInstanceId> directTargets = new HashSet<>();
+        for (LegalAction action : actions) {
+            if (action.actionPresentation().placement() != ActionPlacement.HAND_TILE) {
+                continue;
+            }
+            top.ellan.mahjong.spi.TileInstanceId target =
+                    action.actionPresentation().targetTile().orElseThrow();
+            boolean present = privateView.tiles().stream().anyMatch(tile ->
+                    tile.instanceId().equals(target)
+                            && tile.zone() == top.ellan.mahjong.spi.RuleViewZone.HAND);
+            check(present, "direct action target is absent from the private hand for " + player);
+            check(directTargets.add(target),
+                    "multiple direct actions target one physical hand tile for " + player);
         }
     }
 

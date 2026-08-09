@@ -60,7 +60,7 @@ public final class RulePackRuntime implements AutoCloseable {
         return failures.containsKey(ruleId) ? Optional.empty() : Optional.ofNullable(reference);
     }
 
-    /** Resolves the exact old version pinned by a recovered snapshot, independent of current active version. */
+    /** Resolves the exact version pinned by a recovered snapshot. */
     public synchronized RulePackProvider providerForPinnedMatch(RulePackRef reference)
             throws RulePackException {
         if (!started) {

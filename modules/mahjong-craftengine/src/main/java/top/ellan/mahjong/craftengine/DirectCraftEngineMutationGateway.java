@@ -27,7 +27,6 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
 
     private final TableAnchorLookup anchors;
     private final PrivateProjectionGateway privateProjection;
-    private final String interactionFurnitureAsset;
     private final NamespacedKey managedKey;
     private final NamespacedKey tableKey;
     private final NamespacedKey nodeKey;
@@ -37,16 +36,10 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
     public DirectCraftEngineMutationGateway(
             Plugin plugin,
             TableAnchorLookup anchors,
-            PrivateProjectionGateway privateProjection,
-            String interactionFurnitureAsset) {
+            PrivateProjectionGateway privateProjection) {
         Objects.requireNonNull(plugin, "plugin");
         this.anchors = Objects.requireNonNull(anchors, "anchors");
         this.privateProjection = Objects.requireNonNull(privateProjection, "privateProjection");
-        this.interactionFurnitureAsset =
-                Objects.requireNonNull(interactionFurnitureAsset, "interactionFurnitureAsset");
-        if (!interactionFurnitureAsset.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
-            throw new IllegalArgumentException("Invalid interaction furniture asset");
-        }
         managedKey = new NamespacedKey(plugin, MANAGED_KEY);
         tableKey = new NamespacedKey(plugin, TABLE_KEY);
         nodeKey = new NamespacedKey(plugin, NODE_KEY);
@@ -76,7 +69,7 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
             asset = furniture.assetId();
             transform = furniture.transform();
         } else if (node instanceof InteractionNode interaction) {
-            asset = interactionFurnitureAsset;
+            asset = interaction.assetId();
             transform = interaction.transform();
             handle = interaction.handle();
         } else {

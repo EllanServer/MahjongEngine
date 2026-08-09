@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.ellan.mahjong.spi.RuleId;
 import top.ellan.mahjong.spi.RulePackProvider;
+import top.ellan.mahjong.spi.SpiVersion;
 
 class RulePackLoaderBoundaryTest {
     @TempDir Path temporaryDirectory;
@@ -26,8 +27,9 @@ class RulePackLoaderBoundaryTest {
             add(
                     zip,
                     RulePackManifest.PATH,
-                    ("id=riichi\nversion=1.0.0\nspiVersion=1.0.0\n"
-                                    + "requiredCoreVersion=>=1.5.0\nstateSchemaVersion=1\n"
+                    ("id=riichi\nversion=1.0.0\nspiVersion="
+                                    + SpiVersion.CURRENT
+                                    + "\nrequiredCoreVersion=>=2.0.0\nstateSchemaVersion=1\n"
                                     + "requiredResources=\n")
                             .getBytes(StandardCharsets.ISO_8859_1));
             add(
@@ -43,14 +45,14 @@ class RulePackLoaderBoundaryTest {
                         "1.0.0",
                         URI.create("https://example.invalid/rule.jar"),
                         sha,
-                        "1.0.0",
-                        ">=1.5.0",
+                        SpiVersion.CURRENT,
+                        ">=2.0.0",
                         Files.size(jar));
 
         RulePackException failure =
                 assertThrows(
                         RulePackException.class,
-                        () -> new RulePackLoader("1.5.0").load(jar, expected));
+                        () -> new RulePackLoader("2.0.0").load(jar, expected));
         assertTrue(failure.getMessage().contains("exclude mahjong-rule-spi"));
     }
 

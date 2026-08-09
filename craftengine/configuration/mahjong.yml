@@ -208,8 +208,49 @@ items:
             hitboxes:
               - type: interaction
                 position: 0,0,0
-                width: 0.1
-                height: 0.18
+                width: 0.1125
+                height: 0.15
+                blocks_building: false
+                interactive: true
+                invisible: true
+
+  mahjongpaper:action_button_hitbox:
+    material: paper
+    settings:
+      tags:
+        - mahjongpaper:action_button_hitbox
+    data:
+      item_name: "<!i><gray>Mahjong Action Button</gray>"
+    item_model: mahjongcraft:mahjong_tile/back
+    behavior:
+      type: furniture_item
+      rules:
+        ground:
+          rotation: four
+          alignment: center
+      furniture:
+        settings:
+          item: mahjongpaper:action_button_hitbox
+        variants:
+          ground:
+            entity_culling:
+              aabb_expansion: 0.25
+              view_distance: 48
+              ray_tracing: true
+            elements:
+              - type: item_display
+                item: mahjongpaper:back
+                display_transform: none
+                billboard: fixed
+                position: 0,0,0
+                translation: 0,-16,0
+                shadow_radius: 0
+                shadow_strength: 0
+            hitboxes:
+              - type: interaction
+                position: 0,0,0
+                width: 0.48
+                height: 0.2
                 blocks_building: false
                 interactive: true
                 invisible: true

@@ -56,8 +56,10 @@ import top.ellan.mahjong.platform.paper.PaperRegionScheduler;
 import top.ellan.mahjong.platform.paper.PaperTableAnchorRegistry;
 import top.ellan.mahjong.presentation.DefaultTableSceneMapper;
 import top.ellan.mahjong.presentation.LatestSceneProjector;
-import top.ellan.mahjong.presentation.RadialTableLayout;
 import top.ellan.mahjong.presentation.SceneGraphDiffer;
+import top.ellan.mahjong.presentation.TableGeometry;
+import top.ellan.mahjong.presentation.TableSceneAssets;
+import top.ellan.mahjong.presentation.UniversalTableLayout;
 import top.ellan.mahjong.runtime.EmbeddedRuleTrustRoot;
 import top.ellan.mahjong.runtime.HttpArtifactDownloader;
 import top.ellan.mahjong.runtime.HttpRegistrySource;
@@ -75,7 +77,7 @@ import top.ellan.mahjong.runtime.RulePackRuntime;
 import top.ellan.mahjong.runtime.RulePackVerification;
 import top.ellan.mahjong.spi.RuleId;
 
-/** Restart-scoped 2.0 composition root. No legacy gameplay component is reachable from here. */
+/** Restart-scoped 2.0 composition root. */
 public final class MahjongRuntime implements AutoCloseable {
     private static final Duration SHUTDOWN_TIMEOUT = Duration.ofSeconds(10);
 
@@ -115,8 +117,7 @@ public final class MahjongRuntime implements AutoCloseable {
                 new DirectCraftEngineMutationGateway(
                         plugin,
                         paperAnchors,
-                        privateProjection,
-                        configuration.interactionFurniture());
+                        privateProjection);
         sceneBackend =
                 new CraftEngineSceneBackend(
                         mutations,
@@ -135,13 +136,47 @@ public final class MahjongRuntime implements AutoCloseable {
                 new LatestSceneProjector(
                         executors.render(),
                         new DefaultTableSceneMapper(
-                                new RadialTableLayout(0.09D),
-                                configuration.tileBackFurniture()),
+                                new UniversalTableLayout(
+                                        tableGeometry(configuration.layoutGeometry())),
+                                sceneAssets(configuration.craftEngineAssets())),
                         sceneBackend,
                         new SceneGraphDiffer(),
                         deadlines);
         registerPlatformListeners(mutations);
         installCraftEngineBundle(craftEngine);
+    }
+
+    private static TableSceneAssets sceneAssets(
+            PluginConfiguration.CraftEngineAssets configured) {
+        return new TableSceneAssets(
+                configured.table(),
+                configured.standingBack(),
+                configured.flatBack(),
+                configured.handHitbox(),
+                configured.actionHitbox());
+    }
+
+    private static TableGeometry tableGeometry(
+            PluginConfiguration.LayoutGeometry configured) {
+        return new TableGeometry(
+                configured.tileWidth(),
+                configured.tileHeight(),
+                configured.tileDepth(),
+                configured.tileGap(),
+                configured.surfaceHeight(),
+                configured.handRadius(),
+                configured.wallRadius(),
+                configured.tableHalfLength(),
+                configured.emphasisRaise(),
+                configured.actionColumnSpacing(),
+                configured.actionRowSpacing(),
+                configured.secondaryActionOffset(),
+                configured.maxHandTiles(),
+                configured.maxDiscards(),
+                configured.maxMeldTiles(),
+                configured.maxPointSticks(),
+                configured.maxAuxiliaryTiles(),
+                configured.maxActions());
     }
 
     public void start() {
@@ -694,15 +729,13 @@ public final class MahjongRuntime implements AutoCloseable {
     }
 
     private static World resolveWorld(String worldId) {
-        World world = null;
+        java.util.UUID worldUuid;
         try {
-            world = Bukkit.getWorld(java.util.UUID.fromString(worldId));
-        } catch (IllegalArgumentException ignored) {
-            // Legacy names remain readable for manually reviewed anchors.
+            worldUuid = java.util.UUID.fromString(worldId);
+        } catch (IllegalArgumentException invalid) {
+            throw new IllegalStateException("Stored world id is not a UUID: " + worldId, invalid);
         }
-        if (world == null) {
-            world = Bukkit.getWorld(worldId);
-        }
+        World world = Bukkit.getWorld(worldUuid);
         if (world == null) {
             throw new IllegalStateException("World is not loaded: " + worldId);
         }

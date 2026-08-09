@@ -6,6 +6,8 @@ public enum RuleViewZone {
     HAND,
     DISCARD,
     MELD,
+    FLOWER,
+    WIN_CLAIM,
     INDICATOR,
     POINT_STICK,
     AUXILIARY

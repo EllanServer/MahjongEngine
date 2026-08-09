@@ -23,12 +23,12 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.presentation.CameraNode;
-import top.ellan.mahjong.presentation.DefaultTableSceneMapper;
 import top.ellan.mahjong.presentation.HudNode;
 import top.ellan.mahjong.presentation.PrivateItemNode;
 import top.ellan.mahjong.presentation.SceneNode;
 import top.ellan.mahjong.presentation.SceneNodeId;
 import top.ellan.mahjong.presentation.SceneTransform;
+import top.ellan.mahjong.presentation.TileAssetName;
 import top.ellan.mahjong.spi.PlayerId;
 
 /** Client-only secret tile and HUD projection. No private face is backed by a Bukkit entity. */
@@ -181,14 +181,7 @@ public final class SparrowPrivateProjectionGateway
     }
 
     private static String itemAsset(PrivateItemNode item) {
-        String visual = item.visualId().value();
-        int separator = visual.indexOf("tile/");
-        String raw = separator >= 0 ? visual.substring(separator + 5) : visual;
-        String name = DefaultTableSceneMapper.normalizeTileName(raw);
-        if (!name.matches("[a-z0-9_]+")) {
-            throw new IllegalArgumentException("Unsupported private tile visual id: " + visual);
-        }
-        return "mahjongpaper:" + name;
+        return "mahjongpaper:" + TileAssetName.from(item.visualId());
     }
 
     private static Location localToWorld(Location anchor, SceneTransform transform) {

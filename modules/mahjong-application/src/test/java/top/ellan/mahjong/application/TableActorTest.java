@@ -19,6 +19,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import top.ellan.mahjong.spi.ActionPresentation;
 import top.ellan.mahjong.domain.CompetitionRef;
 import top.ellan.mahjong.domain.MatchBinding;
 import top.ellan.mahjong.domain.MatchId;
@@ -45,6 +46,9 @@ import top.ellan.mahjong.spi.RulePackRef;
 import top.ellan.mahjong.spi.RuleProfileDescriptor;
 import top.ellan.mahjong.spi.RuleState;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
+import top.ellan.mahjong.spi.RuleTablePresentation;
+import top.ellan.mahjong.spi.RuleWallDirection;
+import top.ellan.mahjong.spi.RuleWallPresentation;
 import top.ellan.mahjong.spi.RuleTransition;
 import top.ellan.mahjong.spi.SpiVersion;
 import top.ellan.mahjong.spi.TransitionDisposition;
@@ -320,17 +324,36 @@ class TableActorTest {
                     new LegalAction(
                             "increment",
                             new RuleAction("increment", new byte[] {1}),
-                            Map.of()));
+                            ActionPresentation.actionRow("increment")));
         }
 
         @Override
         public PublicRuleView publicView(RuleState state, long revision) {
-            return new PublicRuleView(revision, "playing", List.of(), Map.of());
+            return new PublicRuleView(
+                    revision,
+                    "playing",
+                    List.of(),
+                    Map.of(),
+                    new RuleTablePresentation(
+                            4,
+                            new RuleWallPresentation(
+                                    List.of(17, 17, 17, 17),
+                                    0,
+                                    RuleWallDirection.CLOCKWISE),
+                            6,
+                            Optional.empty(),
+                            Optional.of(new top.ellan.mahjong.spi.SeatId(0)),
+                            Optional.empty()));
         }
 
         @Override
         public PrivateRuleView privateView(RuleState state, PlayerId viewer, long revision) {
-            return new PrivateRuleView(revision, viewer, List.of(), Map.of());
+            return new PrivateRuleView(
+                    revision,
+                    viewer,
+                    new top.ellan.mahjong.spi.SeatId(0),
+                    List.of(),
+                    Map.of());
         }
 
         @Override

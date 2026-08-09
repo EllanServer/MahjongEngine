@@ -1,6 +1,7 @@
 package top.ellan.mahjong.persistence.sql;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.sql.Connection;
@@ -12,17 +13,9 @@ import org.junit.jupiter.api.Test;
 
 class SqlSchemaMigratorTest {
     @Test
-    void upgradesVersionOneSnapshotTableAndAddsParticipantMetadata() throws Exception {
+    void createsTheCompleteCurrentSchema() throws Exception {
         String url = "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1";
         SqlConnectionFactory connections = () -> DriverManager.getConnection(url, "sa", "");
-        try (Connection connection = connections.open(); Statement statement = connection.createStatement()) {
-            statement.execute(
-                    "CREATE TABLE match_snapshot ("
-                            + "match_id VARCHAR(36) NOT NULL, snapshot_sequence BIGINT NOT NULL, "
-                            + "state_schema_version INT NOT NULL, snapshot_payload BLOB NOT NULL, "
-                            + "snapshot_sha256 CHAR(64) NOT NULL, created_at TIMESTAMP(6) NOT NULL, "
-                            + "PRIMARY KEY (match_id, snapshot_sequence))");
-        }
 
         new SqlSchemaMigrator(connections).migrate();
 
@@ -55,5 +48,22 @@ class SqlSchemaMigratorTest {
                 assertEquals(SqlSchemaMigrator.SCHEMA_VERSION, version.getInt(1));
             }
         }
+    }
+
+    @Test
+    void rejectsAnyDifferentSchemaVersion() throws Exception {
+        String url = "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1";
+        SqlConnectionFactory connections = () -> DriverManager.getConnection(url, "sa", "");
+        try (Connection connection = connections.open();
+                Statement statement = connection.createStatement()) {
+            statement.execute(
+                    "CREATE TABLE mahjong_schema_version ("
+                            + "component VARCHAR(64) PRIMARY KEY, schema_version INT NOT NULL)");
+            statement.execute(
+                    "INSERT INTO mahjong_schema_version (component, schema_version) "
+                            + "VALUES ('event-store', 0)");
+        }
+
+        assertThrows(java.sql.SQLException.class, () -> new SqlSchemaMigrator(connections).migrate());
     }
 }

@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import top.ellan.mahjong.spi.ActionPresentation;
 import top.ellan.mahjong.spi.LegalAction;
 import top.ellan.mahjong.spi.MatchPlayer;
 import top.ellan.mahjong.spi.MatchSeed;
@@ -28,6 +29,9 @@ import top.ellan.mahjong.spi.RulePackProvider;
 import top.ellan.mahjong.spi.RuleProfileDescriptor;
 import top.ellan.mahjong.spi.RuleState;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
+import top.ellan.mahjong.spi.RuleTablePresentation;
+import top.ellan.mahjong.spi.RuleWallDirection;
+import top.ellan.mahjong.spi.RuleWallPresentation;
 import top.ellan.mahjong.spi.RuleTransition;
 import top.ellan.mahjong.spi.SeatId;
 import top.ellan.mahjong.spi.SpiVersion;
@@ -133,12 +137,26 @@ class RulePackTckTest {
                 return List.of();
             }
             return List.of(new LegalAction(
-                    "advance", new RuleAction("advance", new byte[] {1}), Map.of()));
+                    "advance",
+                    new RuleAction("advance", new byte[] {1}),
+                    ActionPresentation.actionRow("advance")));
         }
 
         @Override
         public PublicRuleView publicView(RuleState state, long revision) {
-            return new PublicRuleView(revision, "playing", List.of(), Map.of());
+            return new PublicRuleView(
+                    revision,
+                    "playing",
+                    List.of(),
+                    Map.of(),
+                    new RuleTablePresentation(
+                            2,
+                            new RuleWallPresentation(
+                                    List.of(1, 1), 0, RuleWallDirection.CLOCKWISE),
+                            6,
+                            java.util.Optional.empty(),
+                            java.util.Optional.empty(),
+                            java.util.Optional.empty()));
         }
 
         @Override
@@ -146,7 +164,12 @@ class RulePackTckTest {
             if (!seated(viewer) && !authorizesOutsiders) {
                 throw new IllegalArgumentException("viewer is not seated");
             }
-            return new PrivateRuleView(revision, viewer, List.of(), Map.of());
+            return new PrivateRuleView(
+                    revision,
+                    viewer,
+                    FIRST.equals(viewer) ? new SeatId(0) : new SeatId(1),
+                    List.of(),
+                    Map.of());
         }
 
         private static boolean seated(PlayerId player) {

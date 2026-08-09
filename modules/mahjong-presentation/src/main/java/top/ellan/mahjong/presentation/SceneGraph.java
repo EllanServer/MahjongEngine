@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.application.InteractionHandle;
+import top.ellan.mahjong.spi.PlayerId;
 
 /** Complete immutable desired scene for one table revision. */
 public record SceneGraph(
@@ -33,21 +35,23 @@ public record SceneGraph(
         nodes = Map.copyOf(copied);
         interactionBindings =
                 List.copyOf(Objects.requireNonNull(interactionBindings, "interactionBindings"));
-        java.util.Set<top.ellan.mahjong.application.InteractionHandle> handles = new HashSet<>();
+        java.util.Set<InteractionHandle> handles = new HashSet<>();
         for (SceneNode node : nodes.values()) {
             if (node instanceof InteractionNode interaction) {
                 handles.add(interaction.handle());
             }
         }
-        java.util.Set<String> bindingKeys = new HashSet<>();
+        java.util.Set<BindingKey> bindingKeys = new HashSet<>();
         for (SceneInteractionBinding binding : interactionBindings) {
             if (!handles.contains(binding.handle())
                     || binding.actionToken().revision() != revision
-                    || !bindingKeys.add(binding.handle() + ":" + binding.playerId())) {
+                    || !bindingKeys.add(new BindingKey(binding.handle(), binding.playerId()))) {
                 throw new IllegalArgumentException("Invalid or duplicate scene interaction binding");
             }
         }
     }
+
+    private record BindingKey(InteractionHandle handle, PlayerId player) {}
 
     public static SceneGraph empty(TableId tableId, long revision) {
         return new SceneGraph(tableId, revision, Map.of(), List.of());

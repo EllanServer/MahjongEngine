@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -30,6 +31,10 @@ import top.ellan.mahjong.spi.RulePackRef;
 import top.ellan.mahjong.spi.RuleProfileDescriptor;
 import top.ellan.mahjong.spi.RuleState;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
+import top.ellan.mahjong.spi.RuleTablePresentation;
+import top.ellan.mahjong.spi.RuleWallDirection;
+import top.ellan.mahjong.spi.RuleWallPresentation;
+import top.ellan.mahjong.spi.SeatId;
 import top.ellan.mahjong.spi.RuleTransition;
 import top.ellan.mahjong.spi.SpiVersion;
 import top.ellan.mahjong.spi.TransitionDisposition;
@@ -136,12 +141,26 @@ class RuleStateReplayVerifierTest {
 
         @Override
         public PublicRuleView publicView(RuleState state, long revision) {
-            return new PublicRuleView(revision, "test", List.of(), Map.of());
+            return new PublicRuleView(
+                    revision,
+                    "test",
+                    List.of(),
+                    Map.of(),
+                    new RuleTablePresentation(
+                            4,
+                            new RuleWallPresentation(
+                                    List.of(17, 17, 17, 17),
+                                    0,
+                                    RuleWallDirection.CLOCKWISE),
+                            6,
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty()));
         }
 
         @Override
         public PrivateRuleView privateView(RuleState state, PlayerId viewer, long revision) {
-            return new PrivateRuleView(revision, viewer, List.of(), Map.of());
+            return new PrivateRuleView(revision, viewer, new SeatId(0), List.of(), Map.of());
         }
 
         @Override

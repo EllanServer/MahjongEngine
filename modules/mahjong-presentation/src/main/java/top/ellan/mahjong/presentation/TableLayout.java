@@ -1,12 +1,8 @@
 package top.ellan.mahjong.presentation;
 
-import java.util.Optional;
-import top.ellan.mahjong.spi.RuleViewZone;
-import top.ellan.mahjong.spi.SeatId;
+import top.ellan.mahjong.spi.RuleTablePresentation;
 
-/** Variant-neutral geometry policy. */
+/** Compiles a rule-declared physical table into a reusable constant-time lookup plan. */
 public interface TableLayout {
-    SceneTransform tile(RuleViewZone zone, Optional<SeatId> owner, int index);
-
-    SceneTransform interaction(int index);
+    ResolvedTableLayout resolve(RuleTablePresentation tablePresentation);
 }

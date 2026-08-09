@@ -9,6 +9,7 @@ import java.security.KeyPairGenerator;
 import java.security.Signature;
 import java.util.Base64;
 import org.junit.jupiter.api.Test;
+import top.ellan.mahjong.spi.SpiVersion;
 
 class SignedRegistryCodecTest {
     @Test
@@ -47,7 +48,9 @@ class SignedRegistryCodecTest {
                         + "\"url\":\"https://example.invalid/riichi.jar\","
                         + "\"sha256\":\""
                         + "0".repeat(64)
-                        + "\",\"spiVersion\":\"1.0.0\","
+                        + "\",\"spiVersion\":\""
+                        + SpiVersion.CURRENT
+                        + "\","
                         + "\"requiredCoreVersion\":\">=1.5.0\",\"sizeBytes\":1234}]}")
                 .getBytes(StandardCharsets.UTF_8);
     }
