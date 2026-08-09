@@ -57,11 +57,11 @@ public final class TableActor implements AutoCloseable {
     private final AtomicBoolean scheduled = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final AtomicReference<TableActorSnapshot> publishedSnapshot = new AtomicReference<>();
+    private final AtomicReference<TableProjection> publishedProjection = new AtomicReference<>();
     private final CompletableFuture<Void> shutdownComplete = new CompletableFuture<>();
     private final Map<UUID, AuthorizedAction> actionCatalog = new HashMap<>();
     private TableAggregate aggregate;
     private RuleState ruleState;
-    private TableProjection latestProjection;
     private OutboxHealth outboxHealth;
     private long lastEventSequence;
     private long acceptedActions;
@@ -130,7 +130,7 @@ public final class TableActor implements AutoCloseable {
     }
 
     public Optional<TableProjection> latestProjection() {
-        return Optional.ofNullable(latestProjection);
+        return Optional.ofNullable(publishedProjection.get());
     }
 
     private void scheduleDrain() {
@@ -542,7 +542,7 @@ public final class TableActor implements AutoCloseable {
                             }
                             authorizedByPlayer.put(player, List.copyOf(authorized));
                         });
-        latestProjection =
+        TableProjection projection =
                 new TableProjection(
                         aggregate.tableId(),
                         aggregate.revision(),
@@ -550,7 +550,8 @@ public final class TableActor implements AutoCloseable {
                         frame.publicView(),
                         frame.privateViews(),
                         authorizedByPlayer);
-        publishProjection(latestProjection);
+        publishedProjection.set(projection);
+        publishProjection(projection);
     }
 
     private void handleOutboxHealth(OutboxHealth health) {
@@ -565,18 +566,20 @@ public final class TableActor implements AutoCloseable {
     }
 
     private void republishLifecycle() {
-        if (latestProjection == null) {
+        TableProjection current = publishedProjection.get();
+        if (current == null) {
             return;
         }
-        latestProjection =
+        TableProjection updated =
                 new TableProjection(
-                        latestProjection.tableId(),
-                        latestProjection.revision(),
+                        current.tableId(),
+                        current.revision(),
                         aggregate.lifecycle(),
-                        latestProjection.publicView(),
-                        latestProjection.privateViews(),
-                        latestProjection.authorizedActions());
-        publishProjection(latestProjection);
+                        current.publicView(),
+                        current.privateViews(),
+                        current.authorizedActions());
+        publishedProjection.set(updated);
+        publishProjection(updated);
     }
 
     private void publishProjection(TableProjection projection) {
