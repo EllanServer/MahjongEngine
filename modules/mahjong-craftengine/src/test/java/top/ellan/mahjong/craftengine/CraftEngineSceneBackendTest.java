@@ -103,6 +103,26 @@ class CraftEngineSceneBackendTest {
         assertEquals(3, gateway.upserted.getOrDefault(table, 0));
     }
 
+    @Test
+    void removalDuringReloadStillDeletesThePreviouslyAppliedFurniture() {
+        ManualRegionScheduler scheduler = new ManualRegionScheduler();
+        RecordingGateway gateway = new RecordingGateway();
+        CraftEngineSceneBackend backend = backend(gateway, scheduler, ignored -> {});
+        TableId table = TableId.random();
+        SceneNodeId node = new SceneNodeId("tile/0");
+        backend.submit(diff(table, 1));
+        backend.onCraftEngineReloaded();
+        scheduler.runUntilIdle(REGION, 4);
+        assertTrue(gateway.live.getOrDefault(table, Map.of()).containsKey(node));
+
+        backend.onCraftEngineReloadStarted();
+        backend.submit(new SceneDiff(table, 1, 2, List.of(node), List.of(), List.of()));
+        backend.onCraftEngineReloaded();
+        scheduler.runUntilIdle(REGION, 4);
+
+        assertFalse(gateway.live.getOrDefault(table, Map.of()).containsKey(node));
+    }
+
     private static CraftEngineSceneBackend backend(
             RecordingGateway gateway,
             ManualRegionScheduler scheduler,

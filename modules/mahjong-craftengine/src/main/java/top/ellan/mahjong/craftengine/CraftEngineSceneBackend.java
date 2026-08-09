@@ -97,8 +97,10 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
         tables.forEach(
                 (tableId, table) -> {
                     synchronized (table) {
+                        table.forced.addAll(table.actual.keySet());
+                        table.forced.addAll(table.desired.keySet());
                         table.actual.clear();
-                        table.dirty.addAll(table.desired.keySet());
+                        table.dirty.addAll(table.forced);
                         table.failed = false;
                     }
                     markReady(tableId, table);
@@ -269,7 +271,8 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
                 SceneNodeId id = iterator.next();
                 SceneNode desired = table.desired.get(id);
                 SceneNode actual = table.actual.get(id);
-                if (Objects.equals(desired, actual)) {
+                boolean forced = table.forced.contains(id);
+                if (!forced && Objects.equals(desired, actual)) {
                     iterator.remove();
                     continue;
                 }
@@ -293,6 +296,7 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
                     table.actual.put(mutation.id(), mutation.desired());
                 }
                 table.dirty.remove(mutation.id());
+                table.forced.remove(mutation.id());
             }
             return true;
         } catch (RuntimeException failure) {
@@ -343,6 +347,7 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
         private final Map<SceneNodeId, SceneNode> desired = new LinkedHashMap<>();
         private final Map<SceneNodeId, SceneNode> actual = new LinkedHashMap<>();
         private final Set<SceneNodeId> dirty = new LinkedHashSet<>();
+        private final Set<SceneNodeId> forced = new LinkedHashSet<>();
         private List<InteractionRouteBinding> bindings = List.of();
         private long desiredRevision = -1;
         private boolean regionQueued;
