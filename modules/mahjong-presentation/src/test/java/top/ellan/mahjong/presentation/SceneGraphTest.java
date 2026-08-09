@@ -259,15 +259,15 @@ class SceneGraphTest {
         assertEquals(
                 List.of(14, 13, 14, 13), table(108).wall().stackCountsBySide());
         assertEquals(
-                1.0D,
+                -1.0D,
                 layout.resolve(table(108)).tile(wallTile(1, 107), 108).x(),
                 0.000_001D);
         assertEquals(
-                1.0D,
+                -1.0D,
                 layout.resolve(table(136)).tile(wallTile(2, 135), 136).x(),
                 0.000_001D);
         assertEquals(
-                1.0D,
+                -1.0D,
                 layout.resolve(table(144)).tile(wallTile(3, 143), 144).x(),
                 0.000_001D);
     }

@@ -10,6 +10,7 @@ public record RuleTilePresentation(
         boolean emphasized) {
     private static final int MAX_LAYOUT_INDEX = 4_095;
     private static final int MAX_STACK_LEVEL = 3;
+    private static final RuleTilePresentation[] NATURAL_CACHE = naturalCache();
 
     public RuleTilePresentation {
         if (layoutIndex < 0 || layoutIndex > MAX_LAYOUT_INDEX) {
@@ -22,12 +23,23 @@ public record RuleTilePresentation(
     }
 
     public static RuleTilePresentation natural(int layoutIndex) {
-        return new RuleTilePresentation(layoutIndex, RuleTileRotation.NATURAL, 0, false);
+        return layoutIndex >= 0 && layoutIndex < NATURAL_CACHE.length
+                ? NATURAL_CACHE[layoutIndex]
+                : new RuleTilePresentation(layoutIndex, RuleTileRotation.NATURAL, 0, false);
     }
 
     public RuleTilePresentation withEmphasis() {
         return emphasized
                 ? this
                 : new RuleTilePresentation(layoutIndex, rotation, stackLevel, true);
+    }
+
+    private static RuleTilePresentation[] naturalCache() {
+        RuleTilePresentation[] result = new RuleTilePresentation[256];
+        for (int index = 0; index < result.length; index++) {
+            result[index] = new RuleTilePresentation(
+                    index, RuleTileRotation.NATURAL, 0, false);
+        }
+        return result;
     }
 }
