@@ -102,7 +102,10 @@ public final class RulePackBootstrap {
                     HttpClient.newBuilder()
                             .executor(ioExecutor)
                             .connectTimeout(Duration.ofSeconds(10))
-                            .followRedirects(HttpClient.Redirect.NEVER)
+                            // GitHub Release assets redirect to GitHub object storage. NORMAL
+                            // follows that HTTPS redirect but refuses an HTTPS-to-HTTP downgrade;
+                            // the registry signature and artifact SHA-256 still authenticate bytes.
+                            .followRedirects(HttpClient.Redirect.NORMAL)
                             .build();
             HttpRegistrySource registry = new HttpRegistrySource(client, registryUri);
             RulePackInstaller installer =

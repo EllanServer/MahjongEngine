@@ -28,4 +28,6 @@
 - Actions secret `MAHJONG_RULE_PACK_ED25519_PRIVATE_KEY_PKCS8_BASE64`；
 - 每次使用新的 `rule-registry-vYYYY.MM.DD.N` tag。
 
+运行时允许 GitHub Release 资产从 `github.com` 正常跳转到 GitHub HTTPS 对象存储，但不允许 HTTPS 降级到 HTTP。registry 原始 payload 必须先通过内置 Ed25519 公钥验证，规则 JAR 还必须同时满足签名条目中的 URL、长度和 SHA-256，重定向不替代任何完整性校验。
+
 当前 GitHub 尚未配置上述变量/secret，也没有非 `SNAPSHOT` 的正式规则 Release，因此正式签名 registry 和完整实服验收仍是 2.0 发布阻断项；不能把“源码/CI 可编译”描述成“已可正式服上线”。
