@@ -13,6 +13,7 @@ import top.ellan.mahjong.plugin.MahjongPaperPlugin;
 import top.ellan.mahjong.plugin.MahjongRuntime;
 import top.ellan.mahjong.plugin.command.handler.LobbyActionHandler;
 import top.ellan.mahjong.plugin.command.handler.MatchAutomationHandler;
+import top.ellan.mahjong.plugin.command.handler.MatchRefereeHandler;
 import top.ellan.mahjong.plugin.command.handler.PlayerRecordHandler;
 import top.ellan.mahjong.plugin.command.handler.RulePackAdminHandler;
 import top.ellan.mahjong.plugin.command.handler.TableCreateHandler;
@@ -30,6 +31,7 @@ public final class MahjongCommand implements CommandExecutor, TabCompleter {
         register(routes, new TableCreateHandler(support));
         register(routes, new LobbyActionHandler(support));
         register(routes, new MatchAutomationHandler(support));
+        register(routes, new MatchRefereeHandler(support));
         register(routes, new TableQueryHandler(support));
         register(routes, new PlayerRecordHandler(support));
         register(routes, new TableRemoveHandler(support));
@@ -56,7 +58,7 @@ public final class MahjongCommand implements CommandExecutor, TabCompleter {
                         sender,
                         CommandSupport.message(
                                 "mahjongpaper.command.help",
-                                "/mahjong <create|join|leave|spectate|ready|owner|bot|start|mode|auto|list|state|history|rank|remove|rules>"));
+                                "/mahjong <create|join|leave|spectate|ready|owner|bot|start|mode|auto|referee|list|state|history|rank|remove|rules>"));
                 return true;
             }
             SubcommandHandler handler =

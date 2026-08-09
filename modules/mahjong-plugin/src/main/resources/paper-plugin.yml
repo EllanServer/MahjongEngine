@@ -14,7 +14,7 @@ dependencies:
 commands:
   mahjong:
     description: MahjongPaper 2.0 administration and match commands.
-    usage: /mahjong <create|join|leave|spectate|ready|owner|bot|start|mode|auto|list|state|history|rank|remove|rules>
+    usage: /mahjong <create|join|leave|spectate|ready|owner|bot|start|mode|auto|referee|list|state|history|rank|remove|rules>
     permission: mahjongpaper.command
 permissions:
   mahjongpaper.command:

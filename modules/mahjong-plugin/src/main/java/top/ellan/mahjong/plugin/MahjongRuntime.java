@@ -37,6 +37,7 @@ import top.ellan.mahjong.plugin.lobby.LobbyRuntimeServices;
 import top.ellan.mahjong.plugin.match.NewRulePackMatch;
 import top.ellan.mahjong.plugin.match.MatchAutomationService;
 import top.ellan.mahjong.plugin.match.MatchPersistenceCleanup;
+import top.ellan.mahjong.plugin.match.MatchRefereeService;
 import top.ellan.mahjong.plugin.match.RulePackMatchCoordinator;
 import top.ellan.mahjong.plugin.match.StartedRulePackMatch;
 import top.ellan.mahjong.plugin.history.PlayerRecordService;
@@ -50,6 +51,8 @@ import top.ellan.mahjong.runtime.admin.RulePackInventory;
 import top.ellan.mahjong.runtime.admin.RulePackVerification;
 import top.ellan.mahjong.spi.RuleId;
 import top.ellan.mahjong.spi.PlayerId;
+import top.ellan.mahjong.spi.RuleAction;
+import top.ellan.mahjong.application.table.TableActionResult;
 
 /** Restart-scoped 2.0 composition root. All concrete setup lives in classified bootstraps. */
 public final class MahjongRuntime implements AutoCloseable {
@@ -64,6 +67,7 @@ public final class MahjongRuntime implements AutoCloseable {
     private final TableActorRegistry actors = new TableActorRegistry();
     private final LiveTableDirectory liveTables = new LiveTableDirectory();
     private final MatchAutomationService automation = new MatchAutomationService(liveTables);
+    private final MatchRefereeService referees = new MatchRefereeService(liveTables);
     private final PlayerRecordService playerRecords;
     private final CraftEnginePlatformRuntime platform;
     private final LobbyRuntimeCoordinator lobbyRuntime;
@@ -169,6 +173,12 @@ public final class MahjongRuntime implements AutoCloseable {
     public CompletionStage<top.ellan.mahjong.application.table.TableActionResult> setAutomation(
             top.ellan.mahjong.spi.PlayerId playerId, boolean enabled) {
         return automation.setAutomated(playerId, enabled);
+    }
+
+    public CompletionStage<TableActionResult> submitReferee(
+            TableId tableId, PlayerId authority, RuleAction action) {
+        requireServices();
+        return referees.submit(tableId, authority, action);
     }
 
     public CompletionStage<HostedLobby> createLobby(
