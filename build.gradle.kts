@@ -113,10 +113,10 @@ val architectureCheck =
                 }
                 if (
                     module == "mahjong-craftengine" &&
-                        text.lineSequence().count() > 425
+                        text.lineSequence().count() > 350
                 ) {
                     violations +=
-                        "$relative exceeds the 425-line CraftEngine responsibility limit"
+                        "$relative exceeds the 350-line CraftEngine responsibility limit"
                 }
                 if (
                     module == "mahjong-persistence-sql" &&
