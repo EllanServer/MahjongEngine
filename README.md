@@ -12,7 +12,7 @@ The former session/controllers, mixed Java/Kotlin rule code, `mahjong-utils`, GB
 
 Requirements: Java 21, Paper/Folia 1.20.1+, and CraftEngine 26.7+.
 
-See the [Chinese architecture guide](docs/architecture.zh-CN.md), [installation guide](docs/installation.zh-CN.md), and [rule-pack guide](docs/rule-packs.zh-CN.md).
+See the [Chinese architecture guide](docs/architecture.zh-CN.md), [interaction contract](docs/interaction.zh-CN.md), [installation guide](docs/installation.zh-CN.md), and [rule-pack guide](docs/rule-packs.zh-CN.md).
 
 GitHub Actions builds the plugin with:
 

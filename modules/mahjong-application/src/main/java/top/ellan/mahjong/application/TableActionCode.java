@@ -2,6 +2,13 @@ package top.ellan.mahjong.application;
 
 /** Non-blocking ingress outcome. */
 public enum TableActionCode {
+    HAND_TILE_SELECTED,
+    HAND_TILE_SELECTION_CANCELLED,
+    DUPLICATE_INTERACTION,
+    OVERHEAD_VIEW_ENTERED,
+    OVERHEAD_VIEW_EXITED,
+    OVERHEAD_VIEW_UNAVAILABLE,
+    OVERHEAD_VIEW_READ_ONLY,
     ACCEPTED_MEMORY,
     REJECTED_BY_RULES,
     STALE_TOKEN,

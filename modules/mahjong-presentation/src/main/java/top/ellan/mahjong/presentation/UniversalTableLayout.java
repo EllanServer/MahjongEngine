@@ -90,6 +90,16 @@ public final class UniversalTableLayout implements TableLayout {
         public SceneTransform action(SeatId seat, ActionPlacement placement, int index) {
             return plan.action(seat, placement, index);
         }
+
+        @Override
+        public SceneTransform viewControl(SeatId seat) {
+            return plan.viewControl(seat);
+        }
+
+        @Override
+        public SceneTransform overheadCamera(SeatId seat, double height) {
+            return plan.overheadCamera(seat, height);
+        }
     }
 
     private static final class Plan {
@@ -104,6 +114,7 @@ public final class UniversalTableLayout implements TableLayout {
         private final SceneTransform[][] winClaims;
         private final SceneTransform[][] actions;
         private final SceneTransform[][] secondaryActions;
+        private final SceneTransform[] viewControls;
         private final SceneTransform[] wall;
         private final int totalWallStacks;
 
@@ -120,6 +131,7 @@ public final class UniversalTableLayout implements TableLayout {
             winClaims = precomputeCenterRows(-0.34D, geometry.maxAuxiliaryTiles());
             actions = precomputeActions(0.0D);
             secondaryActions = precomputeActions(geometry.secondaryActionOffset());
+            viewControls = precomputeViewControls();
             wall = precomputeWall();
         }
 
@@ -171,6 +183,19 @@ public final class UniversalTableLayout implements TableLayout {
                 case HAND_TILE -> throw new IllegalArgumentException(
                         "Hand-tile actions use the target tile transform");
             };
+        }
+
+        private SceneTransform viewControl(SeatId seat) {
+            return viewControls[seatIndex(seat)];
+        }
+
+        private SceneTransform overheadCamera(SeatId seat, double height) {
+            int seatIndex = seatIndex(seat);
+            if (!Double.isFinite(height) || height <= geometry.surfaceHeight()) {
+                throw new IllegalArgumentException("Overhead camera height must clear the table");
+            }
+            double facingCenterYaw = 180.0D - 360.0D * seatIndex / key.seatCount();
+            return new SceneTransform(0, height, 0, facingCenterYaw, 90, 0, 1);
         }
 
         private SceneTransform wall(
@@ -382,6 +407,21 @@ public final class UniversalTableLayout implements TableLayout {
                             axis.outZ() * outward + axis.tangentZ() * tangent,
                             seat);
                 }
+            }
+            return result;
+        }
+
+        private SceneTransform[] precomputeViewControls() {
+            SceneTransform[] result = new SceneTransform[key.seatCount()];
+            for (int seat = 0; seat < key.seatCount(); seat++) {
+                Axis axis = axis(seat);
+                double tangent = 2.55D * geometry.actionColumnSpacing();
+                double outward = geometry.handRadius() - 0.42D;
+                result[seat] = transform(
+                        axis.outX() * outward + axis.tangentX() * tangent,
+                        geometry.surfaceHeight() + 0.36D,
+                        axis.outZ() * outward + axis.tangentZ() * tangent,
+                        seat);
             }
             return result;
         }

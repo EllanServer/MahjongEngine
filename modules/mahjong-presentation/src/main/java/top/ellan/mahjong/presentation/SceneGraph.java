@@ -44,7 +44,7 @@ public record SceneGraph(
         java.util.Set<BindingKey> bindingKeys = new HashSet<>();
         for (SceneInteractionBinding binding : interactionBindings) {
             if (!handles.contains(binding.handle())
-                    || binding.actionToken().revision() != revision
+                    || binding.revision() != revision
                     || !bindingKeys.add(new BindingKey(binding.handle(), binding.playerId()))) {
                 throw new IllegalArgumentException("Invalid or duplicate scene interaction binding");
             }

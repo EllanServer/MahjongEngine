@@ -16,6 +16,10 @@ craftengine:
     hand-hitbox: "mahjongpaper:hand_tile_hitbox"
     action-hitbox: "mahjongpaper:action_button_hitbox"
 presentation:
+  overhead:
+    enabled: true
+    height: 4.5
+    transition-ticks: 16
   # Dynamic placement dimensions shared by all rule packs. Static furniture and hitboxes stay in CE YAML.
   geometry:
     tile-width: 0.1125

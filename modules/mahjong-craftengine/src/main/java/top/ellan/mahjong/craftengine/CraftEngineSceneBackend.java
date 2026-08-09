@@ -87,7 +87,10 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
                                             new InteractionRouteBinding(
                                                     binding.handle(),
                                                     binding.playerId(),
-                                                    binding.actionToken()))
+                                                    binding.revision(),
+                                                    binding.purpose(),
+                                                    binding.actionToken(),
+                                                    binding.targetTile()))
                             .toList();
         }
         markReady(diff.tableId(), table);

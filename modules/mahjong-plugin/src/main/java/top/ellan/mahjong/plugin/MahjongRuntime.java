@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.momirealms.craftengine.bukkit.api.CraftEngineItems;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -32,6 +33,7 @@ import org.bukkit.plugin.Plugin;
 import top.ellan.mahjong.application.BoundedDeadlineScheduler;
 import top.ellan.mahjong.application.FairRuleExecutor;
 import top.ellan.mahjong.application.InteractionRouter;
+import top.ellan.mahjong.application.TableActionResult;
 import top.ellan.mahjong.application.TableActorRegistry;
 import top.ellan.mahjong.craftengine.CraftEngineBackendConfig;
 import top.ellan.mahjong.craftengine.CraftEngineBundleInstaller;
@@ -87,7 +89,7 @@ public final class MahjongRuntime implements AutoCloseable {
     private final FairRuleExecutor ruleExecutor;
     private final BoundedDeadlineScheduler deadlines;
     private final TableActorRegistry actors = new TableActorRegistry();
-    private final InteractionRouter interactions = new InteractionRouter(actors);
+    private final InteractionRouter interactions;
     private final PaperTableAnchorRegistry paperAnchors = new PaperTableAnchorRegistry();
     private final LiveTableDirectory liveTables = new LiveTableDirectory();
     private final SparrowPrivateProjectionGateway privateProjection;
@@ -112,7 +114,12 @@ public final class MahjongRuntime implements AutoCloseable {
                 new BoundedDeadlineScheduler(8_192, executors.actor(), "mahjong-deadline");
 
         Plugin craftEngine = requireCraftEngine();
-        privateProjection = new SparrowPrivateProjectionGateway(plugin, paperAnchors);
+        privateProjection = new SparrowPrivateProjectionGateway(
+                plugin,
+                paperAnchors,
+                configuration.layoutGeometry().emphasisRaise(),
+                configuration.viewSettings().transitionTicks());
+        interactions = new InteractionRouter(actors, privateProjection, privateProjection);
         DirectCraftEngineMutationGateway mutations =
                 new DirectCraftEngineMutationGateway(
                         plugin,
@@ -138,7 +145,9 @@ public final class MahjongRuntime implements AutoCloseable {
                         new DefaultTableSceneMapper(
                                 new UniversalTableLayout(
                                         tableGeometry(configuration.layoutGeometry())),
-                                sceneAssets(configuration.craftEngineAssets())),
+                                sceneAssets(configuration.craftEngineAssets()),
+                                configuration.viewSettings().overheadHeight(),
+                                configuration.viewSettings().overheadEnabled()),
                         sceneBackend,
                         new SceneGraphDiffer(),
                         deadlines);
@@ -600,17 +609,15 @@ public final class MahjongRuntime implements AutoCloseable {
                         new CraftEngineInteractionListener(
                                 interactions,
                                 (player, result, failure) -> {
-                                    String message =
-                                            failure == null
-                                                    ? result.code() + ": " + result.reasonCode()
-                                                    : "ACTION_FAILED: "
-                                                            + safeMessage(unwrap(failure));
+                                    Component message = interactionFeedback(result, failure);
+                                    if (message == null) {
+                                        return;
+                                    }
                                     player.getScheduler()
                                             .run(
                                                     plugin,
                                                     ignored ->
-                                                            player.sendActionBar(
-                                                                    Component.text(message)),
+                                                            player.sendActionBar(message),
                                                     null);
                                 },
                                 mutations.managedKey(),
@@ -623,6 +630,33 @@ public final class MahjongRuntime implements AutoCloseable {
                                 sceneBackend, craftEngineBundleInstalled::get),
                         plugin);
         plugin.getServer().getPluginManager().registerEvents(privateProjection, plugin);
+    }
+
+    private static Component interactionFeedback(
+            TableActionResult result, Throwable failure) {
+        if (failure != null || result == null) {
+            return Component.translatable("mahjongpaper.feedback.action_failed")
+                    .color(NamedTextColor.RED);
+        }
+        return switch (result.code()) {
+            case HAND_TILE_SELECTED,
+                    HAND_TILE_SELECTION_CANCELLED,
+                    DUPLICATE_INTERACTION,
+                    ACCEPTED_MEMORY -> null;
+            case OVERHEAD_VIEW_ENTERED ->
+                    Component.translatable("mahjongpaper.feedback.overhead_entered")
+                            .color(NamedTextColor.AQUA);
+            case OVERHEAD_VIEW_EXITED ->
+                    Component.translatable("mahjongpaper.feedback.overhead_exited")
+                            .color(NamedTextColor.GREEN);
+            case OVERHEAD_VIEW_UNAVAILABLE ->
+                    Component.translatable("mahjongpaper.feedback.overhead_unavailable")
+                            .color(NamedTextColor.RED);
+            case OVERHEAD_VIEW_READ_ONLY ->
+                    Component.translatable("mahjongpaper.feedback.overhead_read_only")
+                            .color(NamedTextColor.YELLOW);
+            default -> Component.text(result.reasonCode(), NamedTextColor.RED);
+        };
     }
 
     private void installCraftEngineBundle(Plugin craftEngine) {

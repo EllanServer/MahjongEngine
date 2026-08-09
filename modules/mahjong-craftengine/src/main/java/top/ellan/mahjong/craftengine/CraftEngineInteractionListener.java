@@ -11,9 +11,13 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.persistence.PersistentDataType;
 import top.ellan.mahjong.application.InteractionHandle;
 import top.ellan.mahjong.application.InteractionRouter;
+import top.ellan.mahjong.application.TableActionCode;
+import top.ellan.mahjong.application.TableActionResult;
 import top.ellan.mahjong.spi.PlayerId;
 
 /** CE event ingress: PDC UUID lookup, permission-neutral O(1) routing, and immediate return. */
@@ -58,8 +62,28 @@ public final class CraftEngineInteractionListener implements Listener {
         }
         event.setCancelled(true);
         Player player = event.player();
-        router.route(handle, new PlayerId(player.getUniqueId()))
+        router.interact(handle, new PlayerId(player.getUniqueId()), player.isSneaking())
                 .whenComplete((result, failure) -> feedback.accept(player, result, failure));
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onQuit(PlayerQuitEvent event) {
+        router.clearPlayer(new PlayerId(event.getPlayer().getUniqueId()));
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onSneak(PlayerToggleSneakEvent event) {
+        if (event.isSneaking()
+                && router.exitOverhead(new PlayerId(event.getPlayer().getUniqueId()))) {
+            event.setCancelled(true);
+            feedback.accept(
+                    event.getPlayer(),
+                    new TableActionResult(
+                            TableActionCode.OVERHEAD_VIEW_EXITED,
+                            0,
+                            "overhead-view-exited"),
+                    null);
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

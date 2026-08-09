@@ -12,4 +12,8 @@ public interface ResolvedTableLayout {
     SceneTransform privateTile(RuleViewTile tile, int groupSize);
 
     SceneTransform action(SeatId seat, ActionPlacement placement, int index);
+
+    SceneTransform viewControl(SeatId seat);
+
+    SceneTransform overheadCamera(SeatId seat, double height);
 }

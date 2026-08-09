@@ -16,6 +16,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
+import top.ellan.mahjong.application.InteractionPurpose;
 import top.ellan.mahjong.application.TableProjection;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.domain.TableLifecycle;
@@ -199,6 +200,12 @@ class SceneGraphTest {
 
         assertEquals(privateTile.transform(), interaction.transform());
         assertEquals("mahjongpaper:hand_tile_hitbox", interaction.assetId());
+        assertEquals(
+                InteractionPurpose.HAND_TILE_ACTION,
+                graph.interactionBindings().getFirst().purpose());
+        assertEquals(
+                privateTile.tileInstanceId(),
+                graph.interactionBindings().getFirst().targetTile());
     }
 
     @Test
@@ -222,6 +229,49 @@ class SceneGraphTest {
                 .orElseThrow();
 
         assertEquals("mahjongpaper:action_button_hitbox", interaction.assetId());
+        assertTrue(mapper().map(rowAction).nodes().values().stream()
+                .filter(ActionLabelNode.class::isInstance)
+                .map(ActionLabelNode.class::cast)
+                .anyMatch(label -> label.labelKey().equals("action.win")));
+    }
+
+    @Test
+    void overheadViewKeepsItsHitboxPublicAndItsLabelAndCameraPrivate() {
+        SceneGraph graph = overheadMapper().map(projection(TableId.random(), 11, "playing"));
+
+        InteractionNode view = graph.nodes().values().stream()
+                .filter(InteractionNode.class::isInstance)
+                .map(InteractionNode.class::cast)
+                .filter(node -> node.id().value().startsWith("interaction/view/"))
+                .findFirst()
+                .orElseThrow();
+        ActionLabelNode label = graph.nodes().values().stream()
+                .filter(ActionLabelNode.class::isInstance)
+                .map(ActionLabelNode.class::cast)
+                .filter(node -> node.labelKey().equals("action.view_river"))
+                .findFirst()
+                .orElseThrow();
+        CameraNode camera = graph.nodes().values().stream()
+                .filter(CameraNode.class::isInstance)
+                .map(CameraNode.class::cast)
+                .findFirst()
+                .orElseThrow();
+        SceneInteractionBinding binding = graph.interactionBindings().stream()
+                .filter(candidate -> candidate.purpose() == InteractionPurpose.OVERHEAD_VIEW)
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(view.worldBacked());
+        assertTrue(view.visibility().isPublic());
+        assertFalse(label.worldBacked());
+        assertEquals(Optional.of(PLAYER), label.visibility().privateViewer());
+        assertEquals(Optional.of(PLAYER), camera.visibility().privateViewer());
+        assertEquals(4.5D, camera.transform().y());
+        assertEquals(180.0D, camera.transform().yawDegrees());
+        assertEquals(90.0D, camera.transform().pitchDegrees());
+        assertTrue(view.transform().x() > 0.0D);
+        assertEquals(11, binding.revision());
+        assertEquals(PLAYER, binding.playerId());
     }
 
     @Test
@@ -517,7 +567,13 @@ class SceneGraphTest {
     }
 
     private static DefaultTableSceneMapper mapper() {
-        return new DefaultTableSceneMapper(new UniversalTableLayout(GEOMETRY), ASSETS);
+        return new DefaultTableSceneMapper(
+                new UniversalTableLayout(GEOMETRY), ASSETS, 4.5D, false);
+    }
+
+    private static DefaultTableSceneMapper overheadMapper() {
+        return new DefaultTableSceneMapper(
+                new UniversalTableLayout(GEOMETRY), ASSETS, 4.5D, true);
     }
 
     private static TableProjection projection(TableId tableId, long revision, String phase) {

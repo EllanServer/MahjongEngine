@@ -11,13 +11,15 @@ public record PluginConfiguration(
         String registryUrl,
         String craftEngineBundleFolder,
         CraftEngineAssets craftEngineAssets,
-        LayoutGeometry layoutGeometry) {
+        LayoutGeometry layoutGeometry,
+        ViewSettings viewSettings) {
     public PluginConfiguration {
         Objects.requireNonNull(database, "database");
         registryUrl = Objects.requireNonNull(registryUrl, "registryUrl").trim();
         craftEngineBundleFolder = requireToken(craftEngineBundleFolder, "bundle folder");
         Objects.requireNonNull(craftEngineAssets, "craftEngineAssets");
         Objects.requireNonNull(layoutGeometry, "layoutGeometry");
+        Objects.requireNonNull(viewSettings, "viewSettings");
     }
 
     public static PluginConfiguration load(JavaPlugin plugin) {
@@ -79,7 +81,11 @@ public record PluginConfiguration(
                         config.getInt("presentation.capacity.meld-tiles", 24),
                         config.getInt("presentation.capacity.point-sticks", 64),
                         config.getInt("presentation.capacity.auxiliary-tiles", 32),
-                        config.getInt("presentation.capacity.actions", 64)));
+                        config.getInt("presentation.capacity.actions", 64)),
+                new ViewSettings(
+                        config.getBoolean("presentation.overhead.enabled", true),
+                        config.getDouble("presentation.overhead.height", 4.5D),
+                        config.getInt("presentation.overhead.transition-ticks", 16)));
     }
 
     private static String requireToken(String value, String label) {
@@ -132,6 +138,19 @@ public record PluginConfiguration(
             int maxPointSticks,
             int maxAuxiliaryTiles,
             int maxActions) {}
+
+    public record ViewSettings(boolean overheadEnabled, double overheadHeight, int transitionTicks) {
+        public ViewSettings {
+            if (!Double.isFinite(overheadHeight)
+                    || overheadHeight < 2.0D
+                    || overheadHeight > 8.0D) {
+                throw new IllegalArgumentException("overheadHeight must be between 2 and 8 blocks");
+            }
+            if (transitionTicks < 1 || transitionTicks > 40) {
+                throw new IllegalArgumentException("transitionTicks must be between 1 and 40");
+            }
+        }
+    }
 
     public record Database(String jdbcUrl, String username, String password, int maximumPoolSize) {
         public Database {

@@ -25,13 +25,34 @@ import top.ellan.mahjong.spi.TileInstanceId;
 public final class DefaultTableSceneMapper implements TableSceneMapper {
     private static final int OWNERLESS = 4;
     private static final int OWNER_BUCKETS = 5;
+    private static final double ACTION_LABEL_RAISE = 0.12D;
 
     private final TableLayout layout;
     private final TableSceneAssets assets;
+    private final double overheadHeight;
+    private final boolean overheadEnabled;
 
     public DefaultTableSceneMapper(TableLayout layout, TableSceneAssets assets) {
+        this(layout, assets, 4.5D, true);
+    }
+
+    public DefaultTableSceneMapper(
+            TableLayout layout, TableSceneAssets assets, double overheadHeight) {
+        this(layout, assets, overheadHeight, true);
+    }
+
+    public DefaultTableSceneMapper(
+            TableLayout layout,
+            TableSceneAssets assets,
+            double overheadHeight,
+            boolean overheadEnabled) {
         this.layout = Objects.requireNonNull(layout, "layout");
         this.assets = Objects.requireNonNull(assets, "assets");
+        if (!Double.isFinite(overheadHeight) || overheadHeight <= 0.0D) {
+            throw new IllegalArgumentException("overheadHeight must be finite and positive");
+        }
+        this.overheadHeight = overheadHeight;
+        this.overheadEnabled = overheadEnabled;
     }
 
     @Override
@@ -90,6 +111,7 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                     new PrivateItemNode(
                             id,
                             visibility,
+                            tile.instanceId(),
                             tile.visualId(),
                             resolvedLayout.privateTile(tile, counts.count(tile))));
         }
@@ -102,13 +124,16 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                         visibility,
                         "phase",
                         projection.publicView().phase()));
-        String actionLabels = projection.authorizedActions().getOrDefault(viewer, List.of()).stream()
-                .filter(action -> action.legalAction().actionPresentation().placement()
-                        != ActionPlacement.HAND_TILE)
-                .map(action -> action.legalAction().actionPresentation().labelKey())
-                .collect(java.util.stream.Collectors.joining(","));
-        SceneNodeId actionsId = new SceneNodeId("hud/" + viewerKey + "/actions");
-        nodes.put(actionsId, new HudNode(actionsId, visibility, "actions", actionLabels));
+        if (overheadEnabled) {
+            SceneNodeId cameraId = new SceneNodeId("camera/" + viewerKey + "/river");
+            nodes.put(
+                    cameraId,
+                    new CameraNode(
+                            cameraId,
+                            visibility,
+                            resolvedLayout.overheadCamera(privateView.seat(), overheadHeight),
+                            false));
+        }
     }
 
     private void addInteractions(
@@ -156,6 +181,50 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                         resolvedLayout);
             }
         }
+        if (overheadEnabled) {
+            for (Map.Entry<PlayerId, PrivateRuleView> entry : projection.privateViews().entrySet()) {
+                addViewInteraction(
+                        nodes,
+                        bindings,
+                        projection,
+                        entry.getKey(),
+                        entry.getValue().seat(),
+                        resolvedLayout);
+            }
+        }
+    }
+
+    private void addViewInteraction(
+            Map<SceneNodeId, SceneNode> nodes,
+            List<SceneInteractionBinding> bindings,
+            TableProjection projection,
+            PlayerId player,
+            SeatId seat,
+            ResolvedTableLayout resolvedLayout) {
+        String playerKey = compact(player);
+        SceneNodeId id = new SceneNodeId("interaction/view/" + playerKey + "/river");
+        SceneNodeId labelId = new SceneNodeId("label/view/" + playerKey + "/river");
+        InteractionHandle handle = handle(
+                projection.tableId() + ":view:" + player + ":river");
+        SceneTransform transform = resolvedLayout.viewControl(seat);
+        nodes.put(
+                id,
+                new InteractionNode(
+                        id,
+                        SceneVisibility.publicToAll(),
+                        handle,
+                        assets.actionInteractionFurniture(),
+                        transform));
+        nodes.put(
+                labelId,
+                new ActionLabelNode(
+                        labelId,
+                        SceneVisibility.privateTo(player),
+                        "action.view_river",
+                        labelTransform(transform),
+                        false));
+        bindings.add(SceneInteractionBinding.overhead(
+                handle, player, projection.revision()));
     }
 
     private void addHandInteraction(
@@ -192,7 +261,7 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
         if (nodes.putIfAbsent(id, node) != null) {
             throw new IllegalArgumentException("more than one direct action targets the same hand tile");
         }
-        bindings.add(new SceneInteractionBinding(handle, player, action.token()));
+        bindings.add(SceneInteractionBinding.handTile(handle, player, action.token(), target));
     }
 
     private void addActionInteraction(
@@ -209,18 +278,43 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
         String actionKey = action.legalAction().key();
         SceneNodeId id = new SceneNodeId(
                 "interaction/action/" + playerKey + '/' + actionKey);
+        SceneNodeId labelId = new SceneNodeId(
+                "label/action/" + playerKey + '/' + actionKey);
         InteractionHandle handle = handle(
                 projection.tableId() + ":action:" + player + ':' + actionKey);
+        SceneTransform transform = resolvedLayout.action(seat, placement, index);
         InteractionNode node = new InteractionNode(
                 id,
                 SceneVisibility.publicToAll(),
                 handle,
                 assets.actionInteractionFurniture(),
-                resolvedLayout.action(seat, placement, index));
+                transform);
         if (nodes.putIfAbsent(id, node) != null) {
             throw new IllegalArgumentException("duplicate action interaction node");
         }
+        if (nodes.putIfAbsent(
+                        labelId,
+                        new ActionLabelNode(
+                                labelId,
+                                SceneVisibility.privateTo(player),
+                                action.legalAction().actionPresentation().labelKey(),
+                                labelTransform(transform),
+                                action.legalAction().actionPresentation().emphasized()))
+                != null) {
+            throw new IllegalArgumentException("duplicate action label node");
+        }
         bindings.add(new SceneInteractionBinding(handle, player, action.token()));
+    }
+
+    private static SceneTransform labelTransform(SceneTransform base) {
+        return new SceneTransform(
+                base.x(),
+                base.y() + ACTION_LABEL_RAISE,
+                base.z(),
+                base.yawDegrees(),
+                base.pitchDegrees(),
+                base.rollDegrees(),
+                base.scale());
     }
 
     private void addTable(Map<SceneNodeId, SceneNode> nodes) {
