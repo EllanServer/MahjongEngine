@@ -94,6 +94,7 @@ public final class MahjongRuntime implements AutoCloseable {
     private final AtomicReference<Services> services = new AtomicReference<>();
     private final AtomicReference<State> state = new AtomicReference<>(State.STARTING);
     private final AtomicReference<String> detail = new AtomicReference<>("initializing");
+    private final AtomicBoolean craftEngineBundleInstalled = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final CompletableFuture<Void> started = new CompletableFuture<>();
 
@@ -140,13 +141,6 @@ public final class MahjongRuntime implements AutoCloseable {
                         new SceneGraphDiffer());
         registerPlatformListeners(mutations);
         installCraftEngineBundle(craftEngine);
-        try {
-            if (CraftEngineItems.byId("mahjongpaper:table_visual") != null) {
-                sceneBackend.onCraftEngineReloaded();
-            }
-        } catch (RuntimeException notLoadedYet) {
-            plugin.getLogger().fine("CraftEngine assets are not loaded yet");
-        }
     }
 
     public void start() {
@@ -584,15 +578,18 @@ public final class MahjongRuntime implements AutoCloseable {
                         plugin);
         plugin.getServer()
                 .getPluginManager()
-                .registerEvents(new CraftEngineReloadListener(sceneBackend), plugin);
+                .registerEvents(
+                        new CraftEngineReloadListener(
+                                sceneBackend, craftEngineBundleInstalled::get),
+                        plugin);
         plugin.getServer().getPluginManager().registerEvents(privateProjection, plugin);
     }
 
     private void installCraftEngineBundle(Plugin craftEngine) {
-        CompletableFuture.runAsync(
+        CompletableFuture.supplyAsync(
                         () -> {
                             try {
-                                new CraftEngineBundleInstaller(
+                                return new CraftEngineBundleInstaller(
                                                 plugin,
                                                 configuration.craftEngineBundleFolder())
                                         .install(craftEngine);
@@ -602,11 +599,16 @@ public final class MahjongRuntime implements AutoCloseable {
                         },
                         executors.io())
                 .whenComplete(
-                        (ignored, failure) -> {
+                        (result, failure) -> {
                             if (failure == null) {
-                                plugin.getLogger()
-                                        .info(
-                                                "CraftEngine bundle verified. Use /ce reload all if CraftEngine has not loaded it yet.");
+                                craftEngineBundleInstalled.set(true);
+                                if (result.changed()) {
+                                    plugin.getLogger()
+                                            .info(
+                                                    "CraftEngine bundle updated; scenes remain closed until CraftEngineReloadEvent.");
+                                } else {
+                                    activateUnchangedCraftEngineBundle();
+                                }
                             } else {
                                 plugin.getLogger()
                                         .log(
@@ -615,6 +617,32 @@ public final class MahjongRuntime implements AutoCloseable {
                                                 unwrap(failure));
                             }
                         });
+    }
+
+    private void activateUnchangedCraftEngineBundle() {
+        if (closed.get() || !plugin.isEnabled()) {
+            return;
+        }
+        try {
+            Bukkit.getGlobalRegionScheduler()
+                    .execute(
+                            plugin,
+                            () -> {
+                                try {
+                                    if (CraftEngineItems.byId("mahjongpaper:table_visual") != null) {
+                                        sceneBackend.onCraftEngineReloaded();
+                                    } else {
+                                        plugin.getLogger()
+                                                .info(
+                                                        "CraftEngine bundle is installed but not loaded; scenes await CraftEngineReloadEvent.");
+                                    }
+                                } catch (RuntimeException notLoadedYet) {
+                                    plugin.getLogger().fine("CraftEngine assets are not loaded yet");
+                                }
+                            });
+        } catch (RuntimeException shuttingDown) {
+            plugin.getLogger().fine("CraftEngine bundle activation skipped during shutdown");
+        }
     }
 
     private Plugin requireCraftEngine() {

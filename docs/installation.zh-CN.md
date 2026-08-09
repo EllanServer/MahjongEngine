@@ -14,7 +14,7 @@
 1. 从 GitHub Actions 或正式 Release 获取 `mahjong-plugin` 的无分类器 fat JAR。
 2. 放入 `plugins/`，同时安装 CraftEngine。
 3. 首次启动会生成 `plugins/MahjongPaper/config.yml` 并把校验后的资源 bundle 原子安装到 `plugins/CraftEngine/resources/mahjongpaper`。
-4. 若 CraftEngine 尚未读取新 bundle，执行 `/ce reload all`；插件只在 `CraftEngineReloadEvent` 后恢复场景。
+4. 内容与已加载 bundle 完全相同时可直接恢复；首次安装或任一文件变化后执行 `/ce reload all`，插件只在安装完成后的 `CraftEngineReloadEvent` 恢复场景。
 5. 配置 `rules.registry-url` 和构建时内置的官方 Ed25519 公钥。
 6. 用 `/mahjong rules install ...`、`verify`、`activate` 安装规则，然后完整重启。
 

@@ -30,7 +30,7 @@
 
 ## CraftEngine 边界
 
-CraftEngine bundle 在构建期复制已审查的 `craftengine/configuration` 与 `resourcepack`，并生成 SHA-256 清单；启动时校验后原子安装。家具模型、牌姿态、座椅、hitbox、interaction 与 entity culling 都由 CraftEngine YAML 的 template/config factory 表达，不由 Java 拼装。
+CraftEngine bundle 在构建期复制已审查的 `craftengine/configuration` 与 `resourcepack`，并生成 SHA-256 清单；启动时逐文件校验后原子安装。内容完全未变且 CE registry 已加载时可直接恢复；任一文件变化后必须等新的 `CraftEngineReloadEvent`，期间场景保持关闭。家具模型、牌姿态、座椅、hitbox、interaction 与 entity culling 都由 CraftEngine YAML 的 template/config factory 表达，不由 Java 拼装。
 
 Java 仅负责：
 

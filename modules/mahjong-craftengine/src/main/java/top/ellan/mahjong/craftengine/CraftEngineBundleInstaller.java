@@ -4,12 +4,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -37,7 +39,7 @@ public final class CraftEngineBundleInstaller {
         }
     }
 
-    public Path install(Plugin craftEngine) throws IOException {
+    public InstallResult install(Plugin craftEngine) throws IOException {
         Objects.requireNonNull(craftEngine, "craftEngine");
         try (InputStream indexStream = plugin.getResource(BUNDLE_INDEX)) {
             if (indexStream == null) {
@@ -66,9 +68,11 @@ public final class CraftEngineBundleInstaller {
                             .getDataFolder()
                             .toPath()
                             .resolve("resources")
-                            .resolve(bundleFolderName);
-            installAtomically(target, entries, expectedHashes);
-            return target;
+                            .resolve(bundleFolderName)
+                            .toAbsolutePath()
+                            .normalize();
+            boolean changed = installAtomically(target, entries, expectedHashes);
+            return new InstallResult(target, changed);
         }
     }
 
@@ -97,13 +101,16 @@ public final class CraftEngineBundleInstaller {
         }
     }
 
-    private void installAtomically(
+    private boolean installAtomically(
             Path targetRoot,
             Collection<String> entries,
             Map<String, String> expectedHashes)
             throws IOException {
         Path parent = Objects.requireNonNull(targetRoot.getParent()).toAbsolutePath().normalize();
         Files.createDirectories(parent);
+        if (matchesInstalledBundle(targetRoot, expectedHashes)) {
+            return false;
+        }
         String nonce = UUID.randomUUID().toString();
         Path staging = parent.resolve('.' + targetRoot.getFileName().toString() + ".staging-" + nonce);
         Path backup = parent.resolve('.' + targetRoot.getFileName().toString() + ".backup-" + nonce);
@@ -142,6 +149,41 @@ public final class CraftEngineBundleInstaller {
                 deleteTree(backup);
             }
         }
+        return true;
+    }
+
+    static boolean matchesInstalledBundle(
+            Path targetRoot, Map<String, String> expectedHashes) throws IOException {
+        if (!Files.isDirectory(targetRoot, LinkOption.NOFOLLOW_LINKS)) {
+            return false;
+        }
+        Set<String> expectedPaths = new HashSet<>(expectedHashes.keySet());
+        expectedPaths.add(BUNDLE_MANIFEST);
+        Set<String> actualPaths = new HashSet<>();
+        try (var paths = Files.walk(targetRoot)) {
+            for (Path path : paths.toList()) {
+                if (path.equals(targetRoot)) {
+                    continue;
+                }
+                if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+                    continue;
+                }
+                if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+                    return false;
+                }
+                actualPaths.add(
+                        targetRoot.relativize(path).toString().replace('\\', '/'));
+            }
+        }
+        if (!actualPaths.equals(expectedPaths)) {
+            return false;
+        }
+        for (Map.Entry<String, String> expected : expectedHashes.entrySet()) {
+            if (!sha256(targetRoot.resolve(expected.getKey())).equals(expected.getValue())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void copyBundledFile(String relativePath, Path targetPath) throws IOException {
@@ -201,6 +243,13 @@ public final class CraftEngineBundleInstaller {
             for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
                 Files.deleteIfExists(path);
             }
+        }
+    }
+
+    /** Result used to decide whether a post-install CraftEngine reload is mandatory. */
+    public record InstallResult(Path target, boolean changed) {
+        public InstallResult {
+            target = Objects.requireNonNull(target, "target").toAbsolutePath().normalize();
         }
     }
 }
