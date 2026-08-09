@@ -4,7 +4,7 @@ MahjongPaper 2.0 is a CraftEngine-first Mahjong core for Paper/Folia. The core s
 
 The `2.0` branch is under active development and is not a stable release yet.
 
-Implemented foundations include bounded per-table actors, a fair bounded rule CPU pool, memory-first SQL outboxes, event/snapshot recovery, signed child-first rule-pack loading, latest-only `SceneGraph` projection, and region-budgeted CraftEngine mutations. CraftEngine configuration owns furniture models, poses, hitboxes, interactions, and entity culling. Secret tile faces are client-only projections.
+Implemented foundations include bounded per-table actors, a fair bounded rule CPU pool, memory-first SQL outboxes, event/snapshot recovery, signed child-first rule-pack loading, latest-only `SceneGraph` projection, and region-budgeted CraftEngine mutations. CraftEngine configuration owns furniture models, poses, hitboxes, interactions, entity culling, and opening-dice slot/face variants; Java switches stable variants instead of respawning furniture. Secret tile faces are client-only projections.
 
 The pre-match path is modular as well: immutable lobby state lives in `mahjong-domain`; lobby commands, reducer, actor, projection factory, ports, runtime index, and use cases are separated under `mahjong-application`; JDBC stores only implement the persistence port; Paper owns world-anchor conversion; CraftEngine resolves its configured chair hitboxes; and `mahjong-plugin` contains only categorized command and lifecycle integration packages. Lobby-to-match activation consumes the durable lobby and creates the pinned initial rule snapshot in one SQL transaction.
 

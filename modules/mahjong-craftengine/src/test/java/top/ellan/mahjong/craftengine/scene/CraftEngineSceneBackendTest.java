@@ -242,8 +242,9 @@ class CraftEngineSceneBackendTest {
         FurnitureNode firstFace = new FurnitureNode(
                 die,
                 SceneVisibility.publicToAll(),
-                "mahjongpaper:dice_face_1",
-                new SceneTransform(0, 0.6, 0, 0, 0, 0, 1));
+                "mahjongpaper:opening_die_slot_0",
+                "single_face_1",
+                new SceneTransform(0, 0, 0, 0, 0, 0, 1));
 
         backend.submit(diff(table, 1));
         backend.replaceTransient(table, 4, List.of(die), List.of(firstFace));

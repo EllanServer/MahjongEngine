@@ -27,6 +27,7 @@ object CraftEngineBundleGenerator {
                 .toList()
         require(configurationFiles.isNotEmpty()) { "No CraftEngine configuration files found" }
         verifyTileFactory(configurationFiles, resourcepackDir)
+        verifyOpeningDice(configurationFiles, resourcepackDir)
 
         val outputRoot = outputDir.resolve("craftengine").resolve("mahjongpaper")
         val outputConfiguration = outputRoot.resolve("configuration")
@@ -86,6 +87,46 @@ object CraftEngineBundleGenerator {
         require(configured == assets) {
             "CraftEngine tile factory differs from resource-pack items; " +
                 "missing=${assets - configured}, extra=${configured - assets}"
+        }
+    }
+
+    private fun verifyOpeningDice(configurationFiles: List<File>, resourcepackDir: File) {
+        val configuration =
+            configurationFiles.joinToString("\n") { it.readText(Charsets.UTF_8) }
+        val slots =
+            Regex("\\{slot:\\s*([0-3]),")
+                .findAll(configuration)
+                .map { it.groupValues[1].toInt() }
+                .toSet()
+        require(slots == setOf(0, 1, 2, 3)) {
+            "CraftEngine opening dice must declare exactly four fixed slots"
+        }
+        val expectedFaces = (1..6).toSet()
+        listOf("single", "double").forEach { layout ->
+            val faces =
+                Regex("(?m)^\\s+${layout}_face_([1-6]):\\s*$")
+                    .findAll(configuration)
+                    .map { it.groupValues[1].toInt() }
+                    .toSet()
+            require(faces == expectedFaces) {
+                "CraftEngine opening dice $layout variants are incomplete"
+            }
+        }
+        require("mahjongpaper:opening_die_slot_\${slot}" in configuration) {
+            "CraftEngine opening dice slot factory is missing"
+        }
+        require("dice_face_" !in configuration) {
+            "Opening dice must use CE variants, not one furniture asset per face"
+        }
+        val modelFaces =
+            resourcepackDir
+                .resolve("assets/mahjongcraft/items/dice")
+                .listFiles { file -> file.isFile && file.extension == "json" }
+                .orEmpty()
+                .mapNotNull { it.nameWithoutExtension.toIntOrNull() }
+                .toSet()
+        require(modelFaces == expectedFaces) {
+            "CraftEngine opening dice models must contain faces 1 through 6"
         }
     }
 

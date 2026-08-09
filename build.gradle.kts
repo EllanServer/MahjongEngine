@@ -109,7 +109,7 @@ val architectureCheck =
                             ).contains('/').not()
                 ) {
                     violations +=
-                        "$relative is unclassified; CraftEngine types must live in bundle/interaction/port/scene/privateview"
+                        "$relative is unclassified; CraftEngine types must live in bundle/interaction/opening/port/scene/privateview"
                 }
                 if (
                     module == "mahjong-craftengine" &&

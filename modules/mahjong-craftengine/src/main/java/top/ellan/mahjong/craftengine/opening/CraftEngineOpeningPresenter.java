@@ -13,8 +13,8 @@ import top.ellan.mahjong.craftengine.scene.CraftEngineSceneBackend;
 import top.ellan.mahjong.domain.table.TableId;
 
 /**
- * Schedules only a few declarative CE asset swaps per physical roll. There is no per-tick scan,
- * entity loop, custom model renderer, or blocking wait.
+ * Schedules only a few declarative CE variant changes per physical roll. There is no per-tick
+ * scan, entity loop, custom model renderer, or blocking wait.
  */
 public final class CraftEngineOpeningPresenter
         implements TableOpeningPresentationPort, AutoCloseable {

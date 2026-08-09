@@ -9,7 +9,7 @@ import top.ellan.mahjong.presentation.node.SceneVisibility;
 import top.ellan.mahjong.spi.RuleDiceRoll;
 import top.ellan.mahjong.spi.RuleOpeningPresentation;
 
-/** Allocation-bounded mapping from declared rule rolls to four stable CE furniture nodes. */
+/** Maps declared rolls to four stable CE slot assets; CE variants own every spatial transform. */
 final class OpeningDiceFrameFactory {
     private static final List<SceneNodeId> IDS = List.of(
             new SceneNodeId("opening/die/0"),
@@ -36,8 +36,8 @@ final class OpeningDiceFrameFactory {
             throw new IllegalArgumentException("active roll is outside the opening");
         }
         int count = (activeRoll + 1) * 2;
+        boolean doubleLayout = activeRoll > 0;
         ArrayList<FurnitureNode> nodes = new ArrayList<>(count);
-        double start = -(count - 1) * config.diceSpacing() / 2.0D;
         int flatIndex = 0;
         for (int rollIndex = 0; rollIndex <= activeRoll; rollIndex++) {
             RuleDiceRoll roll = opening.rolls().get(rollIndex);
@@ -47,21 +47,12 @@ final class OpeningDiceFrameFactory {
                 int point = revealed
                         ? finalPoint
                         : previewPoint(finalPoint, flatIndex, previewFrame);
-                double yaw = revealed
-                        ? (flatIndex % 2 == 0 ? -8.0D : 8.0D)
-                        : Math.floorMod(previewFrame * 97 + flatIndex * 53, 360);
                 nodes.add(new FurnitureNode(
                         IDS.get(flatIndex),
                         SceneVisibility.publicToAll(),
-                        config.asset(point),
-                        new SceneTransform(
-                                start + flatIndex * config.diceSpacing(),
-                                config.tableHeight(),
-                                0,
-                                yaw,
-                                0,
-                                0,
-                                1)));
+                        config.asset(flatIndex),
+                        config.variant(doubleLayout, point),
+                        new SceneTransform(0, 0, 0, 0, 0, 0, 1)));
                 flatIndex++;
             }
         }

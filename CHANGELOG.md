@@ -10,7 +10,9 @@
   memory-first SQL outbox and replayable snapshots.
 - Moved public scene assets, furniture geometry, hitboxes, seats, interactions, and entity culling
   into the CraftEngine bundle. Secret faces remain per-player packet projections.
-- Added the rule-neutral SPI 1.1 tabletop contract and one cached physical layout compiler; rule
+- Added CE-owned opening-dice slots and face variants; rule packs publish only deterministic dice
+  facts, and stable furniture changes variant without entity respawn.
+- Added the rule-neutral SPI 1.4 tabletop contract and one cached physical layout compiler; rule
   packs now declare their tile inventory, wall shape, stable slots, rotations and action targets.
 - Added Linux and Windows Java 21 verification plus a legacy-free release-artifact contract in
   GitHub Actions.

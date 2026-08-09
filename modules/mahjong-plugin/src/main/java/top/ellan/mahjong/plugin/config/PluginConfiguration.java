@@ -66,8 +66,8 @@ public record PluginConfiguration(
                                 "craftengine.assets.action-hitbox",
                                 "mahjongpaper:action_button_hitbox"),
                         config.getString(
-                                "craftengine.assets.dice-face-prefix",
-                                "mahjongpaper:dice_face_")),
+                                "craftengine.assets.opening-die-slot-prefix",
+                                "mahjongpaper:opening_die_slot_")),
                 new LayoutGeometry(
                         config.getDouble("presentation.geometry.tile-width", 0.1125D),
                         config.getDouble("presentation.geometry.tile-height", 0.15D),
@@ -94,9 +94,7 @@ public record PluginConfiguration(
                 new OpeningSettings(
                         config.getInt("presentation.opening.preview-frames", 3),
                         config.getInt("presentation.opening.roll-ticks", 20),
-                        config.getInt("presentation.opening.reveal-ticks", 12),
-                        config.getDouble("presentation.opening.dice-spacing", 0.22D),
-                        config.getDouble("presentation.opening.table-height", 0.62D)));
+                        config.getInt("presentation.opening.reveal-ticks", 12)));
     }
 
     private static String requireToken(String value, String label) {
@@ -121,14 +119,15 @@ public record PluginConfiguration(
             String flatBack,
             String handHitbox,
             String actionHitbox,
-            String diceFacePrefix) {
+            String openingDieSlotPrefix) {
         public CraftEngineAssets {
             table = requireAsset(table, "table furniture");
             standingBack = requireAsset(standingBack, "standing back furniture");
             flatBack = requireAsset(flatBack, "flat back furniture");
             handHitbox = requireAsset(handHitbox, "hand hitbox furniture");
             actionHitbox = requireAsset(actionHitbox, "action hitbox furniture");
-            diceFacePrefix = requireAsset(diceFacePrefix, "dice face furniture prefix");
+            openingDieSlotPrefix = requireAsset(
+                    openingDieSlotPrefix, "opening die slot furniture prefix");
         }
     }
 
@@ -168,23 +167,13 @@ public record PluginConfiguration(
     public record OpeningSettings(
             int previewFrames,
             int rollTicks,
-            int revealTicks,
-            double diceSpacing,
-            double tableHeight) {
+            int revealTicks) {
         public OpeningSettings {
             if (previewFrames < 1 || previewFrames > 6) {
                 throw new IllegalArgumentException("previewFrames must be between 1 and 6");
             }
             if (rollTicks < 1 || rollTicks > 200 || revealTicks < 1 || revealTicks > 200) {
                 throw new IllegalArgumentException("opening timings must be between 1 and 200 ticks");
-            }
-            if (!Double.isFinite(diceSpacing)
-                    || diceSpacing < 0.1D
-                    || diceSpacing > 0.5D
-                    || !Double.isFinite(tableHeight)
-                    || tableHeight < 0.1D
-                    || tableHeight > 2.0D) {
-                throw new IllegalArgumentException("opening dice geometry is outside its safe range");
             }
         }
     }

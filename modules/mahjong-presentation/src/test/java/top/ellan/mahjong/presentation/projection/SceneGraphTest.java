@@ -688,7 +688,7 @@ class SceneGraphTest {
 
     private static RuleTablePresentation table(int wallCapacity) {
         List<Integer> stacks = switch (wallCapacity) {
-            case 108 -> List.of(14, 13, 14, 13);
+            case 108 -> List.of(13, 14, 13, 14);
             case 136 -> List.of(17, 17, 17, 17);
             case 144 -> List.of(18, 18, 18, 18);
             default -> throw new IllegalArgumentException("Unsupported test wall");

@@ -21,7 +21,7 @@ import top.ellan.mahjong.spi.SeatId;
 
 class CraftEngineOpeningPresenterTest {
     @Test
-    void twoPhysicalRollsUseBoundedCeAssetSwapsAndFinishByRemovingTheOverlay() {
+    void twoPhysicalRollsUseBoundedCeVariantChangesAndFinishByRemovingTheOverlay() {
         ManualScheduler scheduler = new ManualScheduler();
         ArrayList<OverlayCall> calls = new ArrayList<>();
         CraftEngineOpeningPresenter presenter = new CraftEngineOpeningPresenter(
@@ -29,12 +29,10 @@ class CraftEngineOpeningPresenterTest {
                 (table, generation, managed, desired) -> calls.add(
                         new OverlayCall(table, generation, managed, desired)),
                 new CraftEngineOpeningAnimationConfig(
-                        "mahjongpaper:dice_face_",
+                        "mahjongpaper:opening_die_slot_",
                         3,
                         Duration.ofSeconds(1),
-                        Duration.ofMillis(600),
-                        0.22D,
-                        0.62D));
+                        Duration.ofMillis(600)));
         TableId table = TableId.random();
         RuleOpeningPresentation opening = new RuleOpeningPresentation(
                 3,
@@ -47,13 +45,20 @@ class CraftEngineOpeningPresenterTest {
         presenter.present(new TableOpeningBatch(table, new RuleId("mcr"), 0, opening));
         assertEquals(1, calls.size());
         assertEquals(2, calls.getFirst().desired().size());
+        assertTrue(calls.getFirst().desired().stream()
+                .allMatch(node -> node.variant().matches("single_face_[1-6]")));
 
         scheduler.runAll();
 
         assertEquals(9, calls.size());
         assertEquals(4, calls.get(7).desired().size());
         assertTrue(calls.get(7).desired().stream()
-                .allMatch(node -> node.assetId().matches("mahjongpaper:dice_face_[1-6]")));
+                .allMatch(node -> node.assetId().matches(
+                                "mahjongpaper:opening_die_slot_[0-3]")
+                        && node.variant().matches("double_face_[1-6]")
+                        && node.transform().equals(
+                                new top.ellan.mahjong.presentation.node.SceneTransform(
+                                        0, 0, 0, 0, 0, 0, 1))));
         assertTrue(calls.getLast().desired().isEmpty());
         assertEquals(4, calls.getLast().managed().size());
     }

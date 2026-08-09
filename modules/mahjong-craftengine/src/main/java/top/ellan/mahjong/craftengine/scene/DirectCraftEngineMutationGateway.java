@@ -34,7 +34,8 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
     private final NamespacedKey tableKey;
     private final NamespacedKey nodeKey;
     private final NamespacedKey interactionKey;
-    private final ConcurrentHashMap<NodeKey, Entity> worldEntities = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<NodeKey, WorldFurniture> worldEntities =
+            new ConcurrentHashMap<>();
 
     public DirectCraftEngineMutationGateway(
             Plugin plugin,
@@ -59,6 +60,10 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
             return;
         }
         NodeKey key = new NodeKey(tableId, node.id());
+        if (node instanceof FurnitureNode furniture && updateVariant(key, furniture)) {
+            privateProjection.remove(tableId, node.id());
+            return;
+        }
         removeWorldEntity(key);
         privateProjection.remove(tableId, node.id());
         Location anchor =
@@ -79,7 +84,10 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
             throw new IllegalArgumentException("Unsupported world-backed scene node: " + node.getClass());
         }
         Location location = localToWorld(anchor, transform);
-        BukkitFurniture furniture = CraftEngineFurniture.place(location, Key.of(asset));
+        BukkitFurniture furniture = node instanceof FurnitureNode furnitureNode
+                ? CraftEngineFurniture.place(
+                        location, Key.of(asset), furnitureNode.variant(), false)
+                : CraftEngineFurniture.place(location, Key.of(asset));
         if (furniture == null || furniture.bukkitEntity() == null) {
             throw new IllegalStateException("CraftEngine could not place furniture asset " + asset);
         }
@@ -94,7 +102,7 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
             entity.getPersistentDataContainer().set(
                     interactionKey, PersistentDataType.STRING, handle.value().toString());
         }
-        worldEntities.put(key, entity);
+        worldEntities.put(key, new WorldFurniture(entity, node));
     }
 
     @Override
@@ -122,10 +130,11 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
     }
 
     private void removeWorldEntity(NodeKey key) {
-        Entity entity = worldEntities.remove(key);
-        if (entity == null) {
+        WorldFurniture existing = worldEntities.remove(key);
+        if (existing == null) {
             return;
         }
+        Entity entity = existing.entity();
         if (entity.isValid() && CraftEngineFurniture.isFurniture(entity)) {
             if (!CraftEngineFurniture.remove(entity, false, false)) {
                 throw new IllegalStateException("CraftEngine refused to remove managed furniture");
@@ -133,6 +142,33 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
         } else if (entity.isValid()) {
             throw new IllegalStateException("Managed CE entity is no longer recognized as furniture");
         }
+    }
+
+    private boolean updateVariant(NodeKey key, FurnitureNode desired) {
+        WorldFurniture existing = worldEntities.get(key);
+        if (existing == null
+                || !(existing.node() instanceof FurnitureNode previous)
+                || !previous.assetId().equals(desired.assetId())
+                || !previous.transform().equals(desired.transform())
+                || !previous.visibility().equals(desired.visibility())
+                || previous.variant().equals(desired.variant())) {
+            return false;
+        }
+        Entity entity = existing.entity();
+        if (!entity.isValid()) {
+            return false;
+        }
+        BukkitFurniture furniture = CraftEngineFurniture.getLoadedFurnitureByMetaEntity(entity);
+        if (furniture == null) {
+            return false;
+        }
+        boolean changed = furniture.setVariant(desired.variant(), true);
+        if (!changed && !furniture.currentVariant().name().equals(desired.variant())) {
+            throw new IllegalStateException(
+                    "CraftEngine refused furniture variant " + desired.variant());
+        }
+        worldEntities.put(key, new WorldFurniture(entity, desired));
+        return true;
     }
 
     private static Location localToWorld(Location anchor, SceneTransform transform) {
@@ -149,6 +185,13 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
         private NodeKey {
             Objects.requireNonNull(tableId, "tableId");
             Objects.requireNonNull(nodeId, "nodeId");
+        }
+    }
+
+    private record WorldFurniture(Entity entity, SceneNode node) {
+        private WorldFurniture {
+            Objects.requireNonNull(entity, "entity");
+            Objects.requireNonNull(node, "node");
         }
     }
 }

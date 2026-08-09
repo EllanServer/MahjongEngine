@@ -118,12 +118,10 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                 deadlines,
                 sceneBackend,
                 new CraftEngineOpeningAnimationConfig(
-                        configuration.craftEngineAssets().diceFacePrefix(),
+                        configuration.craftEngineAssets().openingDieSlotPrefix(),
                         opening.previewFrames(),
                         Duration.ofMillis(Math.multiplyExact(opening.rollTicks(), 50L)),
-                        Duration.ofMillis(Math.multiplyExact(opening.revealTicks(), 50L)),
-                        opening.diceSpacing(),
-                        opening.tableHeight()));
+                        Duration.ofMillis(Math.multiplyExact(opening.revealTicks(), 50L))));
     }
 
     /** Registers platform listeners and starts the immutable CE bundle installation once. */

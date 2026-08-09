@@ -14,7 +14,7 @@ MahjongPaper 2.0 是一个面向 Paper/Folia 的麻将核心插件。核心不�
 - 内存先行、逐桌有序的 SQL outbox、事件日志、快照和恢复。
 - 签名规则包的下载、校验、独立 classloader、版本固定、隔离失败和重启激活。
 - 平台无关 `SceneGraph`、只保留最新帧的异步预计算，以及按 Folia region 公平应用的 CraftEngine 差分。
-- CraftEngine 配置负责桌体、座椅、麻将牌姿态、碰撞、交互 hitbox 和 entity culling；Java 不重复实现这些资产行为。
+- CraftEngine 配置负责桌体、座椅、麻将牌姿态、碰撞、交互 hitbox、entity culling 和骰子槽位/face variant；Java 不重复实现这些资产行为，同一骰子只原地切 variant。
 - 暗手牌面只通过 Sparrow 客户端假实体发送给授权玩家，不创建含秘密信息的世界实体。
 
 已经删除并由架构哨兵禁止重新引入：

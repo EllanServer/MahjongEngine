@@ -79,42 +79,6 @@ templates:
                 shadow_radius: 0
                 shadow_strength: 0
 
-  # Dice appearance, scale, shadow and culling are entirely CE-owned. Java only chooses one of
-  # these six stable assets when a rule pack publishes a deterministic physical roll.
-  mahjongpaper:dice_furniture:
-    material: paper
-    settings:
-      tags:
-        - mahjongpaper:opening_dice
-    data:
-      item_name: "<!i><white>Dice ${point}</white>"
-    item_model: "mahjongcraft:dice/${point}"
-    behavior:
-      type: furniture_item
-      rules:
-        ground:
-          rotation: four
-          alignment: center
-      furniture:
-        settings:
-          item: "${__NAMESPACE__}:${__ID__}"
-        variants:
-          ground:
-            entity_culling:
-              aabb_expansion: 0.1
-              view_distance: 32
-              ray_tracing: true
-            elements:
-              - type: item_display
-                item: "mahjongpaper:dice_${point}_model"
-                display_transform: none
-                billboard: fixed
-                position: 0,0,0
-                translation: 0,0,0
-                rotation: "0,0,0"
-                shadow_radius: 0
-                shadow_strength: 0
-
 items:
   mahjongpaper:table_visual_model:
     material: paper
@@ -323,7 +287,7 @@ config_factory#point_sticks:
           model: "${model}"
           label: "${label}"
           rotation: "0,0,0"
-config_factory#opening_dice:
+config_factory#opening_dice_models:
   instances:
     - point: 1
     - point: 2
@@ -341,10 +305,87 @@ config_factory#opening_dice:
         data:
           item_name: "<!i><white>Dice ${point}</white>"
         item_model: "mahjongcraft:dice/${point}"
-      mahjongpaper:dice_face_${point}:
-        template: mahjongpaper:dice_furniture
-        arguments:
-          point: "${point}"
+
+# Every die is a stable CE furniture instance. The two layout families preserve the old centered
+# first roll and expand to four dice for MCR's second roll without Java-owned geometry or respawns.
+config_factory#opening_dice_slots:
+  instances:
+    - {slot: 0, single_translation: "-0.11,0.62,0", double_translation: "-0.33,0.62,0", rotation: "0,-8,0"}
+    - {slot: 1, single_translation: "0.11,0.62,0", double_translation: "-0.11,0.62,0", rotation: "0,8,0"}
+    - {slot: 2, single_translation: "0.11,0.62,0", double_translation: "0.11,0.62,0", rotation: "0,-8,0"}
+    - {slot: 3, single_translation: "0.33,0.62,0", double_translation: "0.33,0.62,0", rotation: "0,8,0"}
+  blueprint:
+    items:
+      mahjongpaper:opening_die_slot_${slot}:
+        material: paper
+        settings:
+          tags:
+            - mahjongpaper:opening_dice
+        data:
+          item_name: "<!i><white>Opening Die Slot ${slot}</white>"
+        item_model: mahjongcraft:dice/1
+        behavior:
+          type: furniture_item
+          rules:
+            ground:
+              rotation: four
+              alignment: center
+          furniture:
+            settings:
+              item: mahjongpaper:opening_die_slot_${slot}
+            variants:
+              ground:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_1_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              single_face_1:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_1_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              single_face_2:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_2_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              single_face_3:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_3_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              single_face_4:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_4_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              single_face_5:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_5_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              single_face_6:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_6_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              double_face_1:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_1_model, display_transform: none, billboard: fixed, translation: "${double_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              double_face_2:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_2_model, display_transform: none, billboard: fixed, translation: "${double_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              double_face_3:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_3_model, display_transform: none, billboard: fixed, translation: "${double_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              double_face_4:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_4_model, display_transform: none, billboard: fixed, translation: "${double_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              double_face_5:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_5_model, display_transform: none, billboard: fixed, translation: "${double_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              double_face_6:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_6_model, display_transform: none, billboard: fixed, translation: "${double_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
 config_factory#tiles:
   instances:
     - tile: autumn

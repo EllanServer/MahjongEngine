@@ -7,17 +7,30 @@ public record FurnitureNode(
         SceneNodeId id,
         SceneVisibility visibility,
         String assetId,
+        String variant,
         SceneTransform transform) implements SceneNode {
+    public FurnitureNode(
+            SceneNodeId id,
+            SceneVisibility visibility,
+            String assetId,
+            SceneTransform transform) {
+        this(id, visibility, assetId, "ground", transform);
+    }
+
     public FurnitureNode {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(visibility, "visibility");
         assetId = Objects.requireNonNull(assetId, "assetId");
+        variant = Objects.requireNonNull(variant, "variant");
         Objects.requireNonNull(transform, "transform");
         if (!visibility.isPublic()) {
             throw new IllegalArgumentException("CraftEngine furniture must contain public information only");
         }
         if (!assetId.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
             throw new IllegalArgumentException("Invalid CraftEngine asset id: " + assetId);
+        }
+        if (!variant.matches("[a-z0-9_.-]+")) {
+            throw new IllegalArgumentException("Invalid CraftEngine furniture variant: " + variant);
         }
     }
 
