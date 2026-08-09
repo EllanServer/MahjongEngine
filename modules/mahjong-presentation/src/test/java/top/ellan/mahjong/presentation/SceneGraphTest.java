@@ -50,7 +50,7 @@ class SceneGraphTest {
                         .map(node -> (FurnitureNode) node)
                         .anyMatch(node -> node.assetId().equals("mahjong:tile/back")));
         assertEquals(
-                64,
+                1,
                 graph.nodes().values().stream()
                         .filter(node -> node instanceof InteractionNode)
                         .count());
@@ -129,6 +129,29 @@ class SceneGraphTest {
         assertTrue(diff.upserts().stream().anyMatch(node -> node instanceof HudNode));
         assertTrue(diff.upserts().stream().noneMatch(node -> node instanceof InteractionNode));
         assertTrue(diff.mutationCount() < after.nodes().size() + before.nodes().size());
+    }
+
+    @Test
+    void mapperDoesNotPlaceUnusedCraftEngineHitboxes() {
+        DefaultTableSceneMapper mapper =
+                new DefaultTableSceneMapper(
+                        new RadialTableLayout(0.08), "mahjong:tile/back");
+        TableProjection base = projection(TableId.random(), 1, "playing");
+        TableProjection withoutActions =
+                new TableProjection(
+                        base.tableId(),
+                        base.revision(),
+                        base.lifecycle(),
+                        base.publicView(),
+                        base.privateViews(),
+                        Map.of());
+
+        SceneGraph graph = mapper.map(withoutActions);
+
+        assertTrue(
+                graph.nodes().values().stream()
+                        .noneMatch(InteractionNode.class::isInstance));
+        assertTrue(graph.interactionBindings().isEmpty());
     }
 
     @Test

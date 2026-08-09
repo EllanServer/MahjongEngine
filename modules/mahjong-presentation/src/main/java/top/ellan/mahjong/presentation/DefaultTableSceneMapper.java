@@ -86,9 +86,16 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                     new HudNode(actionsId, visibility, "actions", actionKeys));
         }
 
+        int requiredInteractionSlots = projection.authorizedActions().values().stream()
+                .mapToInt(List::size)
+                .max()
+                .orElse(0);
+        if (requiredInteractionSlots > ACTION_SLOTS) {
+            throw new IllegalArgumentException("Projection exceeds fixed interaction slots");
+        }
         List<SceneInteractionBinding> bindings = new ArrayList<>();
-        List<InteractionHandle> handles = new ArrayList<>(ACTION_SLOTS);
-        for (int slot = 0; slot < ACTION_SLOTS; slot++) {
+        List<InteractionHandle> handles = new ArrayList<>(requiredInteractionSlots);
+        for (int slot = 0; slot < requiredInteractionSlots; slot++) {
             InteractionHandle handle =
                     new InteractionHandle(
                             UUID.nameUUIDFromBytes(
@@ -109,9 +116,6 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
             List<AuthorizedAction> actions = entry.getValue().stream()
                     .sorted(java.util.Comparator.comparing(action -> action.legalAction().key()))
                     .toList();
-            if (actions.size() > ACTION_SLOTS) {
-                throw new IllegalArgumentException("Projection exceeds fixed interaction slots");
-            }
             for (int slot = 0; slot < actions.size(); slot++) {
                 AuthorizedAction action = actions.get(slot);
                 bindings.add(
