@@ -14,7 +14,7 @@ import top.ellan.mahjong.persistence.sql.anchor.JdbcTableAnchorRepository;
 import top.ellan.mahjong.persistence.sql.lobby.JdbcTableLobbyRepository;
 import top.ellan.mahjong.persistence.sql.connection.SqlConnectionFactory;
 import top.ellan.mahjong.persistence.sql.schema.SqlSchemaMigrator;
-import top.ellan.mahjong.plugin.PluginConfiguration;
+import top.ellan.mahjong.plugin.config.PluginConfiguration;
 
 /** Opens, migrates and probes SQL without leaking JDBC setup into the composition root. */
 public final class DatabaseBootstrap {

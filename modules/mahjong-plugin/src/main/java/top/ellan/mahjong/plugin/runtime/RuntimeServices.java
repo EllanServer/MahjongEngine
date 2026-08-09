@@ -2,7 +2,7 @@ package top.ellan.mahjong.plugin.runtime;
 
 import java.util.Objects;
 import java.util.Optional;
-import top.ellan.mahjong.plugin.RulePackMatchCoordinator;
+import top.ellan.mahjong.plugin.match.RulePackMatchCoordinator;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackRuntimeServices;
 import top.ellan.mahjong.plugin.bootstrap.sql.DatabaseRuntime;
 

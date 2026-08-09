@@ -19,9 +19,9 @@ import top.ellan.mahjong.application.lobby.runtime.HostedLobby;
 import top.ellan.mahjong.domain.CompetitionRef;
 import top.ellan.mahjong.domain.TableLifecycle;
 import top.ellan.mahjong.domain.TableLobby;
-import top.ellan.mahjong.plugin.LiveTableDirectory;
-import top.ellan.mahjong.plugin.NewRulePackMatch;
-import top.ellan.mahjong.plugin.StartedRulePackMatch;
+import top.ellan.mahjong.plugin.table.LiveTableDirectory;
+import top.ellan.mahjong.plugin.match.NewRulePackMatch;
+import top.ellan.mahjong.plugin.match.StartedRulePackMatch;
 import top.ellan.mahjong.spi.MatchSeed;
 
 /** Performs the atomic lobby-to-pinned-rule-match handoff and fail-closed recovery. */

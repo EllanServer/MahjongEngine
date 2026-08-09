@@ -5,6 +5,7 @@ import java.util.logging.Level;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 import top.ellan.mahjong.plugin.command.MahjongCommand;
+import top.ellan.mahjong.plugin.config.PluginConfiguration;
 
 /** MahjongPaper 2.0 entry point. Only the actor/rule-pack/CraftEngine architecture is composed. */
 public final class MahjongPaperPlugin extends JavaPlugin {

@@ -1,4 +1,4 @@
-package top.ellan.mahjong.plugin;
+package top.ellan.mahjong.plugin.match;
 
 import java.util.List;
 import java.util.Map;

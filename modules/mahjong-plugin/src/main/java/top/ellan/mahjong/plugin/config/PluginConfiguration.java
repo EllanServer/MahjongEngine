@@ -1,4 +1,4 @@
-package top.ellan.mahjong.plugin;
+package top.ellan.mahjong.plugin.config;
 
 import java.nio.file.Path;
 import java.util.Objects;

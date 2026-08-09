@@ -159,6 +159,27 @@ val architectureCheck =
                         "$relative exceeds the 550-line presentation responsibility limit"
                 }
                 if (
+                    module == "mahjong-plugin" &&
+                        relative.startsWith(
+                            "modules/mahjong-plugin/src/main/java/top/ellan/mahjong/plugin/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-plugin/src/main/java/top/ellan/mahjong/plugin/",
+                            ).contains('/').not() &&
+                        source.name !in setOf("MahjongPaperPlugin.java", "MahjongRuntime.java")
+                ) {
+                    violations +=
+                        "$relative is unclassified; only the plugin entry point and composition root may live in the plugin root package"
+                }
+                if (
+                    module == "mahjong-plugin" &&
+                        text.lineSequence().count() > 500
+                ) {
+                    violations +=
+                        "$relative exceeds the 500-line plugin responsibility limit"
+                }
+                if (
                     module == "mahjong-application" &&
                         text.lineSequence().count() > 550
                 ) {

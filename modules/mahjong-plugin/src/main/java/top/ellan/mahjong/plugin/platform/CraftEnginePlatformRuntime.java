@@ -31,7 +31,7 @@ import top.ellan.mahjong.platform.paper.PaperRegionScheduler;
 import top.ellan.mahjong.platform.paper.PaperTableAnchorRegistry;
 import top.ellan.mahjong.platform.paper.PaperTableAnchorService;
 import top.ellan.mahjong.plugin.MahjongPaperPlugin;
-import top.ellan.mahjong.plugin.PluginConfiguration;
+import top.ellan.mahjong.plugin.config.PluginConfiguration;
 import top.ellan.mahjong.plugin.runtime.FailureSupport;
 import top.ellan.mahjong.presentation.projection.DefaultTableSceneMapper;
 import top.ellan.mahjong.presentation.projection.LatestSceneProjector;

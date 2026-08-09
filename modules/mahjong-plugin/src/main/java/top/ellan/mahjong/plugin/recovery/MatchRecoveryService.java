@@ -22,8 +22,8 @@ import top.ellan.mahjong.persistence.sql.match.JdbcMatchRepository;
 import top.ellan.mahjong.persistence.sql.anchor.JdbcTableAnchorRepository;
 import top.ellan.mahjong.persistence.sql.match.MatchInstanceRecord;
 import top.ellan.mahjong.platform.paper.PaperTableAnchorService;
-import top.ellan.mahjong.plugin.LiveTableDirectory;
-import top.ellan.mahjong.plugin.RulePackMatchCoordinator;
+import top.ellan.mahjong.plugin.table.LiveTableDirectory;
+import top.ellan.mahjong.plugin.match.RulePackMatchCoordinator;
 import top.ellan.mahjong.plugin.runtime.FailureSupport;
 
 /** Restores independent matches and isolates every failed table from the remaining runtime. */

@@ -5,7 +5,7 @@ import java.util.Optional;
 import top.ellan.mahjong.application.lobby.port.LobbyRepositoryPort;
 import top.ellan.mahjong.persistence.sql.match.JdbcMatchRepository;
 import top.ellan.mahjong.persistence.sql.anchor.JdbcTableAnchorRepository;
-import top.ellan.mahjong.plugin.RulePackMatchCoordinator;
+import top.ellan.mahjong.plugin.match.RulePackMatchCoordinator;
 
 /** Restart-scoped services bound after SQL and signed rule packs finish initialization. */
 public record LobbyRuntimeServices(
