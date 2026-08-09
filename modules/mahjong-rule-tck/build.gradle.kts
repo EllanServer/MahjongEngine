@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "top.ellan.mahjong"
-version = "1.1.0"
+version = "1.2.0"
 
 java {
     withJavadocJar()

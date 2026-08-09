@@ -1,6 +1,7 @@
 package top.ellan.mahjong.spi;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Pure rule-pack boundary. Implementations may not access platform APIs, files, network, wall clocks,
@@ -14,6 +15,17 @@ public interface RulePackProvider {
     RuleTransition transition(RuleState state, PlayerId actor, RuleAction action);
 
     List<LegalAction> legalActions(RuleState state, PlayerId actor);
+
+    /**
+     * Returns at most one deterministic action to run if this exact state revision remains current.
+     *
+     * <p>The returned actor must be seated and {@link #transition} must accept the returned action
+     * when invoked with the same state. Player-visible actions remain in {@link #legalActions}; this
+     * hook is also allowed to expose trusted actor-owned commands that must never be client tokens.</p>
+     */
+    default Optional<ScheduledRuleAction> scheduledAction(RuleState state) {
+        return Optional.empty();
+    }
 
     PublicRuleView publicView(RuleState state, long revision);
 

@@ -104,7 +104,7 @@ jobs:
                   raise SystemExit(f"duplicate coordinate: {coordinate}")
               coordinates.add(coordinate)
               seen_ids.add(rule_id)
-              if entry["spiVersion"] != "1.0.0":
+              if entry["spiVersion"] != "1.2.0":
                   raise SystemExit(f"unsupported SPI version in {path}")
               if not isinstance(entry["sizeBytes"], int) or not 1 <= entry["sizeBytes"] <= 64 * 1024 * 1024:
                   raise SystemExit(f"invalid size in {path}")

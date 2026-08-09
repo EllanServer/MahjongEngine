@@ -9,6 +9,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -26,6 +27,7 @@ import top.ellan.mahjong.spi.RuleState;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
 import top.ellan.mahjong.spi.RuleTransition;
 import top.ellan.mahjong.spi.RuleViewTile;
+import top.ellan.mahjong.spi.ScheduledRuleAction;
 import top.ellan.mahjong.spi.SpiVersion;
 import top.ellan.mahjong.spi.TransitionDisposition;
 
@@ -118,6 +120,7 @@ public final class RulePackTck {
         check(privateViewDenied, "unseated player received a private view");
         check(initialHash.equals(checkedHash(provider.stateHash(first))),
                 "view or legal-action generation mutated the initial state");
+        verifyScheduledAction(provider, testCase, first, second, initialHash);
         check(selectedAction != null, "fixture exposes no legal action");
 
         RuleTransition outsiderTransition = require(
@@ -225,7 +228,55 @@ public final class RulePackTck {
             check(stateActions.equals(restoredActions),
                     "snapshot restore changed legal actions");
         }
+        check(
+                scheduled(provider, state).equals(scheduled(provider, restored)),
+                "snapshot restore changed the scheduled action");
         return first;
+    }
+
+    private static void verifyScheduledAction(
+            RulePackProvider provider,
+            RulePackTckCase testCase,
+            RuleState first,
+            RuleState second,
+            String initialHash) {
+        Optional<ScheduledRuleAction> firstScheduled = scheduled(provider, first);
+        Optional<ScheduledRuleAction> secondScheduled = scheduled(provider, second);
+        check(firstScheduled.equals(secondScheduled), "scheduled action is not deterministic");
+        check(initialHash.equals(checkedHash(provider.stateHash(first))),
+                "scheduled-action generation mutated the state");
+        if (firstScheduled.isEmpty()) {
+            return;
+        }
+        ScheduledRuleAction scheduled = firstScheduled.orElseThrow();
+        check(
+                testCase.setup().players().stream()
+                        .anyMatch(player -> player.playerId().equals(scheduled.actor())),
+                "scheduled action uses an unseated actor");
+        RuleTransition firstTransition = require(
+                provider.transition(first, scheduled.actor(), scheduled.action()),
+                "null scheduled transition");
+        RuleTransition repeatedTransition = require(
+                provider.transition(second, scheduled.actor(), scheduled.action()),
+                "null repeated scheduled transition");
+        check(firstTransition.accepted(), "scheduled action was rejected");
+        check(!firstTransition.events().isEmpty(), "scheduled action emitted no events");
+        check(firstTransition.nextState() != first, "scheduled action reused the input state");
+        check(
+                firstTransition.disposition() == repeatedTransition.disposition()
+                        && firstTransition.reasonCode().equals(repeatedTransition.reasonCode())
+                        && eventsEqual(firstTransition.events(), repeatedTransition.events())
+                        && checkedHash(provider.stateHash(firstTransition.nextState()))
+                                .equals(checkedHash(provider.stateHash(
+                                        repeatedTransition.nextState()))),
+                "scheduled transition is not deterministic");
+        check(initialHash.equals(checkedHash(provider.stateHash(first))),
+                "scheduled transition mutated its input state");
+    }
+
+    private static Optional<ScheduledRuleAction> scheduled(
+            RulePackProvider provider, RuleState state) {
+        return require(provider.scheduledAction(state), "null scheduled-action optional");
     }
 
     private static void verifyUniqueViewObjects(List<RuleViewTile> tiles, String label) {
