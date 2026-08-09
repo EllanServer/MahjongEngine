@@ -7,7 +7,7 @@ public final class LocalizedCommandException extends IllegalArgumentException {
     @java.io.Serial
     private static final long serialVersionUID = 1L;
 
-    private final CommandMessage reply;
+    private final transient CommandMessage reply;
 
     public LocalizedCommandException(CommandMessage reply) {
         super(Objects.requireNonNull(reply, "reply").consoleText());
