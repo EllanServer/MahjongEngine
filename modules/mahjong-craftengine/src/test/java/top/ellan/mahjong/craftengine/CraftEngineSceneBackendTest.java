@@ -102,8 +102,7 @@ class CraftEngineSceneBackendTest {
                             id,
                             SceneVisibility.publicToAll(),
                             "mahjong:tile/back",
-                            new SceneTransform(index, 0, 0, 0, 0, 0, 1),
-                            32));
+                            new SceneTransform(index, 0, 0, 0, 0, 0, 1)));
         }
         return new SceneDiff(table, -1, 1, List.of(), upserts, List.of());
     }

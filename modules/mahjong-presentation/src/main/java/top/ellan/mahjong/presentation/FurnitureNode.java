@@ -7,8 +7,7 @@ public record FurnitureNode(
         SceneNodeId id,
         SceneVisibility visibility,
         String assetId,
-        SceneTransform transform,
-        double cullingDistance) implements SceneNode {
+        SceneTransform transform) implements SceneNode {
     public FurnitureNode {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(visibility, "visibility");
@@ -19,9 +18,6 @@ public record FurnitureNode(
         }
         if (!assetId.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
             throw new IllegalArgumentException("Invalid CraftEngine asset id: " + assetId);
-        }
-        if (!Double.isFinite(cullingDistance) || cullingDistance <= 0) {
-            throw new IllegalArgumentException("cullingDistance must be positive");
         }
     }
 

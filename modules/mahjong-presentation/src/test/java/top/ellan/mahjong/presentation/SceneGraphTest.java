@@ -72,8 +72,7 @@ class SceneGraphTest {
                                 new SceneNodeId("secret"),
                                 SceneVisibility.privateTo(PLAYER),
                                 "mahjong:tile/red-five",
-                                new SceneTransform(0, 0, 0, 0, 0, 0, 1),
-                                32));
+                                new SceneTransform(0, 0, 0, 0, 0, 0, 1)));
     }
 
     @Test
@@ -82,6 +81,38 @@ class SceneGraphTest {
         assertEquals("p3", DefaultTableSceneMapper.normalizeTileName("3p"));
         assertEquals("green_dragon", DefaultTableSceneMapper.normalizeTileName("6z"));
         assertEquals("white_dragon", DefaultTableSceneMapper.normalizeTileName("white_dragon"));
+    }
+
+    @Test
+    void pointSticksUseCraftEngineConfiguredFurnitureAssets() {
+        DefaultTableSceneMapper mapper =
+                new DefaultTableSceneMapper(
+                        new RadialTableLayout(0.08), "mahjongpaper:tile_standing_back");
+        RuleViewTile pointStick =
+                new RuleViewTile(
+                        new TileInstanceId(10_001),
+                        new TileVisualId("riichi:stick/p1000"),
+                        Optional.of(new SeatId(2)),
+                        RuleViewZone.POINT_STICK,
+                        0,
+                        true);
+        TableProjection base = projection(TableId.random(), 1, "playing");
+        TableProjection withStick =
+                new TableProjection(
+                        base.tableId(),
+                        base.revision(),
+                        base.lifecycle(),
+                        new PublicRuleView(1, "playing", List.of(pointStick), Map.of()),
+                        base.privateViews(),
+                        base.authorizedActions());
+
+        SceneGraph graph = mapper.map(withStick);
+
+        assertTrue(
+                graph.nodes().values().stream()
+                        .filter(FurnitureNode.class::isInstance)
+                        .map(FurnitureNode.class::cast)
+                        .anyMatch(node -> node.assetId().equals("mahjongpaper:stick_p1000")));
     }
 
     @Test

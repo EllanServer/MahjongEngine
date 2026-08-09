@@ -8,9 +8,7 @@ public record InteractionNode(
         SceneNodeId id,
         SceneVisibility visibility,
         InteractionHandle handle,
-        SceneTransform transform,
-        double width,
-        double height) implements SceneNode {
+        SceneTransform transform) implements SceneNode {
     public InteractionNode {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(visibility, "visibility");
@@ -18,12 +16,6 @@ public record InteractionNode(
         Objects.requireNonNull(transform, "transform");
         if (!visibility.isPublic()) {
             throw new IllegalArgumentException("World hit regions must be public");
-        }
-        if (!Double.isFinite(width)
-                || !Double.isFinite(height)
-                || width <= 0
-                || height <= 0) {
-            throw new IllegalArgumentException("Interaction dimensions must be positive");
         }
     }
 

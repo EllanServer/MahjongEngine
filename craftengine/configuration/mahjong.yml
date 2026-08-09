@@ -125,6 +125,39 @@ items:
                 translation: 0,0,0
                 shadow_radius: 0
                 shadow_strength: 0
+              # Static table geometry belongs to CraftEngine, not Java scene code.
+              - type: item_display
+                item: mahjongpaper:seat_chair_model
+                display_transform: none
+                billboard: fixed
+                translation: 0,0,2.25
+                rotation: "0,180,0"
+                shadow_radius: 0
+                shadow_strength: 0
+              - type: item_display
+                item: mahjongpaper:seat_chair_model
+                display_transform: none
+                billboard: fixed
+                translation: 2.25,0,0
+                rotation: "0,270,0"
+                shadow_radius: 0
+                shadow_strength: 0
+              - type: item_display
+                item: mahjongpaper:seat_chair_model
+                display_transform: none
+                billboard: fixed
+                translation: 0,0,-2.25
+                rotation: "0,0,0"
+                shadow_radius: 0
+                shadow_strength: 0
+              - type: item_display
+                item: mahjongpaper:seat_chair_model
+                display_transform: none
+                billboard: fixed
+                translation: -2.25,0,0
+                rotation: "0,90,0"
+                shadow_radius: 0
+                shadow_strength: 0
             hitboxes:
               - {position: "-1,-1.5,-1", type: shulker, direction: up, scale: 1, peek: 0, blocks_building: true, interactive: false, interaction_entity: false}
               - {position: "-1,-1.5,0", type: shulker, direction: up, scale: 1, peek: 0, blocks_building: true, interactive: false, interaction_entity: false}
@@ -135,6 +168,10 @@ items:
               - {position: "1,-1.5,-1", type: shulker, direction: up, scale: 1, peek: 0, blocks_building: true, interactive: false, interaction_entity: false}
               - {position: "1,-1.5,0", type: shulker, direction: up, scale: 1, peek: 0, blocks_building: true, interactive: false, interaction_entity: false}
               - {position: "1,-1.5,1", type: shulker, direction: up, scale: 1, peek: 0, blocks_building: true, interactive: false, interaction_entity: false}
+              - {position: "0,0,2.25", type: interaction, width: 0.8, height: 1, blocks_building: false, interactive: true, invisible: true, seats: ["0,0,2.25 180"]}
+              - {position: "2.25,0,0", type: interaction, width: 0.8, height: 1, blocks_building: false, interactive: true, invisible: true, seats: ["2.25,0,0 270"]}
+              - {position: "0,0,-2.25", type: interaction, width: 0.8, height: 1, blocks_building: false, interactive: true, invisible: true, seats: ["0,0,-2.25 0"]}
+              - {position: "-2.25,0,0", type: interaction, width: 0.8, height: 1, blocks_building: false, interactive: true, invisible: true, seats: ["-2.25,0,0 90"]}
 
   mahjongpaper:hand_tile_hitbox:
     material: paper
@@ -186,47 +223,6 @@ items:
       item_name: "<!i><gray>Mahjong Seat Chair</gray>"
     item_model: mahjongcraft:seat_chair
 
-  mahjongpaper:seat_chair:
-    material: paper
-    settings:
-      tags:
-        - mahjongpaper:seat_visual
-    data:
-      item_name: "<!i><gray>Mahjong Seat Chair</gray>"
-    item_model: mahjongcraft:seat_chair
-    behavior:
-      type: furniture_item
-      rules:
-        ground:
-          rotation: four
-          alignment: center
-      furniture:
-        settings:
-          item: mahjongpaper:seat_chair
-        variants:
-          ground:
-            entity_culling:
-              aabb_expansion: 0.25
-              view_distance: 48
-              ray_tracing: true
-            elements:
-              - type: item_display
-                item: mahjongpaper:seat_chair_model
-                display_transform: none
-                billboard: fixed
-                position: 0,0,0
-                translation: 0,0,0
-                shadow_radius: 0
-                shadow_strength: 0
-            hitboxes:
-              - type: shulker
-                position: 0,-1.5,0
-                blocks_building: false
-                interactive: true
-                invisible: true
-                seats:
-                  - 0,-1.5,0
-
 config_factory#point_sticks:
   instances:
     - {point: p100, model: "mahjongcraft:stick_p100", label: "100 Point Stick"}
@@ -243,21 +239,13 @@ config_factory#point_sticks:
         data:
           item_name: "<!i><white>${label}</white>"
         item_model: "${model}"
-      mahjongpaper:stick_x_${point}:
+      mahjongpaper:stick_${point}:
         template: mahjongpaper:stick_furniture
         arguments:
           point: "${point}"
           model: "${model}"
           label: "${label}"
           rotation: "0,0,0"
-      mahjongpaper:stick_z_${point}:
-        template: mahjongpaper:stick_furniture
-        arguments:
-          point: "${point}"
-          model: "${model}"
-          label: "${label}"
-          rotation: "0,90,0"
-
 config_factory#tiles:
   instances:
     - tile: autumn

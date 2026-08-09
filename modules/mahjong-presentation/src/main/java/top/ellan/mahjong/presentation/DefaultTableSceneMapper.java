@@ -18,7 +18,6 @@ import top.ellan.mahjong.spi.RuleViewTile;
 public final class DefaultTableSceneMapper implements TableSceneMapper {
     private static final int ACTION_SLOTS = 64;
     private static final String TABLE_ASSET = "mahjongpaper:table_visual";
-    private static final String SEAT_ASSET = "mahjongpaper:seat_chair";
     private final TableLayout layout;
     private final String tileBackAsset;
 
@@ -30,8 +29,7 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                 new SceneNodeId("validation/tile-back"),
                 SceneVisibility.publicToAll(),
                 tileBackAsset,
-                new SceneTransform(0, 0, 0, 0, 0, 0, 1),
-                32);
+                new SceneTransform(0, 0, 0, 0, 0, 0, 1));
     }
 
     @Override
@@ -40,15 +38,14 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
         addFixedTableFurniture(nodes);
         for (RuleViewTile tile : projection.publicView().tiles()) {
             SceneNodeId id = new SceneNodeId("tile/public/" + tile.instanceId().value());
-            String asset = tile.faceUp() ? tileFurnitureAsset(tile) : tileBackAsset;
+            String asset = tile.faceUp() ? furnitureAsset(tile) : tileBackAsset;
             nodes.put(
                     id,
                     new FurnitureNode(
                             id,
                             SceneVisibility.publicToAll(),
                             asset,
-                            layout.tile(tile.zone(), tile.owner(), tile.index()),
-                            32));
+                            layout.tile(tile.zone(), tile.owner(), tile.index())));
         }
 
         for (Map.Entry<PlayerId, PrivateRuleView> entry : projection.privateViews().entrySet()) {
@@ -105,9 +102,7 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                             id,
                             SceneVisibility.publicToAll(),
                             handle,
-                            layout.interaction(slot),
-                            0.36,
-                            0.18));
+                            layout.interaction(slot)));
         }
         for (Map.Entry<PlayerId, List<AuthorizedAction>> entry :
                 projection.authorizedActions().entrySet()) {
@@ -136,30 +131,13 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                         tableId,
                         SceneVisibility.publicToAll(),
                         TABLE_ASSET,
-                        new SceneTransform(0, 0, 0, 0, 0, 0, 1),
-                        48));
-        for (int seat = 0; seat < 4; seat++) {
-            double angle = Math.toRadians(seat * 90.0);
-            SceneNodeId id = new SceneNodeId("furniture/seat-" + seat);
-            nodes.put(
-                    id,
-                    new FurnitureNode(
-                            id,
-                            SceneVisibility.publicToAll(),
-                            SEAT_ASSET,
-                            new SceneTransform(
-                                    Math.sin(angle) * 2.25,
-                                    0,
-                                    Math.cos(angle) * 2.25,
-                                    seat * 90.0 + 180.0,
-                                    0,
-                                    0,
-                                    1),
-                            48));
-        }
+                        new SceneTransform(0, 0, 0, 0, 0, 0, 1)));
     }
 
-    private static String tileFurnitureAsset(RuleViewTile tile) {
+    private static String furnitureAsset(RuleViewTile tile) {
+        if (tile.zone() == top.ellan.mahjong.spi.RuleViewZone.POINT_STICK) {
+            return pointStickFurnitureAsset(tile.visualId().value());
+        }
         String value = tile.visualId().value();
         int separator = value.indexOf("tile/");
         String tileName = normalizeTileName(separator >= 0 ? value.substring(separator + 5) : value);
@@ -168,9 +146,21 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
         }
         String pose = switch (tile.zone()) {
             case HAND, WALL -> "tile_standing";
-            case DISCARD, MELD, INDICATOR, POINT_STICK, AUXILIARY -> "tile_flat_face_up";
+            case DISCARD, MELD, INDICATOR, AUXILIARY -> "tile_flat_face_up";
+            case POINT_STICK -> throw new IllegalStateException("handled above");
         };
         return "mahjongpaper:" + pose + '_' + tileName;
+    }
+
+    private static String pointStickFurnitureAsset(String visualId) {
+        int separator = visualId.indexOf("stick/");
+        String denomination = separator >= 0
+                ? visualId.substring(separator + "stick/".length())
+                : visualId;
+        if (!denomination.matches("p(?:100|1000|5000|10000)")) {
+            throw new IllegalArgumentException("Unsupported point-stick visual id: " + visualId);
+        }
+        return "mahjongpaper:stick_" + denomination;
     }
 
     /** Maps rule-pack notation to the stable CraftEngine asset vocabulary. */
