@@ -75,7 +75,7 @@ class PersistenceOutboxTest {
 
         assertEquals(1, health.unpersistedEvents());
         assertTrue(health.paused());
-        assertEquals(Optional.of("scheduler-capacity"), health.lastFailure());
+        assertEquals(Optional.of("scheduler-capacity"), health.failure());
     }
 
     private static List<MatchEventRecord> events(
