@@ -112,6 +112,13 @@ val architectureCheck =
                         "$relative is unclassified; CraftEngine types must live in bundle/interaction/port/scene/privateview"
                 }
                 if (
+                    module == "mahjong-craftengine" &&
+                        text.lineSequence().count() > 550
+                ) {
+                    violations +=
+                        "$relative exceeds the 550-line CraftEngine responsibility limit"
+                }
+                if (
                     module == "mahjong-application" &&
                         text.lineSequence().count() > 550
                 ) {
