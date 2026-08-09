@@ -30,7 +30,7 @@
 
 ## CraftEngine 边界
 
-CraftEngine bundle 在构建期从 `resourcepack` 生成，并在启动时校验 SHA-256 后原子安装。家具模型、牌姿态、座椅、hitbox、interaction 与 entity culling 都由 bundle YAML 表达。
+CraftEngine bundle 在构建期复制已审查的 `craftengine/configuration` 与 `resourcepack`，并生成 SHA-256 清单；启动时校验后原子安装。家具模型、牌姿态、座椅、hitbox、interaction 与 entity culling 都由 CraftEngine YAML 的 template/config factory 表达，不由 Java 拼装。
 
 Java 仅负责：
 

@@ -242,7 +242,7 @@ public final class TableActor implements AutoCloseable {
         try {
             ruleExecutor
                     .submit(
-                            provider.descriptor().ruleId(),
+                            matchBinding().rulePack().ruleId(),
                             () -> computeFrameOnly(capturedState, expectedRevision))
                     .whenComplete(
                             (computed, failure) ->
@@ -267,7 +267,7 @@ public final class TableActor implements AutoCloseable {
         try {
             ruleExecutor
                     .submit(
-                            provider.descriptor().ruleId(),
+                            matchBinding().rulePack().ruleId(),
                             () ->
                                     computeTransition(
                                             capturedState,

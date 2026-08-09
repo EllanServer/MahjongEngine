@@ -10,14 +10,16 @@ val generatedResources = layout.buildDirectory.dir("generated/resources/mahjong"
 val generateCraftEngineBundle =
     tasks.register("generateCraftEngineBundle") {
         val resourcepackDir = rootProject.layout.projectDirectory.dir("resourcepack").asFile
-        val tileItemsDir = resourcepackDir.resolve("assets/mahjongcraft/items/mahjong_tile")
+        val configurationDir =
+            rootProject.layout.projectDirectory.dir("craftengine/configuration").asFile
         val attribution = resourcepackDir.resolve("ATTRIBUTION.md")
+        inputs.dir(configurationDir)
         inputs.dir(resourcepackDir)
         inputs.file(attribution)
         outputs.dir(generatedResources.map { it.dir("craftengine") })
         doLast {
             CraftEngineBundleGenerator.writeCraftEngineBundle(
-                tileItemsDir,
+                configurationDir,
                 resourcepackDir,
                 attribution,
                 generatedResources.get().asFile,

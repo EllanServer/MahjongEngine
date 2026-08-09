@@ -18,6 +18,8 @@
 5. 配置 `rules.registry-url` 和构建时内置的官方 Ed25519 公钥。
 6. 用 `/mahjong rules install ...`、`verify`、`activate` 安装规则，然后完整重启。
 
+家具、牌姿态、碰撞、座位、交互 hitbox 与按玩家 entity culling 均由 `craftengine/configuration/mahjong.yml` 管理；修改后必须重新构建核心 JAR，并执行 `/ce reload all`。Java 端没有另一套实体配置回退。
+
 默认数据库是插件目录内的 H2 文件。也可把 `database.jdbc-url` 改成 MariaDB/MySQL JDBC URL。数据库不可用时插件与管理命令仍可加载，但不会开始或推进可恢复比赛。
 
 规则包目录：

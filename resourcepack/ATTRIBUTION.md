@@ -20,7 +20,6 @@ The sound effects under `assets/mahjongcraft/sounds/` use low-risk redistributab
 
 - Real tile/table sounds are from Freesound recordings marked Creative Commons 0 (CC0 1.0).
 - Action call voices are from Amitaro's Voice Material Studio. These are not CC0 or MIT; use requires credit, a terms link/readme, and a post-release usage report within the period stated by the current Amitaro terms when redistributed in a Minecraft/CraftEngine bundle.
-- GB and Sichuan variant-specific sounds are derived only from the CC0 Freesound recordings listed below; they do not include third-party voice material.
 - The T-STUDIO Mahjong sound pack is intentionally not included because its redistribution terms are not a good fit for a merged CraftEngine resource bundle.
 
 | File | Source | License / Terms | Usage | Notes |
@@ -33,12 +32,7 @@ The sound effects under `assets/mahjongcraft/sounds/` use low-risk redistributab
 | `reaction_chi.ogg` | Amitaro's Voice Material Studio `chii_01.wav` | Amitaro terms | Chi | Female voice; converted to Ogg Vorbis, trimmed, and normalized. |
 | `reaction_pon.ogg` | Amitaro's Voice Material Studio `pon_01.wav` | Amitaro terms | Pon | Female voice; converted to Ogg Vorbis, trimmed, and normalized. |
 | `reaction_kan.ogg` | Amitaro's Voice Material Studio `kan_01.wav` | Amitaro terms | Kan | Female voice; converted to Ogg Vorbis, trimmed, and normalized. |
-| `riichi.ogg` | Amitaro's Voice Material Studio `ri-chi_01.wav` | Amitaro terms | Riichi | Female voice; converted to Ogg Vorbis, trimmed, and normalized. |
 | `round_win.ogg` | Amitaro's Voice Material Studio `ron_01.wav` | Amitaro terms | Win | Female voice; converted to Ogg Vorbis, trimmed, and normalized. |
-| `gb_tile_draw.ogg`, `gb_tile_discard.ogg`, `gb_tile_shuffle.ogg`, `gb_turn_change.ogg`, `gb_round_draw.ogg` | Freesound CC0 recordings listed below | CC0 1.0 | GB table sounds | Variant-specific crops, combinations, and normalization from real domino/tile recordings. |
-| `gb_reaction_chi.ogg`, `gb_reaction_pon.ogg`, `gb_reaction_kan.ogg`, `gb_round_win.ogg` | Freesound CC0 recordings listed below | CC0 1.0 | GB action cues | Variant-specific non-voice tile cues. |
-| `sichuan_tile_draw.ogg`, `sichuan_tile_discard.ogg`, `sichuan_tile_shuffle.ogg`, `sichuan_turn_change.ogg`, `sichuan_round_draw.ogg` | Freesound CC0 recordings listed below | CC0 1.0 | Sichuan table sounds | Variant-specific crops, combinations, filtering, and normalization from real domino/tile recordings. |
-| `sichuan_reaction_chi.ogg`, `sichuan_reaction_pon.ogg`, `sichuan_reaction_kan.ogg`, `sichuan_round_win.ogg` | Freesound CC0 recordings listed below | CC0 1.0 | Sichuan action cues | Variant-specific non-voice tile cues. |
 
 Sources:
 

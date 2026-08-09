@@ -86,11 +86,11 @@ val architectureCheck =
                         }
                 }
             }
-            if (file("src/main").exists()) {
-                violations += "root src/main exists; production must live in explicit modules"
-            }
-            if (file("native/gbmahjong").exists()) {
-                violations += "legacy GB JNI/native tree still exists"
+            listOf("src", "native", "perf").forEach { removedRoot ->
+                if (file(removedRoot).exists()) {
+                    violations +=
+                        "removed 1.x root '$removedRoot' exists; all code must live in 2.0 modules"
+                }
             }
             if (violations.isNotEmpty()) {
                 throw GradleException(violations.joinToString("\n"))

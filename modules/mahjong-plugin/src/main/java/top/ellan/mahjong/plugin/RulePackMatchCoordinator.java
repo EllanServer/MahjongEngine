@@ -95,12 +95,6 @@ public final class RulePackMatchCoordinator {
                                         new IllegalStateException(
                                                 "No active rule pack for " + command.ruleId()));
         RulePackRef reference = rulePacks.activeReference(command.ruleId()).orElseThrow();
-        if (provider.descriptor().profiles().stream()
-                .noneMatch(profile -> profile.id().equals(command.profileId()))) {
-            return CompletableFuture.failedFuture(
-                    new IllegalArgumentException(
-                            "Rule pack does not support profile " + command.profileId()));
-        }
         List<MatchPlayer> players =
                 command.participants().stream()
                         .filter(participant -> participant.role() == ParticipantRole.PLAYER)
@@ -125,14 +119,17 @@ public final class RulePackMatchCoordinator {
                         command.profileId(),
                         configurationHash(command.configuration()),
                         createdAt);
-        return rules.submit(command.ruleId(), () -> provider.createMatch(setup))
+        return rules.submit(
+                        command.ruleId(),
+                        () -> createInitialRuleState(provider, reference, setup))
                 .thenCompose(
-                        state ->
+                        created ->
                                 persistAndStart(
                                         command,
                                         provider,
                                         binding,
-                                        state,
+                                        created.state(),
+                                        created.snapshot(),
                                         0,
                                         0));
     }
@@ -180,16 +177,15 @@ public final class RulePackMatchCoordinator {
             RulePackProvider provider,
             MatchBinding binding,
             RuleState state,
+            RuleStateSnapshot initial,
             long stateRevision,
             long eventSequence) {
-        RuleStateSnapshot initial = provider.snapshot(state, eventSequence);
-        verifySnapshot(initial, binding.rulePack(), eventSequence);
         MatchInstanceRecord metadata =
                 new MatchInstanceRecord(
                         binding,
                         command.tableId(),
                         TableLifecycle.ACTIVE,
-                        Instant.now(clock),
+                        binding.createdAt(),
                         eventSequence);
         return CompletableFuture.runAsync(
                         () -> {
@@ -404,6 +400,19 @@ public final class RulePackMatchCoordinator {
         }
     }
 
+    private static CreatedRuleState createInitialRuleState(
+            RulePackProvider provider, RulePackRef reference, MatchSetup setup) {
+        if (provider.descriptor().profiles().stream()
+                .noneMatch(profile -> profile.id().equals(setup.profileId()))) {
+            throw new IllegalArgumentException(
+                    "Rule pack does not support profile " + setup.profileId());
+        }
+        RuleState state = Objects.requireNonNull(provider.createMatch(setup), "initial rule state");
+        RuleStateSnapshot snapshot = provider.snapshot(state, 0);
+        verifySnapshot(snapshot, reference, 0);
+        return new CreatedRuleState(state, snapshot);
+    }
+
     private static String configurationHash(java.util.Map<String, String> configuration) {
         MessageDigest digest = digest();
         configuration.entrySet().stream()
@@ -438,6 +447,13 @@ public final class RulePackMatchCoordinator {
         private RecoveryInput {
             Objects.requireNonNull(data, "data");
             Objects.requireNonNull(provider, "provider");
+        }
+    }
+
+    private record CreatedRuleState(RuleState state, RuleStateSnapshot snapshot) {
+        private CreatedRuleState {
+            Objects.requireNonNull(state, "state");
+            Objects.requireNonNull(snapshot, "snapshot");
         }
     }
 

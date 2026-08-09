@@ -83,9 +83,7 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
                                                     binding.playerId(),
                                                     binding.actionToken()))
                             .toList();
-            if (table.visible) {
-                interactions.replaceBindings(diff.tableId(), table.bindings);
-            }
+            interactions.replaceBindings(diff.tableId(), table.bindings);
         }
         markReady(diff.tableId(), table);
     }
@@ -128,24 +126,6 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
         return ready.get();
     }
 
-    /** Virtualizes a table with no nearby viewer while its actor keeps running headlessly. */
-    public void setVisible(TableId tableId, boolean visible) {
-        TableState table = tables.get(Objects.requireNonNull(tableId, "tableId"));
-        if (table == null) {
-            return;
-        }
-        synchronized (table) {
-            if (table.visible == visible) {
-                return;
-            }
-            table.visible = visible;
-            table.dirty.addAll(table.actual.keySet());
-            table.dirty.addAll(table.desired.keySet());
-            interactions.replaceBindings(tableId, visible ? table.bindings : List.of());
-        }
-        markReady(tableId, table);
-    }
-
     public void removeTable(TableId tableId) {
         TableState table = tables.get(Objects.requireNonNull(tableId, "tableId"));
         if (table == null) {
@@ -153,7 +133,7 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
         }
         synchronized (table) {
             table.closed = true;
-            table.visible = false;
+            table.failed = false;
             table.desired.clear();
             table.dirty.addAll(table.actual.keySet());
             interactions.replaceBindings(tableId, List.of());
@@ -284,7 +264,7 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
             Iterator<SceneNodeId> iterator = table.dirty.iterator();
             while (iterator.hasNext()) {
                 SceneNodeId id = iterator.next();
-                SceneNode desired = table.visible ? table.desired.get(id) : null;
+                SceneNode desired = table.desired.get(id);
                 SceneNode actual = table.actual.get(id);
                 if (Objects.equals(desired, actual)) {
                     iterator.remove();
@@ -359,7 +339,6 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
         private final Set<SceneNodeId> dirty = new LinkedHashSet<>();
         private List<InteractionRouteBinding> bindings = List.of();
         private long desiredRevision = -1;
-        private boolean visible = true;
         private boolean regionQueued;
         private boolean failed;
         private boolean closed;

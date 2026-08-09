@@ -61,26 +61,6 @@ class CraftEngineSceneBackendTest {
     }
 
     @Test
-    void invisibleTablesAreRemovedAndLaterRestoredInBatches() {
-        ManualRegionScheduler scheduler = new ManualRegionScheduler();
-        RecordingGateway gateway = new RecordingGateway();
-        CraftEngineSceneBackend backend = backend(gateway, scheduler, ignored -> {});
-        TableId table = TableId.random();
-        backend.submit(diff(table, 3));
-        backend.onCraftEngineReloaded();
-        scheduler.runUntilIdle(REGION, 8);
-        assertEquals(3, gateway.live.getOrDefault(table, Map.of()).size());
-
-        backend.setVisible(table, false);
-        scheduler.runUntilIdle(REGION, 8);
-        assertTrue(gateway.live.getOrDefault(table, Map.of()).isEmpty());
-
-        backend.setVisible(table, true);
-        scheduler.runUntilIdle(REGION, 8);
-        assertEquals(3, gateway.live.getOrDefault(table, Map.of()).size());
-    }
-
-    @Test
     void queuedRegionWorkCannotMutateFurnitureDuringCraftEngineReload() {
         ManualRegionScheduler scheduler = new ManualRegionScheduler();
         RecordingGateway gateway = new RecordingGateway();
