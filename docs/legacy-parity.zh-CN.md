@@ -28,7 +28,9 @@
 | 机器人/托管 | 可补机器人、机器人自动行动；掉线可托管 | `BOT` 座位可持久恢复；掉线/重连与 `/mahjong auto` 只投递有界消息；三规则包各自选牌，核心每桌只保留一个 revision-bound 任务 | 已实现主链路 | rule-pack TCK、actor 定时/陈旧任务、lobby bot 恢复测试；64 桌门槛由 GitHub 性能工作流继续验证 |
 | 命令体验 | 创建、加入、观战、房主转让、机器人、规则、排行、管理命令 | 命令只调用 application use case；房主转让和旧规则别名已保留，不绕过 actor | 主链路已对齐；排行入口另见排名行 | lobby reducer、异步命令边界、locale/bundle 门禁 |
 | 多语言提示 | 完整中文/英文/日文消息键 | 命令、动作与交互反馈使用客户端翻译；内置简中、繁中、英文、日文，控制台英文回退 | 已实现核心链路 | 构建期 locale 键集与占位符完整性门禁 |
-| 排名与历史 | 对局结果、排行与个人查询 | 只读 SQL projection；不得在 region/actor 线程同步查询 | 基础数据层已完成，入口待补 | SQL projection 与异步命令测试 |
+| 排名与历史 | 对局结果、排行与个人查询 | `/mahjong history [page]` 与 `/mahjong rank [rule] [page]` 走只读异步 SQL projection；不得在 region/actor 线程同步查询 | 已实现玩家入口 | `JdbcPlayerRecordQueryTest`、SQL schema/event-store 测试、locale 键集门禁 |
+
+“骰子与开门已实现”采用唯一口径：规则包已给出确定性骰点、开门座位、断墙位置和摸牌顺序，核心已编排阶段与声音，CraftEngine 配置已提供稳定骰子槽位和点数 variant。规则包不保存实体模型与动画几何是明确的 CE 职责边界，不得再被写成“骰子开门未实现”。
 
 ## 明确修正的旧行为
 
