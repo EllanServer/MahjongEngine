@@ -138,7 +138,8 @@ public final class MahjongRuntime implements AutoCloseable {
                                 new RadialTableLayout(0.09D),
                                 configuration.tileBackFurniture()),
                         sceneBackend,
-                        new SceneGraphDiffer());
+                        new SceneGraphDiffer(),
+                        deadlines);
         registerPlatformListeners(mutations);
         installCraftEngineBundle(craftEngine);
     }
@@ -217,10 +218,14 @@ public final class MahjongRuntime implements AutoCloseable {
                         .remove(tableId)
                         .orElseThrow(() -> new IllegalArgumentException("Unknown live table"));
         actors.remove(tableId, match.actor());
-        sceneProjector.remove(tableId);
-        sceneBackend.removeTable(tableId);
         return match.actor()
                 .closeAndDrain()
+                .whenComplete(
+                        (ignored, failure) -> {
+                            sceneProjector.remove(tableId);
+                            sceneBackend.removeTable(tableId);
+                            paperAnchors.remove(tableId);
+                        })
                 .thenCompose(
                         ignored ->
                                 CompletableFuture.runAsync(

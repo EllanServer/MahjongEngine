@@ -12,6 +12,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.application.TableProjection;
 import top.ellan.mahjong.domain.TableId;
@@ -168,7 +170,11 @@ class SceneGraphTest {
                                     projection.tableId(), projection.revision());
                         },
                         submitted::add,
-                        new SceneGraphDiffer());
+                        new SceneGraphDiffer(),
+                        (task, delay) -> {
+                            executor.execute(task);
+                            return () -> true;
+                        });
         TableId table = TableId.random();
         projector.publish(projection(table, 1, "one"));
         projector.publish(projection(table, 2, "two"));
@@ -179,6 +185,41 @@ class SceneGraphTest {
         assertEquals(List.of(3L), mapped);
         assertEquals(1, submitted.size());
         assertEquals(3, submitted.getFirst().toRevision());
+    }
+
+    @Test
+    void rejectedRenderDispatchRetriesOnlyTheLatestProjection() {
+        ManualExecutor executor = new ManualExecutor();
+        AtomicBoolean rejectFirst = new AtomicBoolean(true);
+        Executor rejectOnce =
+                task -> {
+                    if (rejectFirst.getAndSet(false)) {
+                        throw new RejectedExecutionException("render queue full");
+                    }
+                    executor.execute(task);
+                };
+        List<Long> mapped = new ArrayList<>();
+        LatestSceneProjector projector =
+                new LatestSceneProjector(
+                        rejectOnce,
+                        projection -> {
+                            mapped.add(projection.revision());
+                            return SceneGraph.empty(
+                                    projection.tableId(), projection.revision());
+                        },
+                        ignored -> {},
+                        new SceneGraphDiffer(),
+                        (task, delay) -> {
+                            executor.execute(task);
+                            return () -> true;
+                        });
+        TableId table = TableId.random();
+
+        projector.publish(projection(table, 1, "superseded"));
+        projector.publish(projection(table, 2, "latest"));
+        executor.runAll();
+
+        assertEquals(List.of(2L), mapped);
     }
 
     private static TableProjection projection(TableId tableId, long revision, String phase) {

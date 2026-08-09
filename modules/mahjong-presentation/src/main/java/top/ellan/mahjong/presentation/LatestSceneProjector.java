@@ -1,5 +1,6 @@
 package top.ellan.mahjong.presentation;
 
+import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
@@ -9,6 +10,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import top.ellan.mahjong.application.SceneProjectionPort;
 import top.ellan.mahjong.application.TableProjection;
+import top.ellan.mahjong.application.TaskScheduler;
 import top.ellan.mahjong.domain.TableId;
 
 /** Per-table latest-only scene precomputation. Superseded frames are discarded before mapping. */
@@ -18,16 +20,19 @@ public final class LatestSceneProjector implements SceneProjectionPort {
     private final TableSceneMapper mapper;
     private final SceneBackendPort backend;
     private final SceneGraphDiffer differ;
+    private final TaskScheduler retries;
 
     public LatestSceneProjector(
             Executor precomputeExecutor,
             TableSceneMapper mapper,
             SceneBackendPort backend,
-            SceneGraphDiffer differ) {
+            SceneGraphDiffer differ,
+            TaskScheduler retries) {
         this.precomputeExecutor = Objects.requireNonNull(precomputeExecutor, "precomputeExecutor");
         this.mapper = Objects.requireNonNull(mapper, "mapper");
         this.backend = Objects.requireNonNull(backend, "backend");
         this.differ = Objects.requireNonNull(differ, "differ");
+        this.retries = Objects.requireNonNull(retries, "retries");
     }
 
     @Override
@@ -72,6 +77,27 @@ public final class LatestSceneProjector implements SceneProjectionPort {
             precomputeExecutor.execute(() -> processOne(tableId, slot));
         } catch (RejectedExecutionException failure) {
             slot.running.set(false);
+            scheduleRetry(tableId, slot);
+        }
+    }
+
+    private void scheduleRetry(TableId tableId, Slot slot) {
+        if (slot.latest.get() == null
+                || slots.get(tableId) != slot
+                || !slot.retryScheduled.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            retries.schedule(
+                    () -> {
+                        slot.retryScheduled.set(false);
+                        if (slot.latest.get() != null && slots.get(tableId) == slot) {
+                            schedule(tableId, slot);
+                        }
+                    },
+                    Duration.ofMillis(10));
+        } catch (RejectedExecutionException failure) {
+            slot.retryScheduled.set(false);
         }
     }
 
@@ -118,6 +144,7 @@ public final class LatestSceneProjector implements SceneProjectionPort {
         private final AtomicReference<TableProjection> latest = new AtomicReference<>();
         private final AtomicLong acceptedRevision = new AtomicLong(-1);
         private final AtomicBoolean running = new AtomicBoolean();
+        private final AtomicBoolean retryScheduled = new AtomicBoolean();
         private SceneGraph applied;
     }
 }
