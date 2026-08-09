@@ -40,6 +40,8 @@ Java 仅负责：
 - 将授权暗手通过客户端私有投影发送给本人；
 - 将交互 handle 绑定到当前 revision 的 token。
 
+交互绑定不是在差分入队时立即开放：后端会先移除旧 token，等目标 Folia region 内该 revision 的全部 CraftEngine 节点成功应用后再原子发布新绑定。迟到的旧 epoch、CE reload 中的操作或单桌失败都不能重新开放旧动作。
+
 世界实体不得包含暗手正面。动态 HUD 也是逐玩家发送。
 
 ## 持久化与恢复
