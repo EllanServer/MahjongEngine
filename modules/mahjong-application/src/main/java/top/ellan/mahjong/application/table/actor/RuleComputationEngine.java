@@ -16,6 +16,7 @@ import top.ellan.mahjong.spi.RulePackProvider;
 import top.ellan.mahjong.spi.RuleState;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
 import top.ellan.mahjong.spi.RuleTransition;
+import top.ellan.mahjong.spi.ScheduledRuleAction;
 import top.ellan.mahjong.spi.TransitionDisposition;
 
 /** Executes and validates pure provider calls away from the actor scheduling loop. */
@@ -117,7 +118,19 @@ final class RuleComputationEngine {
                     privateViews,
                     legalActions);
         }
-        return new RuleFrame(publicView, privateViews, legalActions);
+        Optional<ScheduledRuleAction> scheduledAction = Objects.requireNonNull(
+                provider.scheduledAction(state), "provider returned null scheduled action");
+        scheduledAction.ifPresent(this::validateScheduledActor);
+        return new RuleFrame(publicView, privateViews, legalActions, scheduledAction);
+    }
+
+    private void validateScheduledActor(ScheduledRuleAction scheduled) {
+        boolean seated = participants.stream().anyMatch(participant ->
+                participant.seat().isPresent()
+                        && participant.playerId().equals(scheduled.actor()));
+        if (!seated) {
+            throw new IllegalStateException("Provider scheduled an action for an unseated actor");
+        }
     }
 
     private void addParticipantFrame(

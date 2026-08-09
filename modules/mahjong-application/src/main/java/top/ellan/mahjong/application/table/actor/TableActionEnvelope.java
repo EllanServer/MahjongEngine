@@ -7,6 +7,8 @@ import top.ellan.mahjong.spi.PlayerId;
 
 /** One bounded external action accepted by a table inbox. */
 record TableActionEnvelope(
+        long ingressOrder,
         PlayerId actor,
         ActionToken token,
-        CompletableFuture<TableActionResult> response) {}
+        CompletableFuture<TableActionResult> response)
+        implements TableIngress {}

@@ -102,6 +102,7 @@ class TableActorIsolationStressTest {
                         rules,
                         provider,
                         outbox,
+                        deadlines,
                         firstProjection::complete,
                         new SecureActionTokenIssuer(),
                         Clock.systemUTC(),

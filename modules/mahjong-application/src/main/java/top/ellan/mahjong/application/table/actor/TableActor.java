@@ -1,11 +1,8 @@
 package top.ellan.mahjong.application.table.actor;
 
 import java.time.Clock;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
@@ -13,6 +10,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
+import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.application.persistence.OutboxHealth;
 import top.ellan.mahjong.application.persistence.PersistenceOutbox;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
@@ -23,50 +21,36 @@ import top.ellan.mahjong.application.table.TableActionEndpoint;
 import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.application.table.TableActorConfig;
 import top.ellan.mahjong.application.table.TableActorSnapshot;
-import top.ellan.mahjong.domain.match.MatchBinding;
 import top.ellan.mahjong.domain.table.TableAggregate;
-import top.ellan.mahjong.domain.table.TableLifecycle;
 import top.ellan.mahjong.spi.ActionToken;
-import top.ellan.mahjong.spi.AuthorizedAction;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.RuleAction;
 import top.ellan.mahjong.spi.RulePackProvider;
 import top.ellan.mahjong.spi.RuleState;
-import top.ellan.mahjong.spi.RuleTransition;
-import top.ellan.mahjong.spi.TransitionDisposition;
+import top.ellan.mahjong.spi.ScheduledRuleAction;
 
 /**
- * Per-table single-writer actor. Event threads only perform a bounded offer; rule work, persistence,
- * and scene work are continuations and never block ingress.
+ * Bounded per-table actor shell. The inbox owns concurrency, the state machine owns match state,
+ * and rule calls run through a fair bounded launcher.
  */
 public final class TableActor implements TableActionEndpoint {
     private final Executor dispatcher;
-    private final FairRuleExecutor ruleExecutor;
-    private final PersistenceOutbox outbox;
     private final TableActorConfig config;
-    private final RuleComputationEngine computationEngine;
-    private final ProjectionAuthorizationService authorizationService;
-    private final AcceptedTransitionWriter transitionWriter;
-    private final TableProjectionPublisher projectionPublisher;
     private final TableActorInbox inbox;
+    private final TableRuleTaskLauncher ruleTasks;
+    private final TableActorStateMachine stateMachine;
     private final AtomicBoolean scheduled = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final AtomicReference<TableActorSnapshot> publishedSnapshot = new AtomicReference<>();
     private final CompletableFuture<Void> shutdownComplete = new CompletableFuture<>();
-    private final Map<UUID, AuthorizedAction> actionCatalog = new HashMap<>();
-    private TableAggregate aggregate;
-    private RuleState ruleState;
-    private OutboxHealth outboxHealth;
-    private long lastEventSequence;
-    private long acceptedActions;
     private boolean ruleInFlight;
-    private String failureCode = "";
 
     public TableActor(
             Executor dispatcher,
             FairRuleExecutor ruleExecutor,
             RulePackProvider provider,
             PersistenceOutbox outbox,
+            TaskScheduler deadlineScheduler,
             SceneProjectionPort projector,
             ActionTokenIssuer tokenIssuer,
             Clock clock,
@@ -75,28 +59,38 @@ public final class TableActor implements TableActionEndpoint {
             RuleState initialRuleState,
             long lastEventSequence) {
         this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
-        this.ruleExecutor = Objects.requireNonNull(ruleExecutor, "ruleExecutor");
-        this.outbox = Objects.requireNonNull(outbox, "outbox");
-        Objects.requireNonNull(clock, "clock");
         this.config = Objects.requireNonNull(config, "config");
-        this.aggregate = Objects.requireNonNull(aggregate, "aggregate");
-        computationEngine =
-                new RuleComputationEngine(provider, aggregate.participants(), config);
-        authorizationService = new ProjectionAuthorizationService(tokenIssuer);
-        transitionWriter = new AcceptedTransitionWriter(clock);
-        projectionPublisher = new TableProjectionPublisher(projector);
-        ruleState = Objects.requireNonNull(initialRuleState, "initialRuleState");
+        Objects.requireNonNull(outbox, "outbox");
+        Objects.requireNonNull(aggregate, "aggregate");
+        Objects.requireNonNull(initialRuleState, "initialRuleState");
         if (lastEventSequence < 0) {
             throw new IllegalArgumentException("lastEventSequence must be non-negative");
         }
-        this.lastEventSequence = lastEventSequence;
         inbox = new TableActorInbox(config.mailboxCapacity());
-        outboxHealth = outbox.health();
+        TableScheduledActionController scheduledActions = new TableScheduledActionController(
+                Objects.requireNonNull(deadlineScheduler, "deadlineScheduler"),
+                inbox,
+                this::scheduleDrain);
+        stateMachine = new TableActorStateMachine(
+                outbox,
+                projector,
+                tokenIssuer,
+                clock,
+                aggregate,
+                initialRuleState,
+                lastEventSequence,
+                scheduledActions);
+        ruleTasks = new TableRuleTaskLauncher(
+                Objects.requireNonNull(ruleExecutor, "ruleExecutor"),
+                provider,
+                aggregate.participants(),
+                config,
+                stateMachine.matchBinding().rulePack().ruleId());
         outbox.setListener(this::signalOutbox);
         publishSnapshot();
     }
 
-    /** Starts initial view/action generation on the fair rule pool. */
+    /** Starts initial view and action generation on the fair rule pool. */
     public void start() {
         if (closed.get()) {
             throw new IllegalStateException("actor is closed");
@@ -105,16 +99,17 @@ public final class TableActor implements TableActionEndpoint {
         scheduleDrain();
     }
 
-    /** O(1), non-blocking ingress method safe for Paper/CraftEngine event threads. */
+    /** O(1), non-blocking ingress method safe for Paper and CraftEngine event threads. */
     public CompletionStage<TableActionResult> submit(PlayerId actor, ActionToken token) {
         Objects.requireNonNull(actor, "actor");
         Objects.requireNonNull(token, "token");
         if (closed.get()) {
-            return CompletableFuture.completedFuture(result(TableActionCode.TABLE_CLOSED, "closed"));
+            return CompletableFuture.completedFuture(
+                    publishedResult(TableActionCode.TABLE_CLOSED, "closed"));
         }
         CompletableFuture<TableActionResult> response = new CompletableFuture<>();
-        if (!inbox.offer(new TableActionEnvelope(actor, token, response))) {
-            response.complete(result(TableActionCode.MAILBOX_FULL, "mailbox-full"));
+        if (!inbox.offerAction(actor, token, response)) {
+            response.complete(publishedResult(TableActionCode.MAILBOX_FULL, "mailbox-full"));
             return response;
         }
         scheduleDrain();
@@ -126,7 +121,7 @@ public final class TableActor implements TableActionEndpoint {
     }
 
     public Optional<TableProjection> latestProjection() {
-        return projectionPublisher.latest();
+        return stateMachine.latestProjection();
     }
 
     private void scheduleDrain() {
@@ -156,7 +151,7 @@ public final class TableActor implements TableActionEndpoint {
                 }
                 OutboxHealth health = inbox.takeOutboxHealth();
                 if (health != null) {
-                    handleOutboxHealth(health);
+                    stateMachine.handleOutboxHealth(health, ruleInFlight);
                     continue;
                 }
                 if (inbox.takeInitializeRequest()) {
@@ -165,11 +160,15 @@ public final class TableActor implements TableActionEndpoint {
                     }
                     continue;
                 }
-                TableActionEnvelope envelope = inbox.pollAction();
-                if (envelope == null) {
+                TableIngress ingress = inbox.pollIngress();
+                if (ingress == null) {
                     break;
                 }
-                handleAction(envelope);
+                if (ingress instanceof TableActionEnvelope envelope) {
+                    handleAction(envelope);
+                } else {
+                    handleScheduledAction((ScheduledActionTrigger) ingress);
+                }
             }
         } finally {
             scheduled.set(false);
@@ -182,78 +181,77 @@ public final class TableActor implements TableActionEndpoint {
 
     private void handleAction(TableActionEnvelope envelope) {
         if (closed.get()) {
-            envelope.response().complete(result(TableActionCode.TABLE_CLOSED, "closed"));
+            envelope.response().complete(stateMachine.result(TableActionCode.TABLE_CLOSED, "closed"));
             return;
         }
         ActionAdmission admission =
-                TableActionAdmission.evaluate(
-                        aggregate,
-                        ruleInFlight,
-                        envelope.actor(),
-                        envelope.token(),
-                        actionCatalog,
-                        failureCode);
+                stateMachine.admit(envelope.actor(), envelope.token(), ruleInFlight);
         if (!admission.accepted()) {
-            envelope.response()
-                    .complete(result(admission.rejectionCode(), admission.reasonCode()));
+            envelope.response().complete(
+                    stateMachine.result(admission.rejectionCode(), admission.reasonCode()));
             return;
         }
-        submitTransition(envelope, admission.action());
+        submitTransition(
+                envelope.actor(),
+                admission.action(),
+                Optional.of(envelope),
+                Optional.empty());
+    }
+
+    private void handleScheduledAction(ScheduledActionTrigger trigger) {
+        if (closed.get()
+                || trigger.expectedRevision() != stateMachine.revision()
+                || !stateMachine.lifecycle().acceptsRuleActions()
+                || ruleInFlight) {
+            return;
+        }
+        ScheduledRuleAction scheduledAction = trigger.scheduledAction();
+        submitTransition(
+                scheduledAction.actor(),
+                scheduledAction.action(),
+                Optional.empty(),
+                Optional.of(trigger));
     }
 
     private void submitFrameComputation() {
-        long expectedRevision = aggregate.revision();
-        RuleState capturedState = ruleState;
         ruleInFlight = true;
         try {
-            ruleExecutor
-                    .submit(
-                            matchBinding().rulePack().ruleId(),
-                            () -> computationEngine.frameOnly(capturedState, expectedRevision))
-                    .whenComplete(
-                            (computed, failure) ->
-                                    signalRuleCompletion(
-                                            new RuleTaskCompletion(
-                                                    expectedRevision,
-                                                    Optional.empty(),
-                                                    computed,
-                                                    failure)));
+            ruleTasks.frame(
+                    stateMachine.ruleState(),
+                    stateMachine.revision(),
+                    this::signalRuleCompletion);
         } catch (RejectedExecutionException failure) {
             ruleInFlight = false;
-            failureCode = "rule-pool-saturated";
+            stateMachine.recordFailure("rule-pool-saturated");
         }
     }
 
-    private void submitTransition(TableActionEnvelope envelope, RuleAction action) {
-        long expectedRevision = aggregate.revision();
-        long startingSequence = lastEventSequence;
-        long nextAcceptedAction = acceptedActions + 1;
-        RuleState capturedState = ruleState;
+    private void submitTransition(
+            PlayerId actor,
+            RuleAction action,
+            Optional<TableActionEnvelope> envelope,
+            Optional<ScheduledActionTrigger> scheduledTrigger) {
+        stateMachine.pauseScheduledAction();
         ruleInFlight = true;
         try {
-            ruleExecutor
-                    .submit(
-                            matchBinding().rulePack().ruleId(),
-                            () ->
-                                    computationEngine.transition(
-                                            capturedState,
-                                            envelope.actor(),
-                                            action,
-                                            expectedRevision,
-                                            startingSequence,
-                                            nextAcceptedAction))
-                    .whenComplete(
-                            (computed, failure) ->
-                                    signalRuleCompletion(
-                                            new RuleTaskCompletion(
-                                                    expectedRevision,
-                                                    Optional.of(envelope),
-                                                    computed,
-                                                    failure)));
+            ruleTasks.transition(
+                    stateMachine.ruleState(),
+                    actor,
+                    action,
+                    stateMachine.revision(),
+                    stateMachine.lastEventSequence(),
+                    stateMachine.nextAcceptedAction(),
+                    envelope,
+                    scheduledTrigger,
+                    this::signalRuleCompletion);
         } catch (RejectedExecutionException failure) {
             ruleInFlight = false;
-            envelope.response().complete(
-                    result(TableActionCode.RULE_POOL_SATURATED, "rule-pool-saturated"));
+            if (envelope.isPresent()) {
+                envelope.orElseThrow().response().complete(stateMachine.result(
+                        TableActionCode.RULE_POOL_SATURATED, "rule-pool-saturated"));
+            } else {
+                stateMachine.block("scheduled-rule-pool-saturated");
+            }
         }
     }
 
@@ -270,161 +268,41 @@ public final class TableActor implements TableActionEndpoint {
     private void handleRuleCompletion(RuleTaskCompletion completion) {
         ruleInFlight = false;
         if (closed.get()) {
-            completion.envelope().ifPresent(
-                    value ->
-                            value.response()
-                                    .complete(result(TableActionCode.TABLE_CLOSED, "closed")));
+            completion.envelope().ifPresent(value -> value.response().complete(
+                    stateMachine.result(TableActionCode.TABLE_CLOSED, "closed")));
             return;
         }
-        if (completion.expectedRevision() != aggregate.revision()) {
-            completion.envelope().ifPresent(
-                    value ->
-                            value.response()
-                                    .complete(result(TableActionCode.STALE_TOKEN, "revision-advanced")));
-            return;
-        }
-        if (completion.failure() != null || completion.computed() == null) {
-            failureCode =
-                    completion.failure() == null
-                            ? "null-rule-result"
-                            : completion.failure().getClass().getSimpleName();
-            aggregate = aggregate.withLifecycle(TableLifecycle.BLOCKED_RULE_PACK);
-            actionCatalog.clear();
-            completion.envelope().ifPresent(
-                    value ->
-                            value.response()
-                                    .complete(
-                                            result(
-                                                    TableActionCode.RULE_PACK_FAILURE,
-                                                    failureCode)));
-            republishLifecycle();
-            return;
-        }
-        RuleComputation computed = completion.computed();
-        RuleTransition transition = computed.transition();
-        if (transition == null) {
-            installFrame(computed.frame());
-            return;
-        }
-        TableActionEnvelope envelope = completion.envelope().orElseThrow();
-        if (!transition.accepted()) {
-            installFrame(computed.frame());
-            envelope.response().complete(
-                    result(TableActionCode.REJECTED_BY_RULES, transition.reasonCode()));
-            return;
-        }
-
-        RuleAction acceptedAction =
-                actionCatalog.get(envelope.token().value()).legalAction().action();
-        TransitionWrite write =
-                transitionWriter.offer(
-                        outbox,
-                        matchBinding(),
-                        aggregate.revision(),
-                        lastEventSequence,
-                        envelope.actor(),
-                        acceptedAction,
-                        computed);
-        if (!write.accepted()) {
-            if (write.status() == TransitionWriteStatus.FAILED) {
-                failureCode = write.failureCode();
-            }
-            outboxHealth = write.health();
-            aggregate = aggregate.withLifecycle(TableLifecycle.PAUSED_PERSISTENCE);
-            envelope.response().complete(
-                    result(TableActionCode.TABLE_PAUSED, write.failureCode()));
-            republishLifecycle();
-            return;
-        }
-        ruleState = computed.state();
-        aggregate = aggregate.withRevision(aggregate.revision() + 1);
-        acceptedActions++;
-        lastEventSequence = write.resultingSequence();
-        outboxHealth = write.health();
-        if (transition.disposition() == TransitionDisposition.MATCH_ENDED) {
-            aggregate = aggregate.withLifecycle(TableLifecycle.FINISHED);
-        } else if (write.health().paused()) {
-            aggregate = aggregate.withLifecycle(TableLifecycle.PAUSED_PERSISTENCE);
-        }
-        installFrame(computed.frame());
-        envelope.response().complete(
-                result(TableActionCode.ACCEPTED_MEMORY, "accepted-memory-first"));
-    }
-
-    private MatchBinding matchBinding() {
-        return aggregate.matchBinding().orElseThrow(
-                () -> new IllegalStateException("Active rule-pack table has no match binding"));
-    }
-
-    private void installFrame(RuleFrame frame) {
-        AuthorizedProjection authorized = authorizationService.authorize(aggregate, frame);
-        actionCatalog.clear();
-        actionCatalog.putAll(authorized.actionCatalog());
-        recordProjectionFailure(projectionPublisher.install(authorized.projection()));
-    }
-
-    private void handleOutboxHealth(OutboxHealth health) {
-        outboxHealth = health;
-        if (aggregate.lifecycle() == TableLifecycle.ACTIVE && health.paused()) {
-            aggregate = aggregate.withLifecycle(TableLifecycle.PAUSED_PERSISTENCE);
-            republishLifecycle();
-        } else if (aggregate.lifecycle() == TableLifecycle.PAUSED_PERSISTENCE && !health.paused()) {
-            aggregate = aggregate.withLifecycle(TableLifecycle.ACTIVE);
-            republishLifecycle();
-        }
-    }
-
-    private void republishLifecycle() {
-        recordProjectionFailure(
-                projectionPublisher.republishLifecycle(aggregate.lifecycle()));
-    }
-
-    private void recordProjectionFailure(String projectionFailure) {
-        if (!projectionFailure.isEmpty()) {
-            failureCode = projectionFailure;
-        }
+        stateMachine.handleRuleCompletion(completion);
     }
 
     private void handleClose() {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
-        if (inbox.duplicateRuleCompletion()) {
-            failureCode = "duplicate-rule-completion";
+        if (inbox.scheduledTriggerOverflow()) {
+            stateMachine.recordFailure("scheduled-trigger-overflow");
         }
-        actionCatalog.clear();
-        failQueuedActions(TableActionCode.TABLE_CLOSED, "closed");
-        outbox.close();
-        outbox.awaitDrained().whenComplete((ignored, failure) -> {
-            if (failure == null) {
-                shutdownComplete.complete(null);
-            } else {
-                shutdownComplete.completeExceptionally(failure);
-            }
-        });
+        stateMachine.close(
+                inbox.duplicateRuleCompletion(), inbox, shutdownComplete);
     }
 
     private void failQueuedActions(TableActionCode code, String reason) {
         TableActionEnvelope envelope;
-        while ((envelope = inbox.pollAction()) != null) {
-            envelope.response().complete(result(code, reason));
+        while ((envelope = inbox.pollActionForClose()) != null) {
+            envelope.response().complete(publishedResult(code, reason));
         }
     }
 
-    private TableActionResult result(TableActionCode code, String reason) {
-        return new TableActionResult(code, aggregate.revision(), reason == null ? "" : reason);
+    private TableActionResult publishedResult(TableActionCode code, String reason) {
+        TableActorSnapshot snapshot = publishedSnapshot.get();
+        return new TableActionResult(
+                code,
+                snapshot == null ? 0 : snapshot.revision(),
+                reason == null ? "" : reason);
     }
 
     private void publishSnapshot() {
-        publishedSnapshot.set(
-                new TableActorSnapshot(
-                        aggregate.tableId(),
-                        aggregate.revision(),
-                        aggregate.lifecycle(),
-                        inbox.actionCount(),
-                        ruleInFlight,
-                        outboxHealth,
-                        failureCode));
+        publishedSnapshot.set(stateMachine.snapshot(inbox.actionCount(), ruleInFlight));
     }
 
     @Override
@@ -438,5 +316,4 @@ public final class TableActor implements TableActionEndpoint {
         close();
         return shutdownComplete;
     }
-
 }

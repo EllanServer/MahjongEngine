@@ -6,5 +6,6 @@ import java.util.Optional;
 record RuleTaskCompletion(
         long expectedRevision,
         Optional<TableActionEnvelope> envelope,
+        Optional<ScheduledActionTrigger> scheduledTrigger,
         RuleComputation computed,
         Throwable failure) {}

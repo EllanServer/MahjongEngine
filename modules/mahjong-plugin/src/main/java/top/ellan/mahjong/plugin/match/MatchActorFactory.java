@@ -124,6 +124,7 @@ final class MatchActorFactory {
                         rules,
                         provider,
                         outbox,
+                        deadlines,
                         projector,
                         new SecureActionTokenIssuer(),
                         clock,

@@ -8,6 +8,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -16,6 +17,7 @@ import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
@@ -62,12 +64,54 @@ import top.ellan.mahjong.spi.RuleTablePresentation;
 import top.ellan.mahjong.spi.RuleWallDirection;
 import top.ellan.mahjong.spi.RuleWallPresentation;
 import top.ellan.mahjong.spi.RuleTransition;
+import top.ellan.mahjong.spi.ScheduledRuleAction;
 import top.ellan.mahjong.spi.SpiVersion;
 import top.ellan.mahjong.spi.TransitionDisposition;
 
 class TableActorTest {
     private static final PlayerId PLAYER =
             new PlayerId(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+
+    @Test
+    void scheduledRuleActionReturnsThroughActorAndCommitsOneRevision() throws Exception {
+        ThreadPoolExecutor dispatcher = new ThreadPoolExecutor(
+                1,
+                1,
+                0,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(32),
+                new ThreadPoolExecutor.AbortPolicy());
+        try (dispatcher;
+                FairRuleExecutor rules = new FairRuleExecutor(1, 8, "scheduled-rule-test")) {
+            MatchId matchId = MatchId.random();
+            TaskScheduler neverRuns = (task, delay) -> () -> true;
+            PersistenceOutbox outbox = new PersistenceOutbox(
+                    matchId, 0, new ImmediateStore(), neverRuns, Clock.systemUTC());
+            ManualScheduler deadlines = new ManualScheduler();
+            ArrayBlockingQueue<TableProjection> projections = new ArrayBlockingQueue<>(4);
+            TableActor actor = new TableActor(
+                    dispatcher,
+                    rules,
+                    new CounterProvider(1, true),
+                    outbox,
+                    deadlines,
+                    projections::offer,
+                    new SecureActionTokenIssuer(),
+                    Clock.systemUTC(),
+                    TableActorConfig.DEFAULT,
+                    aggregate(matchId),
+                    new CounterState(0),
+                    0);
+            actor.start();
+
+            assertEquals(0, projections.poll(2, TimeUnit.SECONDS).revision());
+            deadlines.awaitScheduled();
+            assertEquals(1, deadlines.pendingCount());
+            deadlines.runNext();
+            assertEquals(1, projections.poll(2, TimeUnit.SECONDS).revision());
+            actor.close();
+        }
+    }
 
     @Test
     void commitsMemoryBeforePersistenceAndRejectsAStaleToken() throws Exception {
@@ -99,6 +143,7 @@ class TableActorTest {
                             rules,
                             new CounterProvider(),
                             outbox,
+                            deadlines,
                             projections::offer,
                             new SecureActionTokenIssuer(),
                             Clock.systemUTC(),
@@ -139,6 +184,7 @@ class TableActorTest {
                             rules,
                             new CounterProvider(),
                             outbox,
+                            neverRuns,
                             ignored -> {},
                             new SecureActionTokenIssuer(),
                             Clock.systemUTC(),
@@ -187,6 +233,7 @@ class TableActorTest {
                             rules,
                             new CounterProvider(2),
                             outbox,
+                            (task, delay) -> () -> true,
                             projections::offer,
                             new SecureActionTokenIssuer(),
                             Clock.systemUTC(),
@@ -236,6 +283,7 @@ class TableActorTest {
                     rules,
                     new CounterProvider(2),
                     outbox,
+                    (task, delay) -> () -> true,
                     projections::offer,
                     new SecureActionTokenIssuer(),
                     Clock.systemUTC(),
@@ -298,13 +346,19 @@ class TableActorTest {
                                         new ProfileId("standard"), "Standard", "{}")),
                         Set.of());
         private final int eventCount;
+        private final boolean scheduleInitialAction;
 
         private CounterProvider() {
-            this(1);
+            this(1, false);
         }
 
         private CounterProvider(int eventCount) {
+            this(eventCount, false);
+        }
+
+        private CounterProvider(int eventCount, boolean scheduleInitialAction) {
             this.eventCount = eventCount;
+            this.scheduleInitialAction = scheduleInitialAction;
         }
 
         @Override
@@ -337,6 +391,18 @@ class TableActorTest {
                             "increment",
                             new RuleAction("increment", new byte[] {1}),
                             ActionPresentation.actionRow("increment")));
+        }
+
+        @Override
+        public Optional<ScheduledRuleAction> scheduledAction(RuleState state) {
+            if (!scheduleInitialAction || ((CounterState) state).value() != 0) {
+                return Optional.empty();
+            }
+            return Optional.of(new ScheduledRuleAction(
+                    PLAYER,
+                    new RuleAction("increment", new byte[] {1}),
+                    Duration.ZERO,
+                    "initial-timeout"));
         }
 
         @Override
@@ -396,6 +462,49 @@ class TableActorTest {
         @Override
         public boolean available() {
             return true;
+        }
+    }
+
+    private static final class ManualScheduler implements TaskScheduler {
+        private final ArrayDeque<Scheduled> tasks = new ArrayDeque<>();
+        private final CountDownLatch scheduled = new CountDownLatch(1);
+
+        @Override
+        public top.ellan.mahjong.application.concurrent.Cancellable schedule(
+                Runnable task, Duration delay) {
+            Scheduled scheduled = new Scheduled(task);
+            tasks.addLast(scheduled);
+            this.scheduled.countDown();
+            return () -> {
+                scheduled.cancelled = true;
+                return tasks.remove(scheduled);
+            };
+        }
+
+        int pendingCount() {
+            return tasks.size();
+        }
+
+        void awaitScheduled() throws InterruptedException {
+            if (!scheduled.await(2, TimeUnit.SECONDS)) {
+                throw new AssertionError("scheduled rule action was not registered");
+            }
+        }
+
+        void runNext() {
+            Scheduled scheduled = tasks.removeFirst();
+            if (!scheduled.cancelled) {
+                scheduled.task.run();
+            }
+        }
+
+        private static final class Scheduled {
+            private final Runnable task;
+            private boolean cancelled;
+
+            private Scheduled(Runnable task) {
+                this.task = task;
+            }
         }
     }
 }

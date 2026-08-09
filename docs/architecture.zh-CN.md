@@ -33,7 +33,7 @@ application/
     actor|command|port|projection|runtime|usecase
 ```
 
-`TableActor` 是单桌状态机，不直接暴露并发容器：`TableActorInbox` 独立拥有有界玩家动作队列，以及规则完成、持久化健康、初始化和关闭的保留信号槽。玩家把动作队列塞满也不能阻断内部 continuation；重复规则完成会单桌 fail-closed。application 生产类由 CI 强制限制在 450 行以内。
+`TableActor` 只是有界调度外壳；`TableActorStateMachine` 独立拥有单写者比赛状态、落库提交和投影生命周期，`TableRuleTaskLauncher` 只启动公平规则池任务，`TableScheduledActionController` 只持有当前 revision 的一个单次任务。`TableActorInbox` 独立拥有有界玩家动作队列，以及规则完成、持久化健康、初始化和关闭的保留信号槽。玩家把动作队列塞满也不能阻断内部 continuation；重复规则完成会单桌 fail-closed。application 生产类由 CI 强制限制在 450 行以内。
 
 `MahjongRuntime` 只负责生命周期与用例委派。SQL 初始化位于 `plugin/bootstrap/sql`，规则包初始化位于 `plugin/bootstrap/rules`，CraftEngine/Paper 装配位于 `plugin/platform`，恢复位于 `plugin/recovery`。架构检查会拒绝 application 根包类、超过责任上限的 application 类，以及重新塞回 `MahjongRuntime` 的 JDBC、HTTP 或 CraftEngine 具体初始化代码。
 
@@ -60,6 +60,8 @@ application/
 5. continuation 回到 actor 后再次校验 revision；过期结果不提交。
 6. 接受的状态先在内存生效，再进入该桌独立 outbox。
 7. 最新投影异步变为 `SceneGraph`，被新 revision 覆盖的旧帧直接丢弃。
+
+SPI 1.2 的 `ScheduledRuleAction` 由规则包为不可变状态给出已入座 actor、可重放动作、延迟和原因码。核心按输入到达序把玩家动作与 deadline 排序；先到者获胜。任务只绑定一个 revision，状态推进、持久化暂停、关闭或规则故障都会取消它，迟到回调只被丢弃，不会遍历全部牌桌，也不会在 timer 线程调用规则。
 
 ## CraftEngine 边界
 

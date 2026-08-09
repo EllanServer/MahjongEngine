@@ -10,6 +10,8 @@ The pre-match path is modular as well: immutable lobby state lives in `mahjong-d
 
 Production packages are classified by responsibility. Domain, application, presentation, CraftEngine, SQL, rule-runtime, and plugin integration roots reject unclassified classes in CI; the plugin root contains only the JavaPlugin entry point and the composition root. Presentation also enforces a 300-line class ceiling: the universal layout is split into cache/compiler/immutable lookup plan, while public, private, and interaction scene projection are separate components.
 
+Rule SPI 1.2 adds deterministic, revision-bound `ScheduledRuleAction` support. Rule packs choose the seated actor, replayable action, delay, and reason; the core owns one bounded timer per table and never scans every table for timeouts.
+
 The signed rule-pack runtime is likewise separated into activation, administration, installation, class loading, registry verification, security, storage, and lifecycle packages. The Java-only rule SPI remains a deliberately flat, versioned external contract for the three rule repositories.
 
 Create a reusable table with `/mahjong create <riichi|mcr|sichuan> [profile]`. Players sit by clicking the four CraftEngine-configured chairs, then use the projected ready/start actions. `/mahjong join`, `leave`, `spectate`, `ready`, `start`, and `mode` remain lightweight command entry points.
