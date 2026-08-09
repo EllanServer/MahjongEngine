@@ -7,9 +7,9 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-import top.ellan.mahjong.craftengine.port.RegionKey;
-import top.ellan.mahjong.craftengine.port.RegionSchedulerPort;
-import top.ellan.mahjong.craftengine.port.TableRegionResolver;
+import top.ellan.mahjong.platform.paper.region.RegionKey;
+import top.ellan.mahjong.platform.paper.region.RegionSchedulerPort;
+import top.ellan.mahjong.platform.paper.region.TableRegionResolver;
 import top.ellan.mahjong.domain.table.TableId;
 
 /** Fair per-region round-robin queue with a shared nanosecond and per-table mutation budget. */

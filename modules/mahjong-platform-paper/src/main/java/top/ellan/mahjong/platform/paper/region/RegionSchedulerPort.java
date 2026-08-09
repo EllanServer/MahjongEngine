@@ -1,4 +1,4 @@
-package top.ellan.mahjong.craftengine.port;
+package top.ellan.mahjong.platform.paper.region;
 
 /** Schedules one non-blocking task for the next tick on the owning Paper/Folia region. */
 @FunctionalInterface

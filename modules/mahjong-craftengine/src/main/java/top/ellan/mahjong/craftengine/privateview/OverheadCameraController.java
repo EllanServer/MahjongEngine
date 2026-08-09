@@ -13,7 +13,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import top.ellan.mahjong.application.interaction.OverheadViewPort;
-import top.ellan.mahjong.craftengine.port.TableAnchorLookup;
+import top.ellan.mahjong.platform.paper.anchor.TableAnchorLookup;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.presentation.node.CameraNode;
 import top.ellan.mahjong.spi.PlayerId;

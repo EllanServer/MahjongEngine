@@ -41,7 +41,7 @@ application/
 
 `mahjong-craftengine` 同样没有根包杂糅：`bundle` 只管理构建产物安装与 reload 门禁，`interaction` 只把 CE 交互转为平台中立输入，`port` 保存跨平台边界，`scene` 执行公开家具差分，`privateview` 只负责本人暗手、HUD 与相机。私有投影内部进一步把无锁目标/活动索引、region-thread 显示渲染、选牌状态和俯视相机拆成独立组件；网关只做端口及玩家生命周期转发，不再同时持有所有实现细节。公开场景后端也分为每桌目标状态、每 region 公平调度和单节点 mutation 执行器，故障与积压不会穿过该边界。CraftEngine 生产类由 CI 强制限制在 350 行以内。Paper/Folia 适配只能依赖 `port`，不能反向依赖 CE 的具体场景实现。
 
-`mahjong-platform-paper` 只放 Paper/Folia 适配，并按 `anchor / concurrent / region` 分类：世界锚点、平台线程池和区域调度各自独立，不在平台根包堆积工具类。
+`mahjong-platform-paper` 只放 Paper/Folia 适配，并按 `anchor / concurrent / region` 分类：世界锚点、平台线程池和区域调度各自独立，不在平台根包堆积工具类。Paper 模块同时拥有窄化的锚点查询与 region 调度端口；`mahjong-craftengine` 可以依赖这些 Paper 端口，Paper 绝不能反向依赖 CraftEngine 实现。
 
 `mahjong-persistence-sql` 按 `connection / schema / event / match / lobby / anchor / recovery / common` 分类。比赛身份行映射、初始恢复元数据和大厅消费是独立 SQL 组件；大厅变为比赛时仍共用一个 JDBC 事务，不以模块化为代价拆散原子性。
 

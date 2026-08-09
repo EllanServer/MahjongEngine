@@ -221,6 +221,13 @@ val architectureCheck =
                 }
                 if (
                     module == "mahjong-platform-paper" &&
+                        "top.ellan.mahjong.craftengine." in text
+                ) {
+                    violations +=
+                        "$relative depends on a CraftEngine implementation; Paper must expose narrow platform ports instead"
+                }
+                if (
+                    module == "mahjong-platform-paper" &&
                         relative.startsWith(
                             "modules/mahjong-platform-paper/src/main/java/top/ellan/mahjong/platform/paper/",
                         ) &&

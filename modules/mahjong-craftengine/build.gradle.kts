@@ -7,6 +7,7 @@ dependencies {
     implementation(project(":mahjong-domain"))
     implementation(project(":mahjong-application"))
     implementation(project(":mahjong-presentation"))
+    implementation(project(":mahjong-platform-paper"))
     compileOnly("net.momirealms:craft-engine-core:26.7")
     compileOnly("net.momirealms:craft-engine-bukkit:26.7")
     compileOnly("io.papermc.paper:paper-api:1.20.1-R0.1-SNAPSHOT")

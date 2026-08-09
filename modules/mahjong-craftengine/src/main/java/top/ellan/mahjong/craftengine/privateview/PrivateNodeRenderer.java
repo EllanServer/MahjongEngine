@@ -14,7 +14,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import top.ellan.mahjong.craftengine.port.TableAnchorLookup;
+import top.ellan.mahjong.platform.paper.anchor.TableAnchorLookup;
 import top.ellan.mahjong.craftengine.privateview.PrivateProjectionState.ActiveItem;
 import top.ellan.mahjong.craftengine.privateview.PrivateProjectionState.ActiveLabel;
 import top.ellan.mahjong.craftengine.privateview.PrivateProjectionState.DesiredNode;

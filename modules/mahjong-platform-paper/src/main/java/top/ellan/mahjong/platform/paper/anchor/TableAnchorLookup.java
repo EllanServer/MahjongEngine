@@ -1,10 +1,10 @@
-package top.ellan.mahjong.craftengine.port;
+package top.ellan.mahjong.platform.paper.anchor;
 
 import java.util.Optional;
 import org.bukkit.Location;
 import top.ellan.mahjong.domain.table.TableId;
 
-/** Read-only Bukkit anchor lookup implemented by the Paper adapter. */
+/** Read-only loaded-world anchor lookup shared with Paper-backed render adapters. */
 @FunctionalInterface
 public interface TableAnchorLookup {
     Optional<Location> location(TableId tableId);

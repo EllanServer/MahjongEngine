@@ -5,8 +5,6 @@ import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.plugin.Plugin;
-import top.ellan.mahjong.craftengine.port.RegionKey;
-import top.ellan.mahjong.craftengine.port.RegionSchedulerPort;
 
 /** Direct Paper/Folia region scheduler adapter; it has no blocking fallback. */
 public final class PaperRegionScheduler implements RegionSchedulerPort {

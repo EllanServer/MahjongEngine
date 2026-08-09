@@ -18,7 +18,7 @@ import org.spigotmc.event.entity.EntityDismountEvent;
 import top.ellan.mahjong.application.interaction.HandTileSelectionPort;
 import top.ellan.mahjong.application.interaction.OverheadViewPort;
 import top.ellan.mahjong.craftengine.port.PrivateProjectionGateway;
-import top.ellan.mahjong.craftengine.port.TableAnchorLookup;
+import top.ellan.mahjong.platform.paper.anchor.TableAnchorLookup;
 import top.ellan.mahjong.craftengine.privateview.PrivateProjectionState.DesiredNode;
 import top.ellan.mahjong.craftengine.privateview.PrivateProjectionState.RemovedNode;
 import top.ellan.mahjong.craftengine.privateview.PrivateProjectionState.UpsertedNode;

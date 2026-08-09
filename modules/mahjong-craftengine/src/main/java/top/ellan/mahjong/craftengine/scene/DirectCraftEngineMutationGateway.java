@@ -13,7 +13,7 @@ import org.bukkit.plugin.Plugin;
 import top.ellan.mahjong.application.interaction.InteractionHandle;
 import top.ellan.mahjong.craftengine.port.CraftEngineMutationGateway;
 import top.ellan.mahjong.craftengine.port.PrivateProjectionGateway;
-import top.ellan.mahjong.craftengine.port.TableAnchorLookup;
+import top.ellan.mahjong.platform.paper.anchor.TableAnchorLookup;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.presentation.node.FurnitureNode;
 import top.ellan.mahjong.presentation.node.InteractionNode;

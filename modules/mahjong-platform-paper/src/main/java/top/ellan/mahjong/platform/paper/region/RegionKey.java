@@ -1,8 +1,8 @@
-package top.ellan.mahjong.craftengine.port;
+package top.ellan.mahjong.platform.paper.region;
 
 import java.util.Objects;
 
-/** Folia ownership key for a table anchor. */
+/** Immutable Folia ownership key for one table anchor. */
 public record RegionKey(String worldId, int chunkX, int chunkZ) {
     public RegionKey {
         worldId = Objects.requireNonNull(worldId, "worldId");
