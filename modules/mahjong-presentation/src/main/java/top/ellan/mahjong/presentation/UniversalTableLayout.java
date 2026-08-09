@@ -292,7 +292,10 @@ public final class UniversalTableLayout implements TableLayout {
                 double baseZ = axis.outZ() * inset
                         + axis.tangentZ() * geometry.tableHalfLength();
                 for (int index = 0; index < geometry.maxMeldTiles(); index++) {
-                    double distance = (index + 0.5D) * tileStep();
+                    int group = index / 4;
+                    int slot = index % 4;
+                    int railIndex = group * 4 + (3 - slot);
+                    double distance = (railIndex + 0.5D) * tileStep();
                     result[seat][index] = transform(
                             baseX - axis.tangentX() * distance,
                             flatY(),

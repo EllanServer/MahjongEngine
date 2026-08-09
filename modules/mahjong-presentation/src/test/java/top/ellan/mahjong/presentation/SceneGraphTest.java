@@ -28,6 +28,8 @@ import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.PrivateRuleView;
 import top.ellan.mahjong.spi.PublicRuleView;
 import top.ellan.mahjong.spi.RuleAction;
+import top.ellan.mahjong.spi.RuleMeldPresentation;
+import top.ellan.mahjong.spi.RuleMeldTileRole;
 import top.ellan.mahjong.spi.RuleTablePresentation;
 import top.ellan.mahjong.spi.RuleTilePresentation;
 import top.ellan.mahjong.spi.RuleViewTile;
@@ -338,6 +340,27 @@ class SceneGraphTest {
     }
 
     @Test
+    void sharedMeldSourceMarkersAreLeftMiddleRightFromTheOwnersView() {
+        ResolvedTableLayout layout =
+                new UniversalTableLayout(GEOMETRY).resolve(table(136));
+        SceneTransform fromLeft = layout.tile(meldTile(
+                1,
+                RuleMeldPresentation.tile(
+                        0, 3, 4, 0, 3, RuleMeldTileRole.CLAIMED, -1)), 3);
+        SceneTransform fromOpposite = layout.tile(meldTile(
+                2,
+                RuleMeldPresentation.tile(
+                        0, 3, 4, 0, 2, RuleMeldTileRole.CLAIMED, -1)), 3);
+        SceneTransform fromRight = layout.tile(meldTile(
+                3,
+                RuleMeldPresentation.tile(
+                        0, 3, 4, 0, 1, RuleMeldTileRole.CLAIMED, -1)), 3);
+
+        assertTrue(fromLeft.x() < fromOpposite.x());
+        assertTrue(fromOpposite.x() < fromRight.x());
+    }
+
+    @Test
     void universalLayoutSupportsEveryOfficialWallShape() {
         UniversalTableLayout layout = new UniversalTableLayout(GEOMETRY);
 
@@ -576,6 +599,17 @@ class SceneGraphTest {
                 index,
                 faceUp,
                 RuleTilePresentation.natural(layoutIndex));
+    }
+
+    private static RuleViewTile meldTile(long id, RuleTilePresentation presentation) {
+        return new RuleViewTile(
+                new TileInstanceId(id),
+                new TileVisualId("mcr:tile/m1"),
+                Optional.of(SEAT_ZERO),
+                RuleViewZone.MELD,
+                Math.toIntExact(id - 1),
+                true,
+                presentation);
     }
 
     private static RuleTablePresentation table(int wallCapacity) {

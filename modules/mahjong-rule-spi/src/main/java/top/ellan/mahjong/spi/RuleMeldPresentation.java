@@ -90,8 +90,10 @@ public final class RuleMeldPresentation {
             }
             displaySlot = claimedSlot;
         }
+        int slotOffset = SLOTS_PER_MELD - baseTileCount;
         int layoutIndex = Math.addExact(
-                Math.multiplyExact(meldIndex, SLOTS_PER_MELD), displaySlot);
+                Math.multiplyExact(meldIndex, SLOTS_PER_MELD),
+                slotOffset + displaySlot);
         return switch (role) {
             case ORDINARY -> RuleTilePresentation.natural(layoutIndex);
             case CLAIMED -> RuleTilePresentation.clockwise(layoutIndex);

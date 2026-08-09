@@ -11,17 +11,17 @@ class RuleMeldPresentationTest {
 
     @Test
     void sourceSeatSelectsLeftMiddleOrRightOnAFourPlayerTable() {
-        assertClaimedSlot(0, new SeatId(3));
-        assertClaimedSlot(1, new SeatId(2));
-        assertClaimedSlot(2, new SeatId(1));
+        assertClaimedSlot(1, new SeatId(3));
+        assertClaimedSlot(2, new SeatId(2));
+        assertClaimedSlot(3, new SeatId(1));
     }
 
     @Test
     void ordinaryTilesFillAroundTheClaimedSlotWithoutGaps() {
         RuleTilePresentation first = ordinary(new SeatId(2), 0);
         RuleTilePresentation second = ordinary(new SeatId(2), 1);
-        assertEquals(0, first.layoutIndex());
-        assertEquals(2, second.layoutIndex());
+        assertEquals(1, first.layoutIndex());
+        assertEquals(3, second.layoutIndex());
         assertEquals(RuleTileRotation.NATURAL, first.rotation());
         assertEquals(RuleTileRotation.NATURAL, second.rotation());
     }
@@ -32,7 +32,7 @@ class RuleMeldPresentationTest {
                 2, 3, 4, 0, 1, RuleMeldTileRole.CLAIMED, -1);
         RuleTilePresentation added = RuleMeldPresentation.tile(
                 2, 3, 4, 0, 1, RuleMeldTileRole.ADDED, -1);
-        assertEquals(10, claimed.layoutIndex());
+        assertEquals(11, claimed.layoutIndex());
         assertEquals(claimed.layoutIndex(), added.layoutIndex());
         assertEquals(1, added.stackLevel());
         assertEquals(RuleTileRotation.CLOCKWISE, added.rotation());
