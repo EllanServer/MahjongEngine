@@ -180,6 +180,31 @@ class SceneGraphTest {
     }
 
     @Test
+    void actionRowsPreserveTheRulePacksDeterministicOrder() {
+        TableProjection base = projection(TableId.random(), 2, "playing");
+        AuthorizedAction first =
+                action(2, "z_first", ActionPresentation.actionRow("action.first"));
+        AuthorizedAction second =
+                action(2, "a_second", ActionPresentation.actionRow("action.second"));
+        TableProjection ordered = new TableProjection(
+                base.tableId(),
+                base.revision(),
+                base.lifecycle(),
+                base.publicView(),
+                base.privateViews(),
+                Map.of(PLAYER, List.of(first, second)));
+
+        SceneGraph graph = mapper().map(ordered);
+        String player = PLAYER.toString().replace("-", "");
+        InteractionNode firstNode = (InteractionNode) graph.nodes().get(
+                new SceneNodeId("interaction/action/" + player + "/z_first"));
+        InteractionNode secondNode = (InteractionNode) graph.nodes().get(
+                new SceneNodeId("interaction/action/" + player + "/a_second"));
+
+        assertTrue(firstNode.transform().x() < secondNode.transform().x());
+    }
+
+    @Test
     void duplicateDirectActionsForOnePhysicalTileAreRejected() {
         TableProjection base = projection(TableId.random(), 2, "playing");
         ActionPresentation direct =

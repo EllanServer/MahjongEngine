@@ -103,7 +103,6 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                 .filter(action -> action.legalAction().actionPresentation().placement()
                         != ActionPlacement.HAND_TILE)
                 .map(action -> action.legalAction().actionPresentation().labelKey())
-                .sorted()
                 .collect(java.util.stream.Collectors.joining(","));
         SceneNodeId actionsId = new SceneNodeId("hud/" + viewerKey + "/actions");
         nodes.put(actionsId, new HudNode(actionsId, visibility, "actions", actionLabels));
@@ -124,9 +123,7 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
             if (privateView == null) {
                 throw new IllegalArgumentException("authorized player has no private rule view");
             }
-            List<AuthorizedAction> actions = entry.getValue().stream()
-                    .sorted(Comparator.comparing(action -> action.legalAction().key()))
-                    .toList();
+            List<AuthorizedAction> actions = entry.getValue();
             ZoneCounts privateCounts = ZoneCounts.from(privateView.tiles());
             int primaryIndex = 0;
             int secondaryIndex = 0;

@@ -2,6 +2,7 @@ package top.ellan.mahjong.presentation;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import top.ellan.mahjong.spi.ActionPlacement;
 import top.ellan.mahjong.spi.RuleTablePresentation;
@@ -14,7 +15,7 @@ import top.ellan.mahjong.spi.SeatId;
 /**
  * One physical layout engine for every rule mode.
  *
- * <p>Rules declare wall stacks and semantic tile zones. A bounded direct-mapped cache compiles
+ * <p>Rules declare wall stacks and semantic tile zones. A bounded shared cache compiles
  * those declarations once; projection frames then perform only array lookups.</p>
  */
 public final class UniversalTableLayout implements TableLayout {
@@ -23,6 +24,7 @@ public final class UniversalTableLayout implements TableLayout {
     private final TableGeometry geometry;
     private final AtomicReferenceArray<CacheEntry> plans =
             new AtomicReferenceArray<>(PLAN_CACHE_SIZE);
+    private final AtomicInteger nextPlanSlot = new AtomicInteger();
 
     public UniversalTableLayout(TableGeometry geometry) {
         this.geometry = Objects.requireNonNull(geometry, "geometry");
@@ -35,12 +37,14 @@ public final class UniversalTableLayout implements TableLayout {
                 tablePresentation.seatCount(),
                 tablePresentation.wall().stackCountsBySide(),
                 tablePresentation.discardsPerRow());
-        int cacheSlot = spread(key.hashCode()) & (PLAN_CACHE_SIZE - 1);
-        CacheEntry cached = plans.get(cacheSlot);
-        if (cached != null && cached.key().equals(key)) {
-            return resolved(cached.plan(), tablePresentation.wall());
+        for (int slot = 0; slot < PLAN_CACHE_SIZE; slot++) {
+            CacheEntry cached = plans.get(slot);
+            if (cached != null && cached.key().equals(key)) {
+                return resolved(cached.plan(), tablePresentation.wall());
+            }
         }
         Plan compiled = new Plan(geometry, key);
+        int cacheSlot = Math.floorMod(nextPlanSlot.getAndIncrement(), PLAN_CACHE_SIZE);
         plans.set(cacheSlot, new CacheEntry(key, compiled));
         return resolved(compiled, tablePresentation.wall());
     }
@@ -48,13 +52,6 @@ public final class UniversalTableLayout implements TableLayout {
     private static ResolvedTableLayout resolved(
             Plan plan, RuleWallPresentation wall) {
         return new ResolvedPlan(plan, wall.drawStartStack(), wall.direction());
-    }
-
-    private static int spread(int hash) {
-        int value = hash ^ hash >>> 16;
-        value *= 0x7feb352d;
-        value ^= value >>> 15;
-        return value;
     }
 
     private record LayoutKey(
