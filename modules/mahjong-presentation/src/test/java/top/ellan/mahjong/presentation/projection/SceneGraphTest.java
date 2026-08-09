@@ -436,7 +436,7 @@ class SceneGraphTest {
         assertEquals(136, table(136).wall().tileCapacity());
         assertEquals(144, table(144).wall().tileCapacity());
         assertEquals(
-                List.of(14, 13, 14, 13), table(108).wall().stackCountsBySide());
+                List.of(13, 14, 13, 14), table(108).wall().stackCountsBySide());
         assertEquals(
                 -1.0D,
                 layout.resolve(table(108)).tile(wallTile(1, 107), 108).x(),
