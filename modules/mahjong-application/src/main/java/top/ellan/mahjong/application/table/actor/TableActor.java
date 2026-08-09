@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
+import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
 import top.ellan.mahjong.application.persistence.OutboxHealth;
 import top.ellan.mahjong.application.persistence.PersistenceOutbox;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
@@ -58,6 +59,36 @@ public final class TableActor implements TableActionEndpoint {
             TableAggregate aggregate,
             RuleState initialRuleState,
             long lastEventSequence) {
+        this(
+                dispatcher,
+                ruleExecutor,
+                provider,
+                outbox,
+                deadlineScheduler,
+                projector,
+                TablePresentationCuePort.NONE,
+                tokenIssuer,
+                clock,
+                config,
+                aggregate,
+                initialRuleState,
+                lastEventSequence);
+    }
+
+    public TableActor(
+            Executor dispatcher,
+            FairRuleExecutor ruleExecutor,
+            RulePackProvider provider,
+            PersistenceOutbox outbox,
+            TaskScheduler deadlineScheduler,
+            SceneProjectionPort projector,
+            TablePresentationCuePort cuePort,
+            ActionTokenIssuer tokenIssuer,
+            Clock clock,
+            TableActorConfig config,
+            TableAggregate aggregate,
+            RuleState initialRuleState,
+            long lastEventSequence) {
         this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
         this.config = Objects.requireNonNull(config, "config");
         Objects.requireNonNull(outbox, "outbox");
@@ -74,6 +105,7 @@ public final class TableActor implements TableActionEndpoint {
         stateMachine = new TableActorStateMachine(
                 outbox,
                 projector,
+                Objects.requireNonNull(cuePort, "cuePort"),
                 tokenIssuer,
                 clock,
                 aggregate,

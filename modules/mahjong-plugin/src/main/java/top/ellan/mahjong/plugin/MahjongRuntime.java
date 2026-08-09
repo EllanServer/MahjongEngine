@@ -300,6 +300,7 @@ public final class MahjongRuntime implements AutoCloseable {
                         database.events().orElseThrow(),
                         rules.runtime().orElseThrow(),
                         platform.sceneProjector(),
+                        platform.presentationCues(),
                         clock));
     }
 

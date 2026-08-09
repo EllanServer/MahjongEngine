@@ -71,6 +71,17 @@ public final class LobbyReducer {
             ArrayList<LobbySeat> seats = new ArrayList<>(state.seats());
             int index = seat.orElseThrow().value();
             seats.set(index, seats.get(index).vacated());
+            if (state.ownerId().equals(actor)) {
+                Optional<PlayerId> successor = firstSeatedPlayer(seats);
+                if (successor.isPresent()) {
+                    return changed(
+                            state,
+                            successor.orElseThrow(),
+                            seats,
+                            state.spectators(),
+                            "seat-left-owner-transferred");
+                }
+            }
             return changed(state, seats, state.spectators(), "seat-left");
         }
         if (state.spectators().contains(actor)) {
@@ -180,5 +191,27 @@ public final class LobbyReducer {
                 true,
                 false,
                 reason);
+    }
+
+    private static LobbyReduction changed(
+            TableLobby state,
+            PlayerId ownerId,
+            java.util.List<LobbySeat> seats,
+            Set<PlayerId> spectators,
+            String reason) {
+        return LobbyReduction.accepted(
+                state.withOwnerAndState(ownerId, seats, spectators, LobbyPhase.WAITING),
+                true,
+                false,
+                reason);
+    }
+
+    private static Optional<PlayerId> firstSeatedPlayer(java.util.List<LobbySeat> seats) {
+        for (LobbySeat seat : seats) {
+            if (seat.occupant().isPresent()) {
+                return seat.occupant();
+            }
+        }
+        return Optional.empty();
     }
 }

@@ -176,10 +176,25 @@ public record TableLobby(
             List<LobbySeat> nextSeats,
             Set<PlayerId> nextSpectators,
             LobbyPhase nextPhase) {
+        return withOwnerAndState(ownerId, nextSeats, nextSpectators, nextPhase);
+    }
+
+    /**
+     * Advances the lobby revision while atomically changing ownership and membership.
+     *
+     * <p>Ownership transfer is part of the same immutable transition as vacating the previous
+     * owner's seat. This prevents an observer or persistence adapter from seeing an owner that is
+     * no longer seated while another player has already taken control of the lobby.
+     */
+    public TableLobby withOwnerAndState(
+            PlayerId nextOwnerId,
+            List<LobbySeat> nextSeats,
+            Set<PlayerId> nextSpectators,
+            LobbyPhase nextPhase) {
         return new TableLobby(
                 tableId,
                 revision + 1,
-                ownerId,
+                Objects.requireNonNull(nextOwnerId, "nextOwnerId"),
                 ruleId,
                 profileId,
                 configuration,

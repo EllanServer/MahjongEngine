@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.application.concurrent.BoundedDeadlineScheduler;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
+import top.ellan.mahjong.application.feedback.TableCueBatch;
 import top.ellan.mahjong.application.persistence.EventStorePort;
 import top.ellan.mahjong.application.persistence.MatchWriteBatch;
 import top.ellan.mahjong.application.persistence.PersistAck;
@@ -57,6 +58,8 @@ import top.ellan.mahjong.spi.RuleId;
 import top.ellan.mahjong.spi.RulePackDescriptor;
 import top.ellan.mahjong.spi.RulePackProvider;
 import top.ellan.mahjong.spi.RulePackRef;
+import top.ellan.mahjong.spi.RulePresentationCue;
+import top.ellan.mahjong.spi.RulePresentationCueType;
 import top.ellan.mahjong.spi.RuleProfileDescriptor;
 import top.ellan.mahjong.spi.RuleState;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
@@ -165,6 +168,62 @@ class TableActorTest {
             TableActionResult stale =
                     actor.submit(PLAYER, token).toCompletableFuture().get(2, TimeUnit.SECONDS);
             assertEquals(TableActionCode.STALE_TOKEN, stale.code());
+            actor.close();
+        }
+    }
+
+    @Test
+    void transientCuesPublishOnceAfterCommitAndCannotBreakTheTable() throws Exception {
+        ThreadPoolExecutor dispatcher = new ThreadPoolExecutor(
+                1,
+                1,
+                0,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(32),
+                new ThreadPoolExecutor.AbortPolicy());
+        try (dispatcher; FairRuleExecutor rules = new FairRuleExecutor(1, 8, "cue-rule-test")) {
+            MatchId matchId = MatchId.random();
+            TaskScheduler neverRuns = (task, delay) -> () -> true;
+            PersistenceOutbox outbox = new PersistenceOutbox(
+                    matchId, 0, new ImmediateStore(), neverRuns, Clock.systemUTC());
+            ArrayBlockingQueue<TableProjection> projections = new ArrayBlockingQueue<>(4);
+            ArrayBlockingQueue<TableCueBatch> cues = new ArrayBlockingQueue<>(2);
+            TableActor actor = new TableActor(
+                    dispatcher,
+                    rules,
+                    new CounterProvider(),
+                    outbox,
+                    neverRuns,
+                    projections::offer,
+                    batch -> {
+                        cues.offer(batch);
+                        throw new IllegalStateException("sound backend unavailable");
+                    },
+                    new SecureActionTokenIssuer(),
+                    Clock.systemUTC(),
+                    TableActorConfig.DEFAULT,
+                    aggregate(matchId),
+                    new CounterState(0),
+                    0);
+            actor.start();
+            TableProjection initial = projections.poll(2, TimeUnit.SECONDS);
+            assertNotNull(initial);
+
+            TableActionResult accepted = actor.submit(
+                            PLAYER,
+                            initial.authorizedActions().get(PLAYER).getFirst().token())
+                    .toCompletableFuture()
+                    .get(2, TimeUnit.SECONDS);
+            TableCueBatch published = cues.poll(2, TimeUnit.SECONDS);
+
+            assertEquals(TableActionCode.ACCEPTED_MEMORY, accepted.code());
+            assertNotNull(published);
+            assertEquals(1, published.revision());
+            assertEquals(
+                    List.of(RulePresentationCue.broadcast(
+                            RulePresentationCueType.TILE_DISCARD)),
+                    published.cues());
+            assertEquals(TableLifecycle.ACTIVE, actor.snapshot().lifecycle());
             actor.close();
         }
     }
@@ -381,6 +440,8 @@ class TableActorTest {
                             .mapToObj(index -> new RuleEvent(
                                     "incremented-" + index, action.payload()))
                             .toList(),
+                    List.of(RulePresentationCue.broadcast(
+                            RulePresentationCueType.TILE_DISCARD)),
                     "accepted");
         }
 

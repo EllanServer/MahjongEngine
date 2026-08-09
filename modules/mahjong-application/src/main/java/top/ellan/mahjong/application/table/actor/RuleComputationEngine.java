@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import top.ellan.mahjong.application.table.TableActorConfig;
 import top.ellan.mahjong.domain.table.TableParticipant;
 import top.ellan.mahjong.spi.LegalAction;
@@ -25,6 +26,7 @@ final class RuleComputationEngine {
 
     private final RulePackProvider provider;
     private final List<TableParticipant> participants;
+    private final Set<PlayerId> participantIds;
     private final TableActorConfig limits;
 
     RuleComputationEngine(
@@ -33,6 +35,9 @@ final class RuleComputationEngine {
             TableActorConfig limits) {
         this.provider = Objects.requireNonNull(provider, "provider");
         this.participants = List.copyOf(participants);
+        participantIds = this.participants.stream()
+                .map(TableParticipant::playerId)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
         this.limits = Objects.requireNonNull(limits, "limits");
     }
 
@@ -88,6 +93,12 @@ final class RuleComputationEngine {
         if (transition.events().size() > limits.maxEventsPerAction()) {
             throw new IllegalStateException("Provider exceeded per-action event limit");
         }
+        transition.presentationCues().forEach(cue -> cue.target().ifPresent(target -> {
+            if (!participantIds.contains(target)) {
+                throw new IllegalStateException(
+                        "Provider emitted a presentation cue for a non-participant");
+            }
+        }));
     }
 
     private static boolean snapshotDue(

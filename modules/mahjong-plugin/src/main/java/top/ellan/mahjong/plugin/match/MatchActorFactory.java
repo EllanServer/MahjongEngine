@@ -10,6 +10,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
+import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
 import top.ellan.mahjong.application.persistence.PersistenceOutbox;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
 import top.ellan.mahjong.application.security.SecureActionTokenIssuer;
@@ -38,6 +39,7 @@ final class MatchActorFactory {
     private final JdbcMatchRepository matches;
     private final JdbcEventStore events;
     private final SceneProjectionPort projector;
+    private final TablePresentationCuePort presentationCues;
     private final Clock clock;
 
     MatchActorFactory(
@@ -49,6 +51,7 @@ final class MatchActorFactory {
             JdbcMatchRepository matches,
             JdbcEventStore events,
             SceneProjectionPort projector,
+            TablePresentationCuePort presentationCues,
             Clock clock) {
         this.actorDispatcher = Objects.requireNonNull(actorDispatcher, "actorDispatcher");
         this.ioExecutor = Objects.requireNonNull(ioExecutor, "ioExecutor");
@@ -58,6 +61,7 @@ final class MatchActorFactory {
         this.matches = Objects.requireNonNull(matches, "matches");
         this.events = Objects.requireNonNull(events, "events");
         this.projector = Objects.requireNonNull(projector, "projector");
+        this.presentationCues = Objects.requireNonNull(presentationCues, "presentationCues");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -126,6 +130,7 @@ final class MatchActorFactory {
                         outbox,
                         deadlines,
                         projector,
+                        presentationCues,
                         new SecureActionTokenIssuer(),
                         clock,
                         TableActorConfig.DEFAULT,

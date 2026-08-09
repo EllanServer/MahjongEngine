@@ -8,6 +8,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import top.ellan.mahjong.application.persistence.OutboxHealth;
 import top.ellan.mahjong.application.persistence.PersistenceOutbox;
+import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
 import top.ellan.mahjong.application.projection.TableProjection;
 import top.ellan.mahjong.application.security.ActionTokenIssuer;
@@ -33,6 +34,7 @@ final class TableActorStateMachine {
     private final AcceptedTransitionWriter transitionWriter;
     private final TableProjectionPublisher projections;
     private final TableScheduledActionController scheduledActions;
+    private final TablePresentationCuePublisher presentationCues;
     private final Map<UUID, AuthorizedAction> actionCatalog = new HashMap<>();
     private TableAggregate aggregate;
     private RuleState ruleState;
@@ -44,6 +46,7 @@ final class TableActorStateMachine {
     TableActorStateMachine(
             PersistenceOutbox outbox,
             SceneProjectionPort projector,
+            TablePresentationCuePort cuePort,
             ActionTokenIssuer tokenIssuer,
             Clock clock,
             TableAggregate aggregate,
@@ -58,6 +61,10 @@ final class TableActorStateMachine {
         ruleState = initialRuleState;
         this.lastEventSequence = lastEventSequence;
         this.scheduledActions = scheduledActions;
+        presentationCues = new TablePresentationCuePublisher(
+                cuePort,
+                aggregate,
+                aggregate.matchBinding().orElseThrow().rulePack().ruleId());
         outboxHealth = outbox.health();
     }
 
@@ -257,6 +264,7 @@ final class TableActorStateMachine {
             aggregate = aggregate.withLifecycle(TableLifecycle.PAUSED_PERSISTENCE);
         }
         installFrame(computed.frame(), false);
+        presentationCues.publish(aggregate.revision(), transition.presentationCues());
         envelope.ifPresent(value -> value.response().complete(
                 result(TableActionCode.ACCEPTED_MEMORY, "accepted-memory-first")));
     }

@@ -71,6 +71,41 @@ class LobbyReducerTest {
         assertFalse(state.seats().getFirst().ready());
     }
 
+    @Test
+    void leavingOwnerTransfersControlToTheFirstRemainingSeat() {
+        TableLobby state = lobby();
+        state = apply(state, new LobbyCommand.JoinSeat(player(1), new SeatId(0)));
+        state = apply(state, new LobbyCommand.JoinSeat(player(3), new SeatId(2)));
+        state = apply(state, new LobbyCommand.JoinSeat(player(2), new SeatId(1)));
+
+        LobbyReduction reduction = reducer.apply(state, new LobbyCommand.Leave(player(1)));
+
+        assertTrue(reduction.accepted(), reduction.reasonCode());
+        assertEquals("seat-left-owner-transferred", reduction.reasonCode());
+        assertEquals(player(2), reduction.state().ownerId());
+        assertTrue(reduction.state().seatOf(player(1)).isEmpty());
+        LobbyReduction ownerAction =
+                reducer.apply(
+                        reduction.state(),
+                        new LobbyCommand.ChangeRules(
+                                player(2),
+                                new RuleId("mcr"),
+                                new ProfileId("green-book"),
+                                Map.of()));
+        assertTrue(ownerAction.accepted(), ownerAction.reasonCode());
+    }
+
+    @Test
+    void leavingNonOwnerDoesNotChangeLobbyOwnership() {
+        TableLobby state = lobby();
+        state = apply(state, new LobbyCommand.JoinSeat(player(1), new SeatId(0)));
+        state = apply(state, new LobbyCommand.JoinSeat(player(2), new SeatId(1)));
+
+        state = apply(state, new LobbyCommand.Leave(player(2)));
+
+        assertEquals(player(1), state.ownerId());
+    }
+
     private TableLobby apply(TableLobby state, LobbyCommand command) {
         LobbyReduction reduction = reducer.apply(state, command);
         assertTrue(reduction.accepted(), reduction.reasonCode());

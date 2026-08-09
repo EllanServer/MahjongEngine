@@ -13,6 +13,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.plugin.Plugin;
 import top.ellan.mahjong.application.concurrent.BoundedDeadlineScheduler;
+import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
 import top.ellan.mahjong.application.interaction.InteractionRouter;
 import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.application.table.TableActorRegistry;
@@ -27,6 +28,7 @@ import top.ellan.mahjong.craftengine.scene.DirectCraftEngineMutationGateway;
 import top.ellan.mahjong.craftengine.privateview.SparrowPrivateProjectionGateway;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.platform.paper.concurrent.BoundedPlatformExecutors;
+import top.ellan.mahjong.platform.paper.feedback.PaperTableSoundGateway;
 import top.ellan.mahjong.platform.paper.region.PaperRegionScheduler;
 import top.ellan.mahjong.platform.paper.anchor.PaperTableAnchorRegistry;
 import top.ellan.mahjong.platform.paper.anchor.PaperTableAnchorService;
@@ -53,6 +55,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
     private final DirectCraftEngineMutationGateway mutations;
     private final CraftEngineSceneBackend sceneBackend;
     private final LatestSceneProjector sceneProjector;
+    private final TablePresentationCuePort presentationCues;
     private final AtomicBoolean bundleInstalled = new AtomicBoolean();
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -78,6 +81,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                         configuration.viewSettings().transitionTicks());
         interactions = new InteractionRouter(actors, privateProjection, privateProjection);
         mutations = new DirectCraftEngineMutationGateway(plugin, anchors, privateProjection);
+        presentationCues = new PaperTableSoundGateway(plugin);
         sceneBackend =
                 new CraftEngineSceneBackend(
                         mutations,
@@ -126,6 +130,10 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
 
     public PaperTableAnchorService anchorService() {
         return anchorService;
+    }
+
+    public TablePresentationCuePort presentationCues() {
+        return presentationCues;
     }
 
     public void registerAnchor(TableId tableId, Location location) {

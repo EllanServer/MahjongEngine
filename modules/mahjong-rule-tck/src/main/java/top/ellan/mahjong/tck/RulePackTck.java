@@ -128,7 +128,9 @@ public final class RulePackTck {
                 "null outsider transition");
         check(outsiderTransition.disposition() == TransitionDisposition.REJECTED,
                 "unseated player submitted a generated action");
-        check(outsiderTransition.nextState() == first && outsiderTransition.events().isEmpty(),
+        check(outsiderTransition.nextState() == first
+                        && outsiderTransition.events().isEmpty()
+                        && outsiderTransition.presentationCues().isEmpty(),
                 "unseated-player rejection had side effects");
 
         RuleTransition firstTransition = require(
@@ -137,10 +139,13 @@ public final class RulePackTck {
                 provider.transition(second, selectedActor, selectedAction), "null repeated transition");
         check(firstTransition.accepted(), "a generated legal action was rejected");
         check(!firstTransition.events().isEmpty(), "accepted transition emitted no events");
+        verifyPresentationCues(firstTransition, testCase);
         check(firstTransition.nextState() != first, "accepted transition reused the input state");
         check(firstTransition.disposition() == repeatedTransition.disposition()
                         && firstTransition.reasonCode().equals(repeatedTransition.reasonCode())
                         && eventsEqual(firstTransition.events(), repeatedTransition.events())
+                        && firstTransition.presentationCues()
+                                .equals(repeatedTransition.presentationCues())
                         && checkedHash(provider.stateHash(firstTransition.nextState()))
                                 .equals(checkedHash(provider.stateHash(
                                         repeatedTransition.nextState()))),
@@ -171,6 +176,8 @@ public final class RulePackTck {
             check(transition.nextState() == first,
                     "rejected action did not return the identical state instance");
             check(transition.events().isEmpty(), "rejected action emitted events");
+            check(transition.presentationCues().isEmpty(),
+                    "rejected action emitted presentation cues");
             check(before.equals(checkedHash(provider.stateHash(first))),
                     "rejected action mutated its input state");
             rejected++;
@@ -261,11 +268,14 @@ public final class RulePackTck {
                 "null repeated scheduled transition");
         check(firstTransition.accepted(), "scheduled action was rejected");
         check(!firstTransition.events().isEmpty(), "scheduled action emitted no events");
+        verifyPresentationCues(firstTransition, testCase);
         check(firstTransition.nextState() != first, "scheduled action reused the input state");
         check(
                 firstTransition.disposition() == repeatedTransition.disposition()
                         && firstTransition.reasonCode().equals(repeatedTransition.reasonCode())
                         && eventsEqual(firstTransition.events(), repeatedTransition.events())
+                        && firstTransition.presentationCues()
+                                .equals(repeatedTransition.presentationCues())
                         && checkedHash(provider.stateHash(firstTransition.nextState()))
                                 .equals(checkedHash(provider.stateHash(
                                         repeatedTransition.nextState()))),
@@ -360,6 +370,16 @@ public final class RulePackTck {
 
     private static boolean eventsEqual(List<RuleEvent> first, List<RuleEvent> second) {
         return first.equals(second);
+    }
+
+    private static void verifyPresentationCues(
+            RuleTransition transition, RulePackTckCase testCase) {
+        Set<PlayerId> participants = testCase.setup().players().stream()
+                .map(MatchPlayer::playerId)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        transition.presentationCues().forEach(cue -> cue.target().ifPresent(target -> check(
+                participants.contains(target),
+                "presentation cue targets an unseated player")));
     }
 
     private static String checkedHash(String hash) {
