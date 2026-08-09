@@ -29,9 +29,9 @@ class RuleMeldPresentationTest {
     @Test
     void addedKongUsesThreeBasePositionsAndStacksOnTheClaimedTile() {
         RuleTilePresentation claimed = RuleMeldPresentation.tile(
-                2, 3, 4, EAST, new SeatId(1), RuleMeldTileRole.CLAIMED, -1);
+                2, 3, 4, 0, 1, RuleMeldTileRole.CLAIMED, -1);
         RuleTilePresentation added = RuleMeldPresentation.tile(
-                2, 3, 4, EAST, new SeatId(1), RuleMeldTileRole.ADDED, -1);
+                2, 3, 4, 0, 1, RuleMeldTileRole.ADDED, -1);
         assertEquals(10, claimed.layoutIndex());
         assertEquals(claimed.layoutIndex(), added.layoutIndex());
         assertEquals(1, added.stackLevel());

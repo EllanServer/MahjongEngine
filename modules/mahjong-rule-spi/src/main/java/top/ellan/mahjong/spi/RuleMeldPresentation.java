@@ -37,6 +37,27 @@ public final class RuleMeldPresentation {
             SeatId source,
             RuleMeldTileRole role,
             int ordinaryOrdinal) {
+        Objects.requireNonNull(owner, "owner");
+        Objects.requireNonNull(source, "source");
+        return tile(
+                meldIndex,
+                baseTileCount,
+                seatCount,
+                owner.value(),
+                source.value(),
+                role,
+                ordinaryOrdinal);
+    }
+
+    /** Primitive-seat overload for allocation-free frame projection hot paths. */
+    public static RuleTilePresentation tile(
+            int meldIndex,
+            int baseTileCount,
+            int seatCount,
+            int ownerSeat,
+            int sourceSeat,
+            RuleMeldTileRole role,
+            int ordinaryOrdinal) {
         if (meldIndex < 0) {
             throw new IllegalArgumentException("meldIndex must be non-negative");
         }
@@ -46,13 +67,11 @@ public final class RuleMeldPresentation {
         if (seatCount < 2 || seatCount > 4) {
             throw new IllegalArgumentException("seatCount must be between two and four");
         }
-        Objects.requireNonNull(owner, "owner");
-        Objects.requireNonNull(source, "source");
         Objects.requireNonNull(role, "role");
-        if (owner.value() >= seatCount || source.value() >= seatCount) {
+        if (ownerSeat < 0 || ownerSeat >= seatCount || sourceSeat < 0 || sourceSeat >= seatCount) {
             throw new IllegalArgumentException("meld references an absent seat");
         }
-        int sourceDelta = Math.floorMod(source.value() - owner.value(), seatCount);
+        int sourceDelta = Math.floorMod(sourceSeat - ownerSeat, seatCount);
         if (sourceDelta == 0) {
             throw new IllegalArgumentException("a player cannot call their own tile");
         }

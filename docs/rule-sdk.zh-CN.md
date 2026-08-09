@@ -18,8 +18,9 @@ SDK 发布工作流位于 `.github/workflows/rule-sdk.yml`。规则 fat JAR 必�
 SPI 1.1 不允许规则包传入自由格式坐标或让核心猜测某种麻将记谱。规则包输出规范化的 `TileVisualId`、`RuleTablePresentation`、`RuleTilePresentation` 与 `ActionPresentation`：
 
 - `RuleWallPresentation` 声明每边墩数、开门墩和摸牌方向；
-- `layoutIndex` 是规则拥有的稳定逻辑槽位，仍在牌墙中的同一实体牌跨 revision 不得换槽；
-- `RuleTileRotation` 和 `stackLevel` 表达立直横牌、鸣牌来源与加杠叠牌；
+- `layoutIndex` 是稳定逻辑槽位；牌墙实体跨 revision 不得换槽，手牌、牌河与花牌只报告各自顺序；
+- 副露不得自行计算坐标：规则包只把牌标为 `ORDINARY`、`CLAIMED` 或 `ADDED`，并把持有座位、来源座位和基础牌数交给 `RuleMeldPresentation`；共享算法统一生成左/中/右来源牌、横置与加杠叠放；
+- `RuleTileRotation` 和 `stackLevel` 仍可表达立直横牌等非副露规则标记；
 - 普通弃牌动作直接绑定授权私有手牌的 `TileInstanceId`，其余动作进入主/次动作行；
 - 规则包将自身牌面记法转换成共享资产后缀，例如 `m5_red`、`east`、`bamboo`，核心不解析玩法私有字符串。
 
