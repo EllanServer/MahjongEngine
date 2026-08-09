@@ -33,6 +33,8 @@ application/
     actor|command|port|projection|runtime|usecase
 ```
 
+`TableActor` 是单桌状态机，不直接暴露并发容器：`TableActorInbox` 独立拥有有界玩家动作队列，以及规则完成、持久化健康、初始化和关闭的保留信号槽。玩家把动作队列塞满也不能阻断内部 continuation；重复规则完成会单桌 fail-closed。application 生产类由 CI 强制限制在 450 行以内。
+
 `MahjongRuntime` 只负责生命周期与用例委派。SQL 初始化位于 `plugin/bootstrap/sql`，规则包初始化位于 `plugin/bootstrap/rules`，CraftEngine/Paper 装配位于 `plugin/platform`，恢复位于 `plugin/recovery`。架构检查会拒绝 application 根包类、超过责任上限的 application 类，以及重新塞回 `MahjongRuntime` 的 JDBC、HTTP 或 CraftEngine 具体初始化代码。
 
 插件根包只允许保留 `MahjongPaperPlugin` 入口和 `MahjongRuntime` 装配根。配置位于 `plugin/config`，活动桌索引位于 `plugin/table`，比赛创建与恢复编排位于 `plugin/match`；其中规则初态创建、来源哈希和 actor 构造是独立组件，不再集中在一个比赛协调类中。

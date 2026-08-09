@@ -241,10 +241,10 @@ val architectureCheck =
                 }
                 if (
                     module == "mahjong-application" &&
-                        text.lineSequence().count() > 550
+                        text.lineSequence().count() > 450
                 ) {
                     violations +=
-                        "$relative exceeds the 550-line application responsibility limit"
+                        "$relative exceeds the 450-line application responsibility limit"
                 }
                 if (relative.endsWith("/plugin/MahjongRuntime.java")) {
                     if (text.lineSequence().count() > 500) {

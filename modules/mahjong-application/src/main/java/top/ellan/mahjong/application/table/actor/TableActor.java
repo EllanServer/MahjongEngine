@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
@@ -49,12 +48,7 @@ public final class TableActor implements TableActionEndpoint {
     private final ProjectionAuthorizationService authorizationService;
     private final AcceptedTransitionWriter transitionWriter;
     private final TableProjectionPublisher projectionPublisher;
-    private final ArrayBlockingQueue<ActionEnvelope> mailbox;
-    private final AtomicReference<RuleCompletion> ruleCompletion = new AtomicReference<>();
-    private final AtomicReference<OutboxHealth> outboxSignal = new AtomicReference<>();
-    private final AtomicBoolean duplicateRuleCompletion = new AtomicBoolean();
-    private final AtomicBoolean initializeRequested = new AtomicBoolean();
-    private final AtomicBoolean closeRequested = new AtomicBoolean();
+    private final TableActorInbox inbox;
     private final AtomicBoolean scheduled = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final AtomicReference<TableActorSnapshot> publishedSnapshot = new AtomicReference<>();
@@ -96,7 +90,7 @@ public final class TableActor implements TableActionEndpoint {
             throw new IllegalArgumentException("lastEventSequence must be non-negative");
         }
         this.lastEventSequence = lastEventSequence;
-        mailbox = new ArrayBlockingQueue<>(config.mailboxCapacity());
+        inbox = new TableActorInbox(config.mailboxCapacity());
         outboxHealth = outbox.health();
         outbox.setListener(this::signalOutbox);
         publishSnapshot();
@@ -107,7 +101,7 @@ public final class TableActor implements TableActionEndpoint {
         if (closed.get()) {
             throw new IllegalStateException("actor is closed");
         }
-        initializeRequested.set(true);
+        inbox.requestInitialize();
         scheduleDrain();
     }
 
@@ -119,7 +113,7 @@ public final class TableActor implements TableActionEndpoint {
             return CompletableFuture.completedFuture(result(TableActionCode.TABLE_CLOSED, "closed"));
         }
         CompletableFuture<TableActionResult> response = new CompletableFuture<>();
-        if (!mailbox.offer(new ActionEnvelope(actor, token, response))) {
+        if (!inbox.offer(new TableActionEnvelope(actor, token, response))) {
             response.complete(result(TableActionCode.MAILBOX_FULL, "mailbox-full"));
             return response;
         }
@@ -151,27 +145,27 @@ public final class TableActor implements TableActionEndpoint {
         int processed = 0;
         try {
             while (processed++ < config.maxMessagesPerRun()) {
-                if (closeRequested.getAndSet(false)) {
+                if (inbox.takeCloseRequest()) {
                     handleClose();
                     break;
                 }
-                RuleCompletion completion = ruleCompletion.getAndSet(null);
+                RuleTaskCompletion completion = inbox.takeRuleCompletion();
                 if (completion != null) {
                     handleRuleCompletion(completion);
                     continue;
                 }
-                OutboxHealth health = outboxSignal.getAndSet(null);
+                OutboxHealth health = inbox.takeOutboxHealth();
                 if (health != null) {
                     handleOutboxHealth(health);
                     continue;
                 }
-                if (initializeRequested.getAndSet(false)) {
+                if (inbox.takeInitializeRequest()) {
                     if (!ruleInFlight) {
                         submitFrameComputation();
                     }
                     continue;
                 }
-                ActionEnvelope envelope = mailbox.poll();
+                TableActionEnvelope envelope = inbox.pollAction();
                 if (envelope == null) {
                     break;
                 }
@@ -180,21 +174,13 @@ public final class TableActor implements TableActionEndpoint {
         } finally {
             scheduled.set(false);
             publishSnapshot();
-            if (hasPendingWork()) {
+            if (inbox.hasPendingWork()) {
                 scheduleDrain();
             }
         }
     }
 
-    private boolean hasPendingWork() {
-        return closeRequested.get()
-                || initializeRequested.get()
-                || ruleCompletion.get() != null
-                || outboxSignal.get() != null
-                || !mailbox.isEmpty();
-    }
-
-    private void handleAction(ActionEnvelope envelope) {
+    private void handleAction(TableActionEnvelope envelope) {
         if (closed.get()) {
             envelope.response().complete(result(TableActionCode.TABLE_CLOSED, "closed"));
             return;
@@ -227,7 +213,7 @@ public final class TableActor implements TableActionEndpoint {
                     .whenComplete(
                             (computed, failure) ->
                                     signalRuleCompletion(
-                                            new RuleCompletion(
+                                            new RuleTaskCompletion(
                                                     expectedRevision,
                                                     Optional.empty(),
                                                     computed,
@@ -238,7 +224,7 @@ public final class TableActor implements TableActionEndpoint {
         }
     }
 
-    private void submitTransition(ActionEnvelope envelope, RuleAction action) {
+    private void submitTransition(TableActionEnvelope envelope, RuleAction action) {
         long expectedRevision = aggregate.revision();
         long startingSequence = lastEventSequence;
         long nextAcceptedAction = acceptedActions + 1;
@@ -259,7 +245,7 @@ public final class TableActor implements TableActionEndpoint {
                     .whenComplete(
                             (computed, failure) ->
                                     signalRuleCompletion(
-                                            new RuleCompletion(
+                                            new RuleTaskCompletion(
                                                     expectedRevision,
                                                     Optional.of(envelope),
                                                     computed,
@@ -271,20 +257,17 @@ public final class TableActor implements TableActionEndpoint {
         }
     }
 
-    private void signalRuleCompletion(RuleCompletion completion) {
-        if (!ruleCompletion.compareAndSet(null, completion)) {
-            duplicateRuleCompletion.set(true);
-            closeRequested.set(true);
-        }
+    private void signalRuleCompletion(RuleTaskCompletion completion) {
+        inbox.completeRule(completion);
         scheduleDrain();
     }
 
     private void signalOutbox(OutboxHealth health) {
-        outboxSignal.set(health);
+        inbox.updateOutbox(health);
         scheduleDrain();
     }
 
-    private void handleRuleCompletion(RuleCompletion completion) {
+    private void handleRuleCompletion(RuleTaskCompletion completion) {
         ruleInFlight = false;
         if (closed.get()) {
             completion.envelope().ifPresent(
@@ -323,7 +306,7 @@ public final class TableActor implements TableActionEndpoint {
             installFrame(computed.frame());
             return;
         }
-        ActionEnvelope envelope = completion.envelope().orElseThrow();
+        TableActionEnvelope envelope = completion.envelope().orElseThrow();
         if (!transition.accepted()) {
             installFrame(computed.frame());
             envelope.response().complete(
@@ -406,7 +389,7 @@ public final class TableActor implements TableActionEndpoint {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
-        if (duplicateRuleCompletion.get()) {
+        if (inbox.duplicateRuleCompletion()) {
             failureCode = "duplicate-rule-completion";
         }
         actionCatalog.clear();
@@ -422,8 +405,8 @@ public final class TableActor implements TableActionEndpoint {
     }
 
     private void failQueuedActions(TableActionCode code, String reason) {
-        ActionEnvelope envelope;
-        while ((envelope = mailbox.poll()) != null) {
+        TableActionEnvelope envelope;
+        while ((envelope = inbox.pollAction()) != null) {
             envelope.response().complete(result(code, reason));
         }
     }
@@ -438,7 +421,7 @@ public final class TableActor implements TableActionEndpoint {
                         aggregate.tableId(),
                         aggregate.revision(),
                         aggregate.lifecycle(),
-                        mailbox.size(),
+                        inbox.actionCount(),
                         ruleInFlight,
                         outboxHealth,
                         failureCode));
@@ -446,7 +429,7 @@ public final class TableActor implements TableActionEndpoint {
 
     @Override
     public void close() {
-        closeRequested.set(true);
+        inbox.requestClose();
         scheduleDrain();
     }
 
@@ -455,16 +438,5 @@ public final class TableActor implements TableActionEndpoint {
         close();
         return shutdownComplete;
     }
-
-    private record ActionEnvelope(
-            PlayerId actor,
-            ActionToken token,
-            CompletableFuture<TableActionResult> response) {}
-
-    private record RuleCompletion(
-            long expectedRevision,
-            Optional<ActionEnvelope> envelope,
-            RuleComputation computed,
-            Throwable failure) {}
 
 }
