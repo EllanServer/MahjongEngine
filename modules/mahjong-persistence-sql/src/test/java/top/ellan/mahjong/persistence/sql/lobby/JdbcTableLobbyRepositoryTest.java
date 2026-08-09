@@ -1,4 +1,10 @@
-package top.ellan.mahjong.persistence.sql;
+package top.ellan.mahjong.persistence.sql.lobby;
+
+import top.ellan.mahjong.persistence.sql.common.PersistenceConflictException;
+import top.ellan.mahjong.persistence.sql.connection.SqlConnectionFactory;
+import top.ellan.mahjong.persistence.sql.match.JdbcMatchRepository;
+import top.ellan.mahjong.persistence.sql.match.MatchInstanceRecord;
+import top.ellan.mahjong.persistence.sql.schema.SqlSchemaMigrator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

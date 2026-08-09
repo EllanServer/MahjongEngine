@@ -1,4 +1,6 @@
-package top.ellan.mahjong.persistence.sql;
+package top.ellan.mahjong.persistence.sql.anchor;
+
+import top.ellan.mahjong.persistence.sql.connection.SqlConnectionFactory;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;

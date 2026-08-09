@@ -1,4 +1,7 @@
-package top.ellan.mahjong.persistence.sql;
+package top.ellan.mahjong.persistence.sql.event;
+
+import top.ellan.mahjong.persistence.sql.common.PersistenceConflictException;
+import top.ellan.mahjong.persistence.sql.connection.SqlConnectionFactory;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;

@@ -1,4 +1,7 @@
-package top.ellan.mahjong.persistence.sql;
+package top.ellan.mahjong.persistence.sql.lobby;
+
+import top.ellan.mahjong.persistence.sql.common.PersistenceConflictException;
+import top.ellan.mahjong.persistence.sql.connection.SqlConnectionFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -141,12 +144,7 @@ public final class JdbcTableLobbyRepository implements LobbyRepositoryPort {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
-                deleteMembers(connection, tableId);
-                try (PreparedStatement delete = connection.prepareStatement(
-                        "DELETE FROM table_lobby WHERE table_id = ?")) {
-                    delete.setString(1, tableId.toString());
-                    delete.executeUpdate();
-                }
+                LobbySqlTransactions.delete(connection, tableId);
                 connection.commit();
             } catch (SQLException | RuntimeException failure) {
                 connection.rollback();
@@ -154,15 +152,6 @@ public final class JdbcTableLobbyRepository implements LobbyRepositoryPort {
             } finally {
                 connection.setAutoCommit(previousAutoCommit);
             }
-        }
-    }
-
-    static boolean deleteWithin(Connection connection, TableId tableId) throws SQLException {
-        deleteMembers(connection, tableId);
-        try (PreparedStatement delete = connection.prepareStatement(
-                "DELETE FROM table_lobby WHERE table_id = ?")) {
-            delete.setString(1, tableId.toString());
-            return delete.executeUpdate() == 1;
         }
     }
 
@@ -311,19 +300,6 @@ public final class JdbcTableLobbyRepository implements LobbyRepositoryPort {
                 }
                 insert.executeBatch();
             }
-        }
-    }
-
-    private static void deleteMembers(Connection connection, TableId tableId) throws SQLException {
-        try (PreparedStatement delete = connection.prepareStatement(
-                "DELETE FROM table_lobby_spectator WHERE table_id = ?")) {
-            delete.setString(1, tableId.toString());
-            delete.executeUpdate();
-        }
-        try (PreparedStatement delete = connection.prepareStatement(
-                "DELETE FROM table_lobby_seat WHERE table_id = ?")) {
-            delete.setString(1, tableId.toString());
-            delete.executeUpdate();
         }
     }
 

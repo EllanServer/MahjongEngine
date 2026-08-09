@@ -1,4 +1,6 @@
-package top.ellan.mahjong.persistence.sql;
+package top.ellan.mahjong.persistence.sql.recovery;
+
+import top.ellan.mahjong.persistence.sql.common.PersistenceConflictException;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;

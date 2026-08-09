@@ -1,4 +1,4 @@
-package top.ellan.mahjong.persistence.sql;
+package top.ellan.mahjong.persistence.sql.recovery;
 
 import java.util.List;
 import java.util.Objects;

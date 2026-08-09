@@ -119,6 +119,26 @@ val architectureCheck =
                         "$relative exceeds the 550-line CraftEngine responsibility limit"
                 }
                 if (
+                    module == "mahjong-persistence-sql" &&
+                        relative.startsWith(
+                            "modules/mahjong-persistence-sql/src/main/java/top/ellan/mahjong/persistence/sql/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-persistence-sql/src/main/java/top/ellan/mahjong/persistence/sql/",
+                            ).contains('/').not()
+                ) {
+                    violations +=
+                        "$relative is unclassified; SQL types must live in connection/schema/event/match/lobby/anchor/recovery/common"
+                }
+                if (
+                    module == "mahjong-persistence-sql" &&
+                        text.lineSequence().count() > 550
+                ) {
+                    violations +=
+                        "$relative exceeds the 550-line SQL responsibility limit"
+                }
+                if (
                     module == "mahjong-application" &&
                         text.lineSequence().count() > 550
                 ) {

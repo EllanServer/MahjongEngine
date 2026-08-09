@@ -1,4 +1,4 @@
-package top.ellan.mahjong.persistence.sql;
+package top.ellan.mahjong.persistence.sql.connection;
 
 import java.util.Locale;
 

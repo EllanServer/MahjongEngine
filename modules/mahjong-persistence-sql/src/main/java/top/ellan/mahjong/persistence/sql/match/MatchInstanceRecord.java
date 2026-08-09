@@ -1,4 +1,4 @@
-package top.ellan.mahjong.persistence.sql;
+package top.ellan.mahjong.persistence.sql.match;
 
 import java.time.Instant;
 import java.util.Objects;

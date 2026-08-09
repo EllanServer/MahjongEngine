@@ -8,12 +8,12 @@ import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import top.ellan.mahjong.persistence.sql.JdbcEventStore;
-import top.ellan.mahjong.persistence.sql.JdbcMatchRepository;
-import top.ellan.mahjong.persistence.sql.JdbcTableAnchorRepository;
-import top.ellan.mahjong.persistence.sql.JdbcTableLobbyRepository;
-import top.ellan.mahjong.persistence.sql.SqlConnectionFactory;
-import top.ellan.mahjong.persistence.sql.SqlSchemaMigrator;
+import top.ellan.mahjong.persistence.sql.event.JdbcEventStore;
+import top.ellan.mahjong.persistence.sql.match.JdbcMatchRepository;
+import top.ellan.mahjong.persistence.sql.anchor.JdbcTableAnchorRepository;
+import top.ellan.mahjong.persistence.sql.lobby.JdbcTableLobbyRepository;
+import top.ellan.mahjong.persistence.sql.connection.SqlConnectionFactory;
+import top.ellan.mahjong.persistence.sql.schema.SqlSchemaMigrator;
 import top.ellan.mahjong.plugin.PluginConfiguration;
 
 /** Opens, migrates and probes SQL without leaking JDBC setup into the composition root. */

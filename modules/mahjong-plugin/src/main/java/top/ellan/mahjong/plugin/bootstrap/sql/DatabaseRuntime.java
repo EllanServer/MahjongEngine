@@ -4,9 +4,9 @@ import com.zaxxer.hikari.HikariDataSource;
 import java.util.Objects;
 import java.util.Optional;
 import top.ellan.mahjong.application.lobby.port.LobbyRepositoryPort;
-import top.ellan.mahjong.persistence.sql.JdbcEventStore;
-import top.ellan.mahjong.persistence.sql.JdbcMatchRepository;
-import top.ellan.mahjong.persistence.sql.JdbcTableAnchorRepository;
+import top.ellan.mahjong.persistence.sql.event.JdbcEventStore;
+import top.ellan.mahjong.persistence.sql.match.JdbcMatchRepository;
+import top.ellan.mahjong.persistence.sql.anchor.JdbcTableAnchorRepository;
 
 /** Restart-scoped SQL resources exposed to the plugin composition layer. */
 public record DatabaseRuntime(

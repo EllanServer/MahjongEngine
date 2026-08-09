@@ -1,4 +1,7 @@
-package top.ellan.mahjong.persistence.sql;
+package top.ellan.mahjong.persistence.sql.recovery;
+
+import top.ellan.mahjong.persistence.sql.common.PersistenceConflictException;
+import top.ellan.mahjong.persistence.sql.match.MatchInstanceRecord;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;

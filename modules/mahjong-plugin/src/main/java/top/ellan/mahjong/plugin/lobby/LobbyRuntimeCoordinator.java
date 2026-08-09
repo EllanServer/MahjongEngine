@@ -30,7 +30,7 @@ import top.ellan.mahjong.craftengine.scene.CraftEngineSceneBackend;
 import top.ellan.mahjong.domain.TableAnchor;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.domain.TableLobby;
-import top.ellan.mahjong.persistence.sql.MatchInstanceRecord;
+import top.ellan.mahjong.persistence.sql.match.MatchInstanceRecord;
 import top.ellan.mahjong.platform.paper.PaperTableAnchorService;
 import top.ellan.mahjong.plugin.LiveTableDirectory;
 import top.ellan.mahjong.presentation.LatestSceneProjector;
