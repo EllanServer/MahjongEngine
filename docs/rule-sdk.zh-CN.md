@@ -15,7 +15,7 @@ SDK 发布工作流位于 `.github/workflows/rule-sdk.yml`。规则 fat JAR 必�
 
 ## 桌面呈现契约
 
-SPI 1.4 不允许规则包传入自由格式坐标或让核心猜测某种麻将记谱。规则包输出规范化的 `TileVisualId`、`RuleTablePresentation`、`RuleTilePresentation` 与 `ActionPresentation`：
+SPI 1.5 不允许规则包传入自由格式坐标或让核心猜测某种麻将记谱。规则包输出规范化的 `TileVisualId`、`RuleTablePresentation`、`RuleTilePresentation` 与 `ActionPresentation`：
 
 - `RuleWallPresentation` 声明每边墩数、开门墩和摸牌方向；
 - `RuleDiceRoll` 与 `RuleOpeningPresentation` 只声明确定性骰点、手序号、开门座位和断墙栈；模型、坐标与动画始终由 CraftEngine/平台实现；
@@ -26,3 +26,9 @@ SPI 1.4 不允许规则包传入自由格式坐标或让核心猜测某种麻将
 - 规则包将自身牌面记法转换成共享资产后缀，例如 `m5_red`、`east`、`bamboo`，核心不解析玩法私有字符串。
 
 TCK 会验证座位、私有视图授权、直接动作目标、牌墙容量、开局骰点/断墙边界、跨 transition 的稳定牌墙槽位以及快照恢复后的呈现确定性。
+
+## 机器人与托管契约
+
+核心只维护哪些座位当前由机器人或托管控制，不解释任何玩法动作。每个 frame 的合法动作只计算一次，再以座位顺序作为 `AutomatedPlayerActions` 传入规则包。规则包的 `automatedAction` 必须纯函数式地返回其中一项合法动作；空候选必须返回空，禁止自行创建线程或读取时钟。
+
+系统摸牌、反应超时与规则自动推进仍由 `scheduledAction` 提供。核心比较两者延迟，只为该桌保留一个 revision-bound 单次任务；自动化在相同延迟时优先。TCK 会检查动作属于受控座位、确实来自同一 legal-action frame、转换可接受、确定性以及快照恢复一致性。

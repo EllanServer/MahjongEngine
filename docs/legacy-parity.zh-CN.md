@@ -24,7 +24,7 @@
 | 断线重连 | 保留活动牌局座位并恢复桌面 | 保留路由和规则状态；清理临时选择/镜头；重连后重放最新授权投影 | 已对齐基础链路 | presence、private desired-state 测试 |
 | 骰子与开门 | 开局掷骰并按玩法决定开门位置 | 规则包只给出确定性骰点、开门座位和断墙栈；CE YAML 的固定槽位/face variant 原地切换并旋转墙索引 | 已对齐并修正规范差异 | 三规则固定种子测试、SPI TCK、CE variant 场景测试 |
 | 规则音效 | 摸、打、吃、碰、杠、和、立直等反馈 | SPI 发出瞬时语义 cue；平台异步映射音效，失败不影响 actor | 待实现 | cue TCK 与故障隔离测试 |
-| 机器人/托管 | 可补机器人、机器人自动行动；掉线可托管 | 独立 automation 模块注册单次 revision-bound 任务；策略归规则包 | 待实现 | 64 桌压力、超时/陈旧任务测试 |
+| 机器人/托管 | 可补机器人、机器人自动行动；掉线可托管 | `BOT` 座位可持久恢复；掉线/重连与 `/mahjong auto` 只投递有界消息；三规则包各自选牌，核心每桌只保留一个 revision-bound 任务 | 已实现主链路 | rule-pack TCK、actor 定时/陈旧任务、lobby bot 恢复测试；64 桌门槛由 GitHub 性能工作流继续验证 |
 | 命令体验 | 创建、加入、观战、房主转让、机器人、规则、排行、管理命令 | 命令只调用 application use case；保留旧别名与权限，不绕过 actor | 部分完成 | command contract 测试 |
 | 多语言提示 | 完整中文/英文/日文消息键 | label key 与 reason code 稳定；资源包补齐旧键并允许新增规则提示 | 部分完成 | locale completeness 测试 |
 | 排名与历史 | 对局结果、排行与个人查询 | 只读 SQL projection；不得在 region/actor 线程同步查询 | 基础数据层已完成，入口待补 | SQL projection 与异步命令测试 |

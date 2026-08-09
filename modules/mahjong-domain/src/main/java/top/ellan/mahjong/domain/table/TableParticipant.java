@@ -12,11 +12,12 @@ public record TableParticipant(PlayerId playerId, ParticipantRole role, Optional
         Objects.requireNonNull(playerId, "playerId");
         Objects.requireNonNull(role, "role");
         seat = Objects.requireNonNull(seat, "seat");
-        if (role == ParticipantRole.PLAYER && seat.isEmpty()) {
-            throw new IllegalArgumentException("A player must own a seat");
+        boolean seated = role == ParticipantRole.PLAYER || role == ParticipantRole.BOT;
+        if (seated && seat.isEmpty()) {
+            throw new IllegalArgumentException("A player or bot must own a seat");
         }
-        if (role != ParticipantRole.PLAYER && seat.isPresent()) {
-            throw new IllegalArgumentException("Only players may own seats");
+        if (!seated && seat.isPresent()) {
+            throw new IllegalArgumentException("Only players or bots may own seats");
         }
     }
 }

@@ -136,6 +136,11 @@ public record TableLobby(
         return occupied;
     }
 
+    public boolean isBotSeat(LobbySeat seat) {
+        Objects.requireNonNull(seat, "seat");
+        return LobbyBotIdentity.occupies(this, seat);
+    }
+
     public boolean readyToStart() {
         if (phase != LobbyPhase.WAITING || occupiedSeatCount() != seats.size()) {
             return false;
@@ -154,10 +159,13 @@ public record TableLobby(
         }
         ArrayList<TableParticipant> result = new ArrayList<>(seats.size() + spectators.size());
         for (LobbySeat seat : seats) {
+            ParticipantRole role = isBotSeat(seat)
+                    ? ParticipantRole.BOT
+                    : ParticipantRole.PLAYER;
             result.add(
                     new TableParticipant(
                             seat.occupant().orElseThrow(),
-                            ParticipantRole.PLAYER,
+                            role,
                             Optional.of(seat.seatId())));
         }
         spectators.stream()
@@ -210,14 +218,15 @@ public record TableLobby(
             Map<String, String> nextConfiguration) {
         ArrayList<LobbySeat> reset = new ArrayList<>(seats.size());
         for (LobbySeat seat : seats) {
+            boolean bot = isBotSeat(seat);
             reset.add(
                     seat.occupant().isEmpty()
                             ? seat
                             : new LobbySeat(
                                     seat.seatId(),
                                     seat.occupant(),
-                                    false,
-                                    seat.presence()));
+                                    bot,
+                                    bot ? SeatPresence.ONLINE : seat.presence()));
         }
         return new TableLobby(
                 tableId,
@@ -235,14 +244,15 @@ public record TableLobby(
     public TableLobby recoveredOffline() {
         ArrayList<LobbySeat> recoveredSeats = new ArrayList<>(seats.size());
         for (LobbySeat seat : seats) {
+            boolean bot = isBotSeat(seat);
             recoveredSeats.add(
                     seat.occupant().isEmpty()
                             ? seat
                             : new LobbySeat(
                                     seat.seatId(),
                                     seat.occupant(),
-                                    false,
-                                    SeatPresence.OFFLINE));
+                                    bot,
+                                    bot ? SeatPresence.ONLINE : SeatPresence.OFFLINE));
         }
         return new TableLobby(
                 tableId,

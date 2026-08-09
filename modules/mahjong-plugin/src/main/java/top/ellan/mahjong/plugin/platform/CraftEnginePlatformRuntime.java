@@ -14,6 +14,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.plugin.Plugin;
 import top.ellan.mahjong.application.concurrent.BoundedDeadlineScheduler;
+import top.ellan.mahjong.application.automation.PlayerPresencePort;
 import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
 import top.ellan.mahjong.application.interaction.InteractionRouter;
 import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
@@ -125,12 +126,14 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
     }
 
     /** Registers platform listeners and starts the immutable CE bundle installation once. */
-    public void start(SeatInteractionPort seatInteractions) {
+    public void start(
+            SeatInteractionPort seatInteractions, PlayerPresencePort playerPresence) {
         Objects.requireNonNull(seatInteractions, "seatInteractions");
+        Objects.requireNonNull(playerPresence, "playerPresence");
         if (!started.compareAndSet(false, true)) {
             throw new IllegalStateException("CraftEngine platform runtime already started");
         }
-        registerListeners(seatInteractions);
+        registerListeners(seatInteractions, playerPresence);
         installBundle();
     }
 
@@ -168,7 +171,8 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
         anchors.remove(tableId);
     }
 
-    private void registerListeners(SeatInteractionPort seatInteractions) {
+    private void registerListeners(
+            SeatInteractionPort seatInteractions, PlayerPresencePort playerPresence) {
         plugin.getServer()
                 .getPluginManager()
                 .registerEvents(
@@ -187,6 +191,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                                                     null);
                                 },
                                 seatInteractions,
+                                playerPresence,
                                 mutations.managedKey(),
                                 mutations.tableKey(),
                                 mutations.nodeKey(),

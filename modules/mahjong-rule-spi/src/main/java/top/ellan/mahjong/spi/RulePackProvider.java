@@ -27,6 +27,20 @@ public interface RulePackProvider {
         return Optional.empty();
     }
 
+    /**
+     * Selects at most one deterministic player action for rule-aware bot or trustee control.
+     *
+     * <p>Candidates are ordered by physical seat and contain the exact legal actions already
+     * computed by the core. A returned actor must be present in {@code candidates}, and its action
+     * must equal one of that actor's supplied legal actions. Implementations must return an empty
+     * optional for an empty candidate list. As with every provider call, this method must be pure,
+     * must not read a wall clock, and must not create work outside the calling thread.</p>
+     */
+    default Optional<ScheduledRuleAction> automatedAction(
+            RuleState state, List<AutomatedPlayerActions> candidates) {
+        return Optional.empty();
+    }
+
     PublicRuleView publicView(RuleState state, long revision);
 
     PrivateRuleView privateView(RuleState state, PlayerId viewer, long revision);

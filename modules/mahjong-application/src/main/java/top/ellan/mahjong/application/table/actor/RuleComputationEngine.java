@@ -6,8 +6,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import top.ellan.mahjong.domain.table.ParticipantRole;
 import top.ellan.mahjong.application.table.TableActorConfig;
 import top.ellan.mahjong.domain.table.TableParticipant;
+import top.ellan.mahjong.spi.AutomatedPlayerActions;
 import top.ellan.mahjong.spi.LegalAction;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.PrivateRuleView;
@@ -34,14 +36,19 @@ final class RuleComputationEngine {
             List<TableParticipant> participants,
             TableActorConfig limits) {
         this.provider = Objects.requireNonNull(provider, "provider");
-        this.participants = List.copyOf(participants);
+        this.participants = participants.stream()
+                .sorted(java.util.Comparator.comparingInt(participant ->
+                        participant.seat().map(top.ellan.mahjong.spi.SeatId::value)
+                                .orElse(Integer.MAX_VALUE)))
+                .toList();
         participantIds = this.participants.stream()
                 .map(TableParticipant::playerId)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         this.limits = Objects.requireNonNull(limits, "limits");
     }
 
-    RuleComputation frameOnly(RuleState state, long revision) {
+    RuleComputation frameOnly(
+            RuleState state, long revision, List<PlayerId> automatedPlayers) {
         String hash = provider.stateHash(state);
         return new RuleComputation(
                 state,
@@ -49,7 +56,7 @@ final class RuleComputationEngine {
                 hash,
                 hash,
                 Optional.empty(),
-                buildFrame(state, revision));
+                buildFrame(state, revision, automatedPlayers));
     }
 
     RuleComputation transition(
@@ -58,7 +65,8 @@ final class RuleComputationEngine {
             RuleAction action,
             long revision,
             long startingSequence,
-            long nextAcceptedAction) {
+            long nextAcceptedAction,
+            List<PlayerId> automatedPlayers) {
         String beforeHash = provider.stateHash(state);
         RuleTransition transition = provider.transition(state, actor, action);
         Objects.requireNonNull(transition, "provider returned null transition");
@@ -77,7 +85,7 @@ final class RuleComputationEngine {
                 beforeHash,
                 afterHash,
                 snapshot,
-                buildFrame(targetState, targetRevision));
+                buildFrame(targetState, targetRevision, automatedPlayers));
     }
 
     private void validateTransition(
@@ -110,7 +118,9 @@ final class RuleComputationEngine {
                         || transition.disposition() == TransitionDisposition.MATCH_ENDED);
     }
 
-    private RuleFrame buildFrame(RuleState state, long revision) {
+    private RuleFrame buildFrame(
+            RuleState state, long revision, List<PlayerId> automatedPlayers) {
+        Set<PlayerId> automated = Set.copyOf(automatedPlayers);
         PublicRuleView publicView = provider.publicView(state, revision);
         if (publicView.stateRevision() != revision) {
             throw new IllegalStateException(
@@ -118,20 +128,43 @@ final class RuleComputationEngine {
         }
         Map<PlayerId, PrivateRuleView> privateViews = new LinkedHashMap<>();
         Map<PlayerId, List<LegalAction>> legalActions = new LinkedHashMap<>();
+        java.util.ArrayList<AutomatedPlayerActions> automationCandidates =
+                new java.util.ArrayList<>(automated.size());
         for (TableParticipant participant : participants) {
             if (participant.seat().isEmpty()) {
                 continue;
             }
-            addParticipantFrame(
-                    state,
-                    revision,
-                    participant.playerId(),
-                    privateViews,
-                    legalActions);
+            boolean playerProjection = participant.role() == ParticipantRole.PLAYER;
+            boolean automatedSeat = automated.contains(participant.playerId());
+            if (!playerProjection && !automatedSeat) {
+                continue;
+            }
+            List<LegalAction> actions = validatedLegalActions(state, participant.playerId());
+            if (playerProjection) {
+                privateViews.put(
+                        participant.playerId(),
+                        validatedPrivateView(state, revision, participant.playerId()));
+                legalActions.put(participant.playerId(), actions);
+            }
+            if (automatedSeat) {
+                automationCandidates.add(
+                        new AutomatedPlayerActions(participant.playerId(), actions));
+            }
         }
-        Optional<ScheduledRuleAction> scheduledAction = Objects.requireNonNull(
+        if (automationCandidates.size() != automated.size()) {
+            throw new IllegalStateException("Automation roster contains an unseated actor");
+        }
+        Optional<ScheduledRuleAction> systemAction = Objects.requireNonNull(
                 provider.scheduledAction(state), "provider returned null scheduled action");
-        scheduledAction.ifPresent(this::validateScheduledActor);
+        systemAction.ifPresent(this::validateScheduledActor);
+        Optional<ScheduledRuleAction> automatedAction = automationCandidates.isEmpty()
+                ? Optional.empty()
+                : Objects.requireNonNull(
+                        provider.automatedAction(state, List.copyOf(automationCandidates)),
+                        "provider returned null automated action");
+        automatedAction.ifPresent(action -> validateAutomatedAction(action, automationCandidates));
+        Optional<ScheduledRuleAction> scheduledAction =
+                selectEarlier(systemAction, automatedAction);
         return new RuleFrame(publicView, privateViews, legalActions, scheduledAction);
     }
 
@@ -144,16 +177,16 @@ final class RuleComputationEngine {
         }
     }
 
-    private void addParticipantFrame(
-            RuleState state,
-            long revision,
-            PlayerId player,
-            Map<PlayerId, PrivateRuleView> privateViews,
-            Map<PlayerId, List<LegalAction>> legalActions) {
+    private PrivateRuleView validatedPrivateView(
+            RuleState state, long revision, PlayerId player) {
         PrivateRuleView privateView = provider.privateView(state, player, revision);
         if (!privateView.viewer().equals(player) || privateView.stateRevision() != revision) {
             throw new IllegalStateException("Provider returned an unauthorized private view");
         }
+        return privateView;
+    }
+
+    private List<LegalAction> validatedLegalActions(RuleState state, PlayerId player) {
         List<LegalAction> actions = List.copyOf(provider.legalActions(state, player));
         if (actions.size() > limits.maxLegalActionsPerPlayer()) {
             throw new IllegalStateException("Provider exceeded legal-action limit");
@@ -162,7 +195,33 @@ final class RuleComputationEngine {
         if (distinctKeys != actions.size()) {
             throw new IllegalStateException("Provider emitted duplicate legal-action keys");
         }
-        privateViews.put(player, privateView);
-        legalActions.put(player, actions);
+        return actions;
+    }
+
+    private static void validateAutomatedAction(
+            ScheduledRuleAction action, List<AutomatedPlayerActions> candidates) {
+        AutomatedPlayerActions actor = candidates.stream()
+                .filter(candidate -> candidate.actor().equals(action.actor()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Provider automated an uncontrolled actor"));
+        if (actor.legalActions().stream()
+                .noneMatch(legal -> legal.action().equals(action.action()))) {
+            throw new IllegalStateException("Provider automated an action that is not legal");
+        }
+    }
+
+    private static Optional<ScheduledRuleAction> selectEarlier(
+            Optional<ScheduledRuleAction> system,
+            Optional<ScheduledRuleAction> automated) {
+        if (system.isEmpty()) {
+            return automated;
+        }
+        if (automated.isEmpty()) {
+            return system;
+        }
+        return automated.orElseThrow().delay().compareTo(system.orElseThrow().delay()) <= 0
+                ? automated
+                : system;
     }
 }

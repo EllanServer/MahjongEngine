@@ -66,6 +66,16 @@ class TableActorInboxTest {
     }
 
     @Test
+    void trusteeControlsShareArrivalOrderWithoutConsumingPlayerCapacity() {
+        TableActorInbox inbox = new TableActorInbox(1);
+        CompletableFuture<TableActionResult> response = new CompletableFuture<>();
+        assertTrue(inbox.offerAutomation(PLAYER, true, response));
+        assertTrue(offer(inbox, 0));
+        assertTrue(inbox.pollIngress() instanceof AutomationControlEnvelope);
+        assertTrue(inbox.pollIngress() instanceof TableActionEnvelope);
+    }
+
+    @Test
     void scheduledTriggerOverflowFailsOnlyThisInboxClosed() {
         TableActorInbox inbox = new TableActorInbox(1);
         for (int index = 0; index < 4; index++) {

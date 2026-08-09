@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.domain.lobby.LobbyPhase;
 import top.ellan.mahjong.domain.lobby.SeatPresence;
 import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.domain.table.ParticipantRole;
 import top.ellan.mahjong.domain.lobby.TableLobby;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.ProfileId;
@@ -104,6 +105,36 @@ class LobbyReducerTest {
         state = apply(state, new LobbyCommand.Leave(player(2)));
 
         assertEquals(player(1), state.ownerId());
+    }
+
+    @Test
+    void ownerCanFillAndRemoveSeatsWithRuleNeutralReadyBots() {
+        TableLobby state = apply(lobby(), new LobbyCommand.JoinSeat(player(1), new SeatId(0)));
+        for (int index = 1; index < 4; index++) {
+            state = apply(state, new LobbyCommand.AddBot(player(1), new SeatId(index)));
+        }
+
+        assertEquals(3, state.matchParticipants().stream()
+                .filter(participant -> participant.role() == ParticipantRole.BOT)
+                .count());
+        assertTrue(state.seats().get(1).ready());
+        state = apply(state, new LobbyCommand.RemoveBot(player(1), new SeatId(2)));
+        assertTrue(state.seats().get(2).occupant().isEmpty());
+    }
+
+    @Test
+    void ruleChangesAndRecoveryKeepBotsOnlineAndReady() {
+        TableLobby state = apply(lobby(), new LobbyCommand.JoinSeat(player(1), new SeatId(0)));
+        state = apply(state, new LobbyCommand.AddBot(player(1), new SeatId(1)));
+        state = apply(state, new LobbyCommand.ChangeRules(
+                player(1), new RuleId("sichuan"), new ProfileId("t-tfmj-01-2024"), Map.of()));
+
+        assertTrue(state.seats().get(1).ready());
+        assertEquals(SeatPresence.ONLINE, state.seats().get(1).presence());
+        TableLobby recovered = state.recoveredOffline();
+        assertTrue(recovered.seats().get(1).ready());
+        assertEquals(SeatPresence.ONLINE, recovered.seats().get(1).presence());
+        assertEquals(SeatPresence.OFFLINE, recovered.seats().getFirst().presence());
     }
 
     private TableLobby apply(TableLobby state, LobbyCommand command) {

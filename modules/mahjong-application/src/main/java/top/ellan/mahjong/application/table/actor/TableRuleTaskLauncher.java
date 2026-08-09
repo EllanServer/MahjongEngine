@@ -32,8 +32,13 @@ final class TableRuleTaskLauncher {
     void frame(
             RuleState state,
             long expectedRevision,
+            List<PlayerId> automatedPlayers,
             Consumer<RuleTaskCompletion> completion) {
-        executor.submit(ruleId, () -> computations.frameOnly(state, expectedRevision))
+        List<PlayerId> automationSnapshot = List.copyOf(automatedPlayers);
+        executor.submit(
+                        ruleId,
+                        () -> computations.frameOnly(
+                                state, expectedRevision, automationSnapshot))
                 .whenComplete((computed, failure) -> completion.accept(new RuleTaskCompletion(
                         expectedRevision,
                         Optional.empty(),
@@ -49,9 +54,11 @@ final class TableRuleTaskLauncher {
             long expectedRevision,
             long startingSequence,
             long nextAcceptedAction,
+            List<PlayerId> automatedPlayers,
             Optional<TableActionEnvelope> envelope,
             Optional<ScheduledActionTrigger> scheduledTrigger,
             Consumer<RuleTaskCompletion> completion) {
+        List<PlayerId> automationSnapshot = List.copyOf(automatedPlayers);
         executor.submit(
                         ruleId,
                         () -> computations.transition(
@@ -60,7 +67,8 @@ final class TableRuleTaskLauncher {
                                 action,
                                 expectedRevision,
                                 startingSequence,
-                                nextAcceptedAction))
+                                nextAcceptedAction,
+                                automationSnapshot))
                 .whenComplete((computed, failure) -> completion.accept(new RuleTaskCompletion(
                         expectedRevision,
                         envelope,

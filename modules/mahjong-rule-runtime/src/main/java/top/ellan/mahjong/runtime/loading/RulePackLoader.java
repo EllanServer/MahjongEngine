@@ -138,7 +138,7 @@ public final class RulePackLoader {
                 || !manifest.requiredCoreVersion().equals(expected.requiredCoreVersion())) {
             throw new RulePackException("JAR manifest differs from its signed registry entry");
         }
-        if (!manifest.spiVersion().equals(SpiVersion.CURRENT)) {
+        if (!SpiVersion.isSupported(manifest.spiVersion())) {
             throw new RulePackException("Unsupported rule SPI version: " + manifest.spiVersion());
         }
         try {

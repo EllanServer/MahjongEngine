@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import top.ellan.mahjong.domain.lobby.LobbyPhase;
+import top.ellan.mahjong.domain.lobby.LobbyBotIdentity;
 import top.ellan.mahjong.domain.lobby.LobbySeat;
 import top.ellan.mahjong.domain.lobby.SeatPresence;
 import top.ellan.mahjong.domain.lobby.TableLobby;
@@ -30,6 +31,8 @@ public final class LobbyReducer {
             case LobbyCommand.Spectate spectate -> spectate(state, spectate.actor());
             case LobbyCommand.Unspectate unspectate -> unspectate(state, unspectate.actor());
             case LobbyCommand.ToggleReady ready -> toggleReady(state, ready.actor());
+            case LobbyCommand.AddBot bot -> addBot(state, bot);
+            case LobbyCommand.RemoveBot bot -> removeBot(state, bot);
             case LobbyCommand.Start start -> start(state, start.actor());
             case LobbyCommand.ChangeRules rules -> changeRules(state, rules);
             case LobbyCommand.SetPresence presence -> setPresence(state, presence);
@@ -72,7 +75,7 @@ public final class LobbyReducer {
             int index = seat.orElseThrow().value();
             seats.set(index, seats.get(index).vacated());
             if (state.ownerId().equals(actor)) {
-                Optional<PlayerId> successor = firstSeatedPlayer(seats);
+                Optional<PlayerId> successor = firstSeatedHuman(state, seats);
                 if (successor.isPresent()) {
                     return changed(
                             state,
@@ -120,12 +123,51 @@ public final class LobbyReducer {
         }
         int index = seat.orElseThrow().value();
         LobbySeat current = state.seats().get(index);
+        if (state.isBotSeat(current)) {
+            return LobbyReduction.rejected(state, "bot-always-ready");
+        }
         if (current.presence() != SeatPresence.ONLINE) {
             return LobbyReduction.rejected(state, "seat-offline");
         }
         ArrayList<LobbySeat> seats = new ArrayList<>(state.seats());
         seats.set(index, current.withReady(!current.ready()));
         return changed(state, seats, state.spectators(), current.ready() ? "unready" : "ready");
+    }
+
+    private static LobbyReduction addBot(TableLobby state, LobbyCommand.AddBot command) {
+        if (!state.ownerId().equals(command.actor())) {
+            return LobbyReduction.rejected(state, "owner-required");
+        }
+        int index = command.seatId().value();
+        if (index >= state.seats().size()) {
+            return LobbyReduction.rejected(state, "seat-out-of-range");
+        }
+        LobbySeat current = state.seats().get(index);
+        if (current.occupant().isPresent()) {
+            return LobbyReduction.rejected(state, "seat-occupied");
+        }
+        ArrayList<LobbySeat> seats = new ArrayList<>(state.seats());
+        seats.set(index, current.occupiedByReadyBot(
+                LobbyBotIdentity.forSeat(state.tableId(), command.seatId())));
+        return changed(state, seats, state.spectators(), "bot-added");
+    }
+
+    private static LobbyReduction removeBot(
+            TableLobby state, LobbyCommand.RemoveBot command) {
+        if (!state.ownerId().equals(command.actor())) {
+            return LobbyReduction.rejected(state, "owner-required");
+        }
+        int index = command.seatId().value();
+        if (index >= state.seats().size()) {
+            return LobbyReduction.rejected(state, "seat-out-of-range");
+        }
+        LobbySeat current = state.seats().get(index);
+        if (!state.isBotSeat(current)) {
+            return LobbyReduction.rejected(state, "seat-is-not-bot");
+        }
+        ArrayList<LobbySeat> seats = new ArrayList<>(state.seats());
+        seats.set(index, current.vacated());
+        return changed(state, seats, state.spectators(), "bot-removed");
     }
 
     private static LobbyReduction start(TableLobby state, PlayerId actor) {
@@ -206,9 +248,10 @@ public final class LobbyReducer {
                 reason);
     }
 
-    private static Optional<PlayerId> firstSeatedPlayer(java.util.List<LobbySeat> seats) {
+    private static Optional<PlayerId> firstSeatedHuman(
+            TableLobby state, java.util.List<LobbySeat> seats) {
         for (LobbySeat seat : seats) {
-            if (seat.occupant().isPresent()) {
+            if (seat.occupant().isPresent() && !state.isBotSeat(seat)) {
                 return seat.occupant();
             }
         }

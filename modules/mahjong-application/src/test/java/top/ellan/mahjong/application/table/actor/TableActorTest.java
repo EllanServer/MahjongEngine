@@ -1,6 +1,7 @@
 package top.ellan.mahjong.application.table.actor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.nio.ByteBuffer;
@@ -25,6 +26,8 @@ import top.ellan.mahjong.application.concurrent.BoundedDeadlineScheduler;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.application.feedback.TableCueBatch;
+import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
+import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.persistence.EventStorePort;
 import top.ellan.mahjong.application.persistence.MatchWriteBatch;
 import top.ellan.mahjong.application.persistence.PersistAck;
@@ -44,6 +47,7 @@ import top.ellan.mahjong.domain.table.TableLifecycle;
 import top.ellan.mahjong.domain.table.TableParticipant;
 import top.ellan.mahjong.spi.ActionPresentation;
 import top.ellan.mahjong.spi.ActionToken;
+import top.ellan.mahjong.spi.AutomatedPlayerActions;
 import top.ellan.mahjong.spi.LegalAction;
 import top.ellan.mahjong.spi.MatchPlayer;
 import top.ellan.mahjong.spi.MatchSeed;
@@ -99,6 +103,9 @@ class TableActorTest {
                     outbox,
                     deadlines,
                     projections::offer,
+                    TablePresentationCuePort.NONE,
+                    TableOpeningPresentationPort.NONE,
+                    true,
                     new SecureActionTokenIssuer(),
                     Clock.systemUTC(),
                     TableActorConfig.DEFAULT,
@@ -110,6 +117,89 @@ class TableActorTest {
             assertEquals(0, projections.poll(2, TimeUnit.SECONDS).revision());
             deadlines.awaitScheduled();
             assertEquals(1, deadlines.pendingCount());
+            deadlines.runNext();
+            assertEquals(1, projections.poll(2, TimeUnit.SECONDS).revision());
+            actor.close();
+        }
+    }
+
+    @Test
+    void trusteeControlReframesOnceAndRunsThroughTheRevisionBoundTimer() throws Exception {
+        ThreadPoolExecutor dispatcher = new ThreadPoolExecutor(
+                1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(32));
+        try (dispatcher; FairRuleExecutor rules = new FairRuleExecutor(1, 8, "trustee-rule-test")) {
+            MatchId matchId = MatchId.random();
+            TaskScheduler neverRuns = (task, delay) -> () -> true;
+            PersistenceOutbox outbox = new PersistenceOutbox(
+                    matchId, 0, new ImmediateStore(), neverRuns, Clock.systemUTC());
+            ManualScheduler deadlines = new ManualScheduler();
+            ArrayBlockingQueue<TableProjection> projections = new ArrayBlockingQueue<>(4);
+            TableActor actor = new TableActor(
+                    dispatcher,
+                    rules,
+                    new CounterProvider(),
+                    outbox,
+                    deadlines,
+                    projections::offer,
+                    TablePresentationCuePort.NONE,
+                    TableOpeningPresentationPort.NONE,
+                    true,
+                    new SecureActionTokenIssuer(),
+                    Clock.systemUTC(),
+                    TableActorConfig.DEFAULT,
+                    aggregate(matchId),
+                    new CounterState(0),
+                    0);
+            actor.start();
+            assertEquals(0, projections.poll(2, TimeUnit.SECONDS).revision());
+
+            TableActionResult enabled = actor.setAutomated(PLAYER, true)
+                    .toCompletableFuture()
+                    .get(2, TimeUnit.SECONDS);
+            assertEquals(TableActionCode.ACCEPTED_MEMORY, enabled.code());
+            assertEquals(0, projections.poll(2, TimeUnit.SECONDS).revision());
+            deadlines.awaitScheduled();
+            assertEquals(1, deadlines.pendingCount());
+
+            deadlines.runNext();
+            assertEquals(1, projections.poll(2, TimeUnit.SECONDS).revision());
+            actor.close();
+        }
+    }
+
+    @Test
+    void fixedBotStartsAutomatedWithoutReceivingAPlayerPrivateProjection() throws Exception {
+        ThreadPoolExecutor dispatcher = new ThreadPoolExecutor(
+                1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(32));
+        try (dispatcher; FairRuleExecutor rules = new FairRuleExecutor(1, 8, "bot-rule-test")) {
+            MatchId matchId = MatchId.random();
+            TaskScheduler neverRuns = (task, delay) -> () -> true;
+            PersistenceOutbox outbox = new PersistenceOutbox(
+                    matchId, 0, new ImmediateStore(), neverRuns, Clock.systemUTC());
+            ManualScheduler deadlines = new ManualScheduler();
+            ArrayBlockingQueue<TableProjection> projections = new ArrayBlockingQueue<>(4);
+            TableActor actor = new TableActor(
+                    dispatcher,
+                    rules,
+                    new CounterProvider(),
+                    outbox,
+                    deadlines,
+                    projections::offer,
+                    TablePresentationCuePort.NONE,
+                    TableOpeningPresentationPort.NONE,
+                    true,
+                    new SecureActionTokenIssuer(),
+                    Clock.systemUTC(),
+                    TableActorConfig.DEFAULT,
+                    aggregate(matchId, ParticipantRole.BOT),
+                    new CounterState(0),
+                    0);
+            actor.start();
+
+            TableProjection initial = projections.poll(2, TimeUnit.SECONDS);
+            assertNotNull(initial);
+            assertFalse(initial.authorizedActions().containsKey(PLAYER));
+            deadlines.awaitScheduled();
             deadlines.runNext();
             assertEquals(1, projections.poll(2, TimeUnit.SECONDS).revision());
             actor.close();
@@ -148,6 +238,9 @@ class TableActorTest {
                             outbox,
                             deadlines,
                             projections::offer,
+                            TablePresentationCuePort.NONE,
+                            TableOpeningPresentationPort.NONE,
+                            true,
                             new SecureActionTokenIssuer(),
                             Clock.systemUTC(),
                             TableActorConfig.DEFAULT,
@@ -199,6 +292,8 @@ class TableActorTest {
                         cues.offer(batch);
                         throw new IllegalStateException("sound backend unavailable");
                     },
+                    TableOpeningPresentationPort.NONE,
+                    true,
                     new SecureActionTokenIssuer(),
                     Clock.systemUTC(),
                     TableActorConfig.DEFAULT,
@@ -245,6 +340,9 @@ class TableActorTest {
                             outbox,
                             neverRuns,
                             ignored -> {},
+                            TablePresentationCuePort.NONE,
+                            TableOpeningPresentationPort.NONE,
+                            true,
                             new SecureActionTokenIssuer(),
                             Clock.systemUTC(),
                             new TableActorConfig(8, 1, 8),
@@ -294,6 +392,9 @@ class TableActorTest {
                             outbox,
                             (task, delay) -> () -> true,
                             projections::offer,
+                            TablePresentationCuePort.NONE,
+                            TableOpeningPresentationPort.NONE,
+                            true,
                             new SecureActionTokenIssuer(),
                             Clock.systemUTC(),
                             TableActorConfig.DEFAULT,
@@ -344,6 +445,9 @@ class TableActorTest {
                     outbox,
                     (task, delay) -> () -> true,
                     projections::offer,
+                    TablePresentationCuePort.NONE,
+                    TableOpeningPresentationPort.NONE,
+                    true,
                     new SecureActionTokenIssuer(),
                     Clock.systemUTC(),
                     new TableActorConfig(16, 8, 8, 1),
@@ -371,6 +475,10 @@ class TableActorTest {
     }
 
     private static TableAggregate aggregate(MatchId matchId) {
+        return aggregate(matchId, ParticipantRole.PLAYER);
+    }
+
+    private static TableAggregate aggregate(MatchId matchId, ParticipantRole role) {
         RulePackRef ref = new RulePackRef(new RuleId("riichi"), "1.0.0", "0".repeat(64), 1);
         MatchBinding binding =
                 new MatchBinding(
@@ -385,7 +493,7 @@ class TableActorTest {
                 TableLifecycle.ACTIVE,
                 List.of(
                         new TableParticipant(
-                                PLAYER, ParticipantRole.PLAYER, Optional.of(new top.ellan.mahjong.spi.SeatId(0)))),
+                                PLAYER, role, Optional.of(new top.ellan.mahjong.spi.SeatId(0)))),
                 Optional.of(binding),
                 CompetitionRef.none());
     }
@@ -464,6 +572,23 @@ class TableActorTest {
                     new RuleAction("increment", new byte[] {1}),
                     Duration.ZERO,
                     "initial-timeout"));
+        }
+
+        @Override
+        public Optional<ScheduledRuleAction> automatedAction(
+                RuleState state, List<AutomatedPlayerActions> candidates) {
+            if (candidates.isEmpty() || ((CounterState) state).value() != 0) {
+                return Optional.empty();
+            }
+            AutomatedPlayerActions candidate = candidates.getFirst();
+            if (candidate.legalActions().isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.of(new ScheduledRuleAction(
+                    candidate.actor(),
+                    candidate.legalActions().getFirst().action(),
+                    Duration.ZERO,
+                    "automation.counter"));
         }
 
         @Override

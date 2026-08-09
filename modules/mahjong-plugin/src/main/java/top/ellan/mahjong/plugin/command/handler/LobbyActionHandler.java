@@ -18,7 +18,7 @@ import top.ellan.mahjong.spi.SeatId;
 /** Player lobby actions; each delegates to the application actor facade. */
 public final class LobbyActionHandler implements SubcommandHandler {
     private static final Set<String> NAMES =
-            Set.of("join", "leave", "spectate", "unspectate", "ready", "start", "mode");
+            Set.of("join", "leave", "spectate", "unspectate", "ready", "bot", "start", "mode");
     private final CommandSupport support;
 
     public LobbyActionHandler(CommandSupport support) {
@@ -64,6 +64,16 @@ public final class LobbyActionHandler implements SubcommandHandler {
                         requireLength(arguments, 1, "Usage: /mahjong ready");
                         yield support.runtime().lobbyUseCases().toggleReady(actor);
                     }
+                    case "bot" -> {
+                        requireLength(arguments, 3, "Usage: /mahjong bot <add|remove> <seat>");
+                        SeatId target = seat(arguments[2]);
+                        yield switch (arguments[1].toLowerCase(Locale.ROOT)) {
+                            case "add" -> support.runtime().lobbyUseCases().addBot(actor, target);
+                            case "remove" -> support.runtime().lobbyUseCases().removeBot(actor, target);
+                            default -> throw new IllegalArgumentException(
+                                    "Usage: /mahjong bot <add|remove> <seat>");
+                        };
+                    }
                     case "start" -> {
                         requireLength(arguments, 1, "Usage: /mahjong start");
                         yield support.runtime().lobbyUseCases().start(actor);
@@ -96,6 +106,13 @@ public final class LobbyActionHandler implements SubcommandHandler {
             return CommandSupport.filter(arguments[1], List.of("riichi", "mcr", "sichuan"));
         }
         if (arguments.length == 3 && "join".equalsIgnoreCase(arguments[0])) {
+            return CommandSupport.filter(
+                    arguments[2], List.of("east", "south", "west", "north"));
+        }
+        if (arguments.length == 2 && "bot".equalsIgnoreCase(arguments[0])) {
+            return CommandSupport.filter(arguments[1], List.of("add", "remove"));
+        }
+        if (arguments.length == 3 && "bot".equalsIgnoreCase(arguments[0])) {
             return CommandSupport.filter(
                     arguments[2], List.of("east", "south", "west", "north"));
         }

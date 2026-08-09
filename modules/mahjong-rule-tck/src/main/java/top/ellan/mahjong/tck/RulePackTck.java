@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import top.ellan.mahjong.spi.ActionPlacement;
+import top.ellan.mahjong.spi.AutomatedPlayerActions;
 import top.ellan.mahjong.spi.LegalAction;
 import top.ellan.mahjong.spi.MatchPlayer;
 import top.ellan.mahjong.spi.PlayerId;
@@ -77,6 +78,10 @@ public final class RulePackTck {
         int legalActionCount = 0;
         PlayerId selectedActor = null;
         RuleAction selectedAction = null;
+        java.util.ArrayList<AutomatedPlayerActions> firstAutomationCandidates =
+                new java.util.ArrayList<>(testCase.setup().players().size());
+        java.util.ArrayList<AutomatedPlayerActions> secondAutomationCandidates =
+                new java.util.ArrayList<>(testCase.setup().players().size());
         for (MatchPlayer player : testCase.setup().players()) {
             PlayerId playerId = player.playerId();
             PrivateRuleView privateView =
@@ -98,6 +103,8 @@ public final class RulePackTck {
                     firstActions.stream().map(LegalAction::key).distinct().count()
                             == firstActions.size(),
                     "legal action keys are not unique for a player");
+            firstAutomationCandidates.add(new AutomatedPlayerActions(playerId, firstActions));
+            secondAutomationCandidates.add(new AutomatedPlayerActions(playerId, secondActions));
             verifyActionPresentation(firstActions, privateView, playerId);
             legalActionCount += firstActions.size();
             if (selectedAction == null && !firstActions.isEmpty()) {
@@ -121,6 +128,13 @@ public final class RulePackTck {
         check(initialHash.equals(checkedHash(provider.stateHash(first))),
                 "view or legal-action generation mutated the initial state");
         verifyScheduledAction(provider, testCase, first, second, initialHash);
+        verifyAutomatedAction(
+                provider,
+                first,
+                second,
+                firstAutomationCandidates,
+                secondAutomationCandidates,
+                initialHash);
         check(selectedAction != null, "fixture exposes no legal action");
 
         RuleTransition outsiderTransition = require(
@@ -238,6 +252,13 @@ public final class RulePackTck {
         check(
                 scheduled(provider, state).equals(scheduled(provider, restored)),
                 "snapshot restore changed the scheduled action");
+        check(
+                automated(provider, state, automationCandidates(provider, state, testCase))
+                        .equals(automated(
+                                provider,
+                                restored,
+                                automationCandidates(provider, restored, testCase))),
+                "snapshot restore changed the automated action");
         return first;
     }
 
@@ -287,6 +308,76 @@ public final class RulePackTck {
     private static Optional<ScheduledRuleAction> scheduled(
             RulePackProvider provider, RuleState state) {
         return require(provider.scheduledAction(state), "null scheduled-action optional");
+    }
+
+    private static void verifyAutomatedAction(
+            RulePackProvider provider,
+            RuleState first,
+            RuleState second,
+            List<AutomatedPlayerActions> firstCandidates,
+            List<AutomatedPlayerActions> secondCandidates,
+            String initialHash) {
+        check(
+                automated(provider, first, List.of()).isEmpty(),
+                "empty automation candidates produced an action");
+        Optional<ScheduledRuleAction> firstAutomated =
+                automated(provider, first, firstCandidates);
+        Optional<ScheduledRuleAction> secondAutomated =
+                automated(provider, second, secondCandidates);
+        check(firstAutomated.equals(secondAutomated), "automated action is not deterministic");
+        check(initialHash.equals(checkedHash(provider.stateHash(first))),
+                "automated-action generation mutated the state");
+        if (firstAutomated.isEmpty()) {
+            return;
+        }
+        ScheduledRuleAction automated = firstAutomated.orElseThrow();
+        AutomatedPlayerActions candidate = firstCandidates.stream()
+                .filter(value -> value.actor().equals(automated.actor()))
+                .findFirst()
+                .orElseThrow(() -> new RulePackContractViolation(
+                        "automated action uses an uncontrolled actor"));
+        check(
+                candidate.legalActions().stream()
+                        .anyMatch(action -> action.action().equals(automated.action())),
+                "automated action was not supplied as legal for its actor");
+        RuleTransition firstTransition = require(
+                provider.transition(first, automated.actor(), automated.action()),
+                "null automated transition");
+        RuleTransition repeatedTransition = require(
+                provider.transition(second, automated.actor(), automated.action()),
+                "null repeated automated transition");
+        check(firstTransition.accepted(), "automated action was rejected");
+        check(!firstTransition.events().isEmpty(), "automated action emitted no events");
+        check(
+                firstTransition.disposition() == repeatedTransition.disposition()
+                        && firstTransition.reasonCode().equals(repeatedTransition.reasonCode())
+                        && eventsEqual(firstTransition.events(), repeatedTransition.events())
+                        && checkedHash(provider.stateHash(firstTransition.nextState()))
+                                .equals(checkedHash(provider.stateHash(
+                                        repeatedTransition.nextState()))),
+                "automated transition is not deterministic");
+        check(initialHash.equals(checkedHash(provider.stateHash(first))),
+                "automated transition mutated its input state");
+    }
+
+    private static List<AutomatedPlayerActions> automationCandidates(
+            RulePackProvider provider, RuleState state, RulePackTckCase testCase) {
+        return testCase.setup().players().stream()
+                .map(player -> new AutomatedPlayerActions(
+                        player.playerId(),
+                        List.copyOf(require(
+                                provider.legalActions(state, player.playerId()),
+                                "null automation legal-action list"))))
+                .toList();
+    }
+
+    private static Optional<ScheduledRuleAction> automated(
+            RulePackProvider provider,
+            RuleState state,
+            List<AutomatedPlayerActions> candidates) {
+        return require(
+                provider.automatedAction(state, List.copyOf(candidates)),
+                "null automated-action optional");
     }
 
     private static void verifyUniqueViewObjects(List<RuleViewTile> tiles, String label) {

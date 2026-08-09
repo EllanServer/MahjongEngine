@@ -33,6 +33,14 @@ public record LobbySeat(
                 SeatPresence.ONLINE);
     }
 
+    public LobbySeat occupiedByReadyBot(PlayerId playerId) {
+        return new LobbySeat(
+                seatId,
+                Optional.of(Objects.requireNonNull(playerId, "playerId")),
+                true,
+                SeatPresence.ONLINE);
+    }
+
     public LobbySeat vacated() {
         return empty(seatId);
     }

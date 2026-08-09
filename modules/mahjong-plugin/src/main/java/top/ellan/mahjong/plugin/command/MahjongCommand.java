@@ -12,6 +12,7 @@ import org.bukkit.command.TabCompleter;
 import top.ellan.mahjong.plugin.MahjongPaperPlugin;
 import top.ellan.mahjong.plugin.MahjongRuntime;
 import top.ellan.mahjong.plugin.command.handler.LobbyActionHandler;
+import top.ellan.mahjong.plugin.command.handler.MatchAutomationHandler;
 import top.ellan.mahjong.plugin.command.handler.RulePackAdminHandler;
 import top.ellan.mahjong.plugin.command.handler.TableCreateHandler;
 import top.ellan.mahjong.plugin.command.handler.TableQueryHandler;
@@ -27,6 +28,7 @@ public final class MahjongCommand implements CommandExecutor, TabCompleter {
         LinkedHashMap<String, SubcommandHandler> routes = new LinkedHashMap<>();
         register(routes, new TableCreateHandler(support));
         register(routes, new LobbyActionHandler(support));
+        register(routes, new MatchAutomationHandler(support));
         register(routes, new TableQueryHandler(support));
         register(routes, new TableRemoveHandler(support));
         register(routes, new RulePackAdminHandler(support));
@@ -45,7 +47,7 @@ public final class MahjongCommand implements CommandExecutor, TabCompleter {
                 support.reply(sender, "MahjongPaper 2.0 - " + support.runtime().status());
                 support.reply(
                         sender,
-                        "/mahjong <create|join|leave|spectate|ready|start|mode|list|state|remove|rules>");
+                        "/mahjong <create|join|leave|spectate|ready|bot|start|mode|auto|list|state|remove|rules>");
                 return true;
             }
             SubcommandHandler handler =

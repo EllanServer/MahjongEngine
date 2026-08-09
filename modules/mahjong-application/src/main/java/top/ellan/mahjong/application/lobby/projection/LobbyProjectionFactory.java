@@ -40,11 +40,16 @@ public final class LobbyProjectionFactory {
         Map<PlayerId, PrivateRuleView> privateViews = new LinkedHashMap<>();
         Map<PlayerId, List<AuthorizedAction>> actionsByPlayer = new LinkedHashMap<>();
         int ready = 0;
+        int bots = 0;
         for (LobbySeat seat : state.seats()) {
             if (seat.ready()) {
                 ready++;
             }
             if (seat.occupant().isEmpty()) {
+                continue;
+            }
+            if (state.isBotSeat(seat)) {
+                bots++;
                 continue;
             }
             PlayerId player = seat.occupant().orElseThrow();
@@ -95,6 +100,7 @@ public final class LobbyProjectionFactory {
         attributes.put("profile", state.profileId().value());
         attributes.put("occupied", Integer.toString(state.occupiedSeatCount()));
         attributes.put("ready", Integer.toString(ready));
+        attributes.put("bots", Integer.toString(bots));
         attributes.put("spectators", Integer.toString(state.spectators().size()));
         PublicRuleView publicView =
                 new PublicRuleView(

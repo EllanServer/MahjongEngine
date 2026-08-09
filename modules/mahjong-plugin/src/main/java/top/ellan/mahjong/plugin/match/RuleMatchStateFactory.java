@@ -12,7 +12,6 @@ import java.util.Map;
 import java.util.Objects;
 import top.ellan.mahjong.domain.match.MatchBinding;
 import top.ellan.mahjong.domain.match.MatchId;
-import top.ellan.mahjong.domain.table.ParticipantRole;
 import top.ellan.mahjong.spi.MatchPlayer;
 import top.ellan.mahjong.spi.MatchSetup;
 import top.ellan.mahjong.spi.RulePackProvider;
@@ -34,9 +33,7 @@ final class RuleMatchStateFactory {
                         command.profileId(),
                         command.seed(),
                         command.participants().stream()
-                                .filter(
-                                        participant ->
-                                                participant.role() == ParticipantRole.PLAYER)
+                                .filter(participant -> participant.seat().isPresent())
                                 .sorted(
                                         Comparator.comparing(
                                                 participant ->

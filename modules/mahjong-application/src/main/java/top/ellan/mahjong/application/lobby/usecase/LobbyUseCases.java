@@ -53,6 +53,20 @@ public final class LobbyUseCases {
                 : hosted.actor().command(new LobbyCommand.ToggleReady(actor));
     }
 
+    public CompletionStage<TableActionResult> addBot(PlayerId actor, SeatId seatId) {
+        HostedLobby hosted = lobbies.findByPlayer(actor).orElse(null);
+        return hosted == null
+                ? rejected("not-in-lobby")
+                : hosted.actor().command(new LobbyCommand.AddBot(actor, seatId));
+    }
+
+    public CompletionStage<TableActionResult> removeBot(PlayerId actor, SeatId seatId) {
+        HostedLobby hosted = lobbies.findByPlayer(actor).orElse(null);
+        return hosted == null
+                ? rejected("not-in-lobby")
+                : hosted.actor().command(new LobbyCommand.RemoveBot(actor, seatId));
+    }
+
     public CompletionStage<TableActionResult> start(PlayerId actor) {
         HostedLobby hosted = lobbies.findByPlayer(actor).orElse(null);
         return hosted == null

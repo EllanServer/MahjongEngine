@@ -17,6 +17,7 @@ import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 import top.ellan.mahjong.application.interaction.InteractionHandle;
+import top.ellan.mahjong.application.automation.PlayerPresencePort;
 import top.ellan.mahjong.application.interaction.InteractionRouter;
 import top.ellan.mahjong.application.table.TableActionCode;
 import top.ellan.mahjong.application.table.TableActionResult;
@@ -32,6 +33,7 @@ public final class CraftEngineInteractionListener implements Listener {
     private final InteractionRouter router;
     private final InteractionFeedback feedback;
     private final SeatInteractionPort seats;
+    private final PlayerPresencePort playerPresence;
     private final CraftEngineSeatResolver seatResolver;
     private final NamespacedKey managedKey;
     private final NamespacedKey tableKey;
@@ -43,6 +45,7 @@ public final class CraftEngineInteractionListener implements Listener {
             InteractionRouter router,
             InteractionFeedback feedback,
             SeatInteractionPort seats,
+            PlayerPresencePort playerPresence,
             NamespacedKey managedKey,
             NamespacedKey tableKey,
             NamespacedKey nodeKey,
@@ -51,6 +54,7 @@ public final class CraftEngineInteractionListener implements Listener {
         this.router = Objects.requireNonNull(router, "router");
         this.feedback = Objects.requireNonNull(feedback, "feedback");
         this.seats = Objects.requireNonNull(seats, "seats");
+        this.playerPresence = Objects.requireNonNull(playerPresence, "playerPresence");
         seatResolver = new CraftEngineSeatResolver();
         this.managedKey = Objects.requireNonNull(managedKey, "managedKey");
         this.tableKey = Objects.requireNonNull(tableKey, "tableKey");
@@ -92,11 +96,13 @@ public final class CraftEngineInteractionListener implements Listener {
         PlayerId playerId = new PlayerId(event.getPlayer().getUniqueId());
         router.clearPlayer(playerId);
         seats.disconnected(playerId);
+        playerPresence.disconnected(playerId);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onJoin(PlayerJoinEvent event) {
         seats.connected(new PlayerId(event.getPlayer().getUniqueId()));
+        playerPresence.connected(new PlayerId(event.getPlayer().getUniqueId()));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

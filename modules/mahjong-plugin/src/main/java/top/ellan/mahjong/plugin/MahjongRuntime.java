@@ -35,6 +35,7 @@ import top.ellan.mahjong.plugin.config.PluginConfiguration;
 import top.ellan.mahjong.plugin.lobby.LobbyRuntimeCoordinator;
 import top.ellan.mahjong.plugin.lobby.LobbyRuntimeServices;
 import top.ellan.mahjong.plugin.match.NewRulePackMatch;
+import top.ellan.mahjong.plugin.match.MatchAutomationService;
 import top.ellan.mahjong.plugin.match.RulePackMatchCoordinator;
 import top.ellan.mahjong.plugin.match.StartedRulePackMatch;
 import top.ellan.mahjong.plugin.platform.CraftEnginePlatformRuntime;
@@ -59,6 +60,7 @@ public final class MahjongRuntime implements AutoCloseable {
     private final BoundedDeadlineScheduler deadlines;
     private final TableActorRegistry actors = new TableActorRegistry();
     private final LiveTableDirectory liveTables = new LiveTableDirectory();
+    private final MatchAutomationService automation = new MatchAutomationService(liveTables);
     private final CraftEnginePlatformRuntime platform;
     private final LobbyRuntimeCoordinator lobbyRuntime;
     private final MatchRecoveryService recovery;
@@ -105,7 +107,7 @@ public final class MahjongRuntime implements AutoCloseable {
                         executors.io(),
                         clock,
                         plugin.getLogger());
-        platform.start(lobbyRuntime.seatInteractions());
+        platform.start(lobbyRuntime.seatInteractions(), automation);
     }
 
     public void start() {
@@ -154,6 +156,11 @@ public final class MahjongRuntime implements AutoCloseable {
 
     public LobbyUseCases lobbyUseCases() {
         return lobbyRuntime.useCases();
+    }
+
+    public CompletionStage<top.ellan.mahjong.application.table.TableActionResult> setAutomation(
+            top.ellan.mahjong.spi.PlayerId playerId, boolean enabled) {
+        return automation.setAutomated(playerId, enabled);
     }
 
     public CompletionStage<HostedLobby> createLobby(
@@ -321,9 +328,26 @@ public final class MahjongRuntime implements AutoCloseable {
                             initialized.coordinator().orElseThrow())
                     .toCompletableFuture()
                     .join();
+            reconcileRecoveredAutomation();
         } else {
             database.matches().ifPresent(recovery::blockRecoverableMatches);
         }
+    }
+
+    /** One startup pass only; runtime connection changes use O(1) player-to-table routing. */
+    private void reconcileRecoveredAutomation() {
+        liveTables.list().forEach(match -> match.participants().stream()
+                .filter(participant ->
+                        participant.role()
+                                        == top.ellan.mahjong.domain.table.ParticipantRole.PLAYER
+                                && participant.seat().isPresent())
+                .forEach(participant -> {
+                    if (plugin.getServer().getPlayer(participant.playerId().value()) == null) {
+                        automation.disconnected(participant.playerId());
+                    } else {
+                        automation.connected(participant.playerId());
+                    }
+                }));
     }
 
     private void updateReadyState(Optional<RulePackMatchCoordinator> coordinator) {

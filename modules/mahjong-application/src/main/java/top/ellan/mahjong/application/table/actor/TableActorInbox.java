@@ -18,10 +18,13 @@ import top.ellan.mahjong.spi.ScheduledRuleAction;
  */
 final class TableActorInbox {
     private static final int SCHEDULED_TRIGGER_CAPACITY = 4;
+    private static final int AUTOMATION_CONTROL_CAPACITY = 8;
 
     private final ArrayBlockingQueue<TableActionEnvelope> actions;
     private final ArrayBlockingQueue<ScheduledActionTrigger> scheduledTriggers =
             new ArrayBlockingQueue<>(SCHEDULED_TRIGGER_CAPACITY);
+    private final ArrayBlockingQueue<AutomationControlEnvelope> automationControls =
+            new ArrayBlockingQueue<>(AUTOMATION_CONTROL_CAPACITY);
     private final AtomicLong ingressOrder = new AtomicLong();
     private final AtomicReference<RuleTaskCompletion> ruleCompletion = new AtomicReference<>();
     private final AtomicReference<OutboxHealth> outboxHealth = new AtomicReference<>();
@@ -52,20 +55,36 @@ final class TableActorInbox {
         return accepted;
     }
 
+    boolean offerAutomation(
+            PlayerId playerId,
+            boolean enabled,
+            java.util.concurrent.CompletableFuture<TableActionResult> response) {
+        return automationControls.offer(new AutomationControlEnvelope(
+                ingressOrder.getAndIncrement(), playerId, enabled, response));
+    }
+
     TableIngress pollIngress() {
         TableActionEnvelope action = actions.peek();
         ScheduledActionTrigger scheduled = scheduledTriggers.peek();
-        if (action == null) {
-            return scheduledTriggers.poll();
-        }
-        if (scheduled == null || action.ingressOrder() <= scheduled.ingressOrder()) {
+        AutomationControlEnvelope automation = automationControls.peek();
+        long actionOrder = action == null ? Long.MAX_VALUE : action.ingressOrder();
+        long scheduledOrder = scheduled == null ? Long.MAX_VALUE : scheduled.ingressOrder();
+        long automationOrder = automation == null ? Long.MAX_VALUE : automation.ingressOrder();
+        if (actionOrder <= scheduledOrder && actionOrder <= automationOrder) {
             return actions.poll();
+        }
+        if (automationOrder <= scheduledOrder) {
+            return automationControls.poll();
         }
         return scheduledTriggers.poll();
     }
 
     TableActionEnvelope pollActionForClose() {
         return actions.poll();
+    }
+
+    AutomationControlEnvelope pollAutomationForClose() {
+        return automationControls.poll();
     }
 
     void clearScheduledTriggers() {
@@ -116,7 +135,7 @@ final class TableActorInbox {
     }
 
     int actionCount() {
-        return actions.size();
+        return actions.size() + automationControls.size();
     }
 
     boolean hasPendingWork() {
@@ -125,6 +144,7 @@ final class TableActorInbox {
                 || ruleCompletion.get() != null
                 || outboxHealth.get() != null
                 || !actions.isEmpty()
+                || !automationControls.isEmpty()
                 || !scheduledTriggers.isEmpty();
     }
 }

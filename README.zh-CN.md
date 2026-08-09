@@ -16,6 +16,7 @@ MahjongPaper 2.0 是一个面向 Paper/Folia 的麻将核心插件。核心不�
 - 平台无关 `SceneGraph`、只保留最新帧的异步预计算，以及按 Folia region 公平应用的 CraftEngine 差分。
 - CraftEngine 配置负责桌体、座椅、麻将牌姿态、碰撞、交互 hitbox、entity culling 和骰子槽位/face variant；Java 不重复实现这些资产行为，同一骰子只原地切 variant。
 - 暗手牌面只通过 Sparrow 客户端假实体发送给授权玩家，不创建含秘密信息的世界实体。
+- 大厅可加入可恢复的通用机器人；掉线和 `/mahjong auto` 复用每桌唯一单次任务，日麻、MCR、四川的出牌策略分别由对应规则包实现。
 
 已经删除并由架构哨兵禁止重新引入：
 
@@ -59,7 +60,10 @@ Paper / CraftEngine event
 
 核心命令：
 
-- `/mahjong create <riichi|mcr|sichuan> <profile> <p2> <p3> <p4>`
+- `/mahjong create <riichi|mcr|sichuan> [profile]`
+- `/mahjong join <table-id> <seat>`、`/mahjong ready`、`/mahjong start`
+- `/mahjong bot <add|remove> <seat>`
+- `/mahjong auto <on|off>`
 - `/mahjong list`
 - `/mahjong state [table-id]`
 - `/mahjong remove <table-id>`

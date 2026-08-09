@@ -22,6 +22,8 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.application.concurrent.BoundedDeadlineScheduler;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
+import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
+import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.persistence.EventStorePort;
 import top.ellan.mahjong.application.persistence.MatchWriteBatch;
 import top.ellan.mahjong.application.persistence.PersistAck;
@@ -104,6 +106,9 @@ class TableActorIsolationStressTest {
                         outbox,
                         deadlines,
                         firstProjection::complete,
+                        TablePresentationCuePort.NONE,
+                        TableOpeningPresentationPort.NONE,
+                        true,
                         new SecureActionTokenIssuer(),
                         Clock.systemUTC(),
                         TableActorConfig.DEFAULT,

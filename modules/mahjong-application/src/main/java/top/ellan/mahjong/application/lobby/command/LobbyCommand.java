@@ -15,6 +15,8 @@ public sealed interface LobbyCommand
                 LobbyCommand.Spectate,
                 LobbyCommand.Unspectate,
                 LobbyCommand.ToggleReady,
+                LobbyCommand.AddBot,
+                LobbyCommand.RemoveBot,
                 LobbyCommand.Start,
                 LobbyCommand.ChangeRules,
                 LobbyCommand.SetPresence {
@@ -48,6 +50,20 @@ public sealed interface LobbyCommand
     record ToggleReady(PlayerId actor) implements LobbyCommand {
         public ToggleReady {
             Objects.requireNonNull(actor, "actor");
+        }
+    }
+
+    record AddBot(PlayerId actor, SeatId seatId) implements LobbyCommand {
+        public AddBot {
+            Objects.requireNonNull(actor, "actor");
+            Objects.requireNonNull(seatId, "seatId");
+        }
+    }
+
+    record RemoveBot(PlayerId actor, SeatId seatId) implements LobbyCommand {
+        public RemoveBot {
+            Objects.requireNonNull(actor, "actor");
+            Objects.requireNonNull(seatId, "seatId");
         }
     }
 
