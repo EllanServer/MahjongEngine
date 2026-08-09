@@ -12,4 +12,5 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:1.20.1-R0.1-SNAPSHOT")
     compileOnly("net.momirealms:sparrow-heart:0.72")
     compileOnly("net.momirealms:sparrow-reflection:0.33")
+    testImplementation("io.papermc.paper:paper-api:1.20.1-R0.1-SNAPSHOT")
 }
