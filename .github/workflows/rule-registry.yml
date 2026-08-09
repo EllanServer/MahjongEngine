@@ -1,0 +1,186 @@
+name: Publish signed rule registry
+
+on:
+  workflow_dispatch:
+    inputs:
+      registry_tag:
+        description: New immutable tag, for example rule-registry-v2026.08.09.1
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RULE_PACK_PRIVATE_KEY: ${{ secrets.MAHJONG_RULE_PACK_ED25519_PRIVATE_KEY_PKCS8_BASE64 }}
+      RULE_PACK_PUBLIC_KEY: ${{ vars.MAHJONG_RULE_PACK_PUBLIC_KEY_BASE64 }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Require a new tag and configured signing keys
+        shell: bash
+        env:
+          REGISTRY_TAG: ${{ inputs.registry_tag }}
+        run: |
+          set -euo pipefail
+          [[ "$REGISTRY_TAG" =~ ^rule-registry-v[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]+$ ]]
+          test -n "$RULE_PACK_PRIVATE_KEY"
+          test -n "$RULE_PACK_PUBLIC_KEY"
+          if gh release view "$REGISTRY_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Registry release already exists: $REGISTRY_TAG" >&2
+            exit 1
+          fi
+      - name: Collect every stable official rule-pack release entry
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p registry-entries
+          for pair in \
+            'riichi:riichi-mahjong-java' \
+            'mcr:mahjong-mcr-java' \
+            'sichuan:sichuan-mahjong-java'
+          do
+            rule_id="${pair%%:*}"
+            repository="${pair#*:}"
+            mapfile -t tags < <(
+              gh release list \
+                --repo "EllanServer/$repository" \
+                --limit 100 \
+                --json tagName,isDraft,isPrerelease \
+                --jq '.[] | select(.isDraft == false and .isPrerelease == false) | .tagName'
+            )
+            test "${#tags[@]}" -gt 0
+            for tag in "${tags[@]}"; do
+              target="registry-entries/$rule_id-${tag#v}.json"
+              temporary="$(mktemp -d)"
+              gh release download "$tag" \
+                --repo "EllanServer/$repository" \
+                --pattern registry-entry.json \
+                --dir "$temporary"
+              mv "$temporary/registry-entry.json" "$target"
+              rmdir "$temporary"
+            done
+          done
+      - name: Verify entries and their downloadable JAR bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime
+          import hashlib
+          import json
+          import pathlib
+          import re
+          import urllib.parse
+          import urllib.request
+
+          expected_repositories = {
+              "riichi": "riichi-mahjong-java",
+              "mcr": "mahjong-mcr-java",
+              "sichuan": "sichuan-mahjong-java",
+          }
+          exact_keys = {
+              "id", "version", "url", "sha256", "spiVersion",
+              "requiredCoreVersion", "sizeBytes",
+          }
+          entries = []
+          coordinates = set()
+          seen_ids = set()
+          for path in sorted(pathlib.Path("registry-entries").glob("*.json")):
+              entry = json.loads(path.read_text(encoding="utf-8"))
+              if set(entry) != exact_keys:
+                  raise SystemExit(f"unexpected fields in {path}: {set(entry)}")
+              rule_id = entry["id"]
+              if rule_id not in expected_repositories:
+                  raise SystemExit(f"unofficial rule id in {path}: {rule_id}")
+              version = entry["version"]
+              if not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z._+-]{0,63}", version):
+                  raise SystemExit(f"invalid version in {path}")
+              coordinate = (rule_id, version)
+              if coordinate in coordinates:
+                  raise SystemExit(f"duplicate coordinate: {coordinate}")
+              coordinates.add(coordinate)
+              seen_ids.add(rule_id)
+              if entry["spiVersion"] != "1.0.0":
+                  raise SystemExit(f"unsupported SPI version in {path}")
+              if not isinstance(entry["sizeBytes"], int) or not 1 <= entry["sizeBytes"] <= 64 * 1024 * 1024:
+                  raise SystemExit(f"invalid size in {path}")
+              if not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]):
+                  raise SystemExit(f"invalid SHA-256 in {path}")
+              parsed = urllib.parse.urlparse(entry["url"])
+              expected_prefix = f"/EllanServer/{expected_repositories[rule_id]}/releases/download/v{version}/"
+              if parsed.scheme != "https" or parsed.netloc != "github.com" or not parsed.path.startswith(expected_prefix):
+                  raise SystemExit(f"unexpected artifact URL in {path}: {entry['url']}")
+              request = urllib.request.Request(entry["url"], headers={"User-Agent": "MahjongEngine-registry-builder"})
+              digest = hashlib.sha256()
+              total = 0
+              with urllib.request.urlopen(request, timeout=120) as response:
+                  while chunk := response.read(65536):
+                      total += len(chunk)
+                      if total > 64 * 1024 * 1024:
+                          raise SystemExit(f"artifact too large: {entry['url']}")
+                      digest.update(chunk)
+              if total != entry["sizeBytes"] or digest.hexdigest() != entry["sha256"]:
+                  raise SystemExit(f"artifact bytes differ from {path}")
+              entries.append(entry)
+
+          if seen_ids != set(expected_repositories):
+              raise SystemExit(f"registry must include all official ids; got {seen_ids}")
+          generated = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+          payload = {"format": 1, "generatedAt": generated, "packs": sorted(entries, key=lambda item: (item["id"], item["version"]))}
+          pathlib.Path("registry-payload.json").write_text(
+              json.dumps(payload, ensure_ascii=True, separators=(",", ":")),
+              encoding="utf-8",
+              newline="\n",
+          )
+          PY
+      - name: Sign the raw registry payload with Ed25519
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$RULE_PACK_PRIVATE_KEY" | base64 --decode > signing-key.der
+          openssl pkey -inform DER -in signing-key.der -out signing-key.pem
+          DERIVED_PUBLIC="$(openssl pkey -in signing-key.pem -pubout -outform DER | base64 -w0)"
+          test "$DERIVED_PUBLIC" = "$RULE_PACK_PUBLIC_KEY"
+          openssl pkeyutl -sign -rawin \
+            -inkey signing-key.pem \
+            -in registry-payload.json \
+            -out registry-signature.bin
+          printf '%s' "$RULE_PACK_PUBLIC_KEY" | base64 --decode > verification-key.der
+          openssl pkey -pubin -inform DER -in verification-key.der -out verification-key.pem
+          openssl pkeyutl -verify -rawin -pubin \
+            -inkey verification-key.pem \
+            -in registry-payload.json \
+            -sigfile registry-signature.bin
+          PAYLOAD_B64="$(base64 -w0 registry-payload.json)"
+          SIGNATURE_B64="$(base64 -w0 registry-signature.bin)"
+          export PAYLOAD_B64 SIGNATURE_B64
+          python3 - <<'PY'
+          import json, os, pathlib
+          envelope = {
+              "format": 1,
+              "payload": os.environ["PAYLOAD_B64"],
+              "signature": os.environ["SIGNATURE_B64"],
+          }
+          pathlib.Path("registry.json").write_text(
+              json.dumps(envelope, ensure_ascii=True, separators=(",", ":")) + "\n",
+              encoding="ascii",
+              newline="\n",
+          )
+          PY
+          rm -f signing-key.der signing-key.pem verification-key.der verification-key.pem registry-signature.bin
+      - name: Publish immutable signed registry release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.registry_tag }}
+          generate_release_notes: false
+          body: |
+            Signed official MahjongPaper rule-pack registry.
+            Configure `rules.registry-url` with this release's `registry.json` asset URL.
+          files: |
+            registry.json
+            registry-payload.json

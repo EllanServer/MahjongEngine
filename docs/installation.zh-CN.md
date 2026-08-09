@@ -35,3 +35,5 @@ plugins/MahjongPaper/rules/
 ```
 
 规则升级、激活与回滚都要求重启；进行中的比赛始终绑定原来的版本和 SHA-256。
+
+正式 Release 工作流要求 GitHub Actions repository variable `MAHJONG_RULE_PACK_PUBLIC_KEY_BASE64`，其值必须是 Ed25519 X.509 公钥 DER 的 Base64。变量缺失、格式错误或最终 JAR 内嵌值不一致都会直接阻止发布。签名私钥不得进入源码或构建日志。

@@ -29,6 +29,15 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v6
       - run: chmod +x ./gradlew
+      - name: Require the official rule-pack trust root
+        shell: bash
+        env:
+          RULE_PACK_PUBLIC_KEY: ${{ vars.MAHJONG_RULE_PACK_PUBLIC_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$RULE_PACK_PUBLIC_KEY"
+          printf '%s' "$RULE_PACK_PUBLIC_KEY" | base64 --decode > rule-pack-public-key.der
+          openssl pkey -pubin -inform DER -in rule-pack-public-key.der -noout
       - name: Validate immutable release version
         id: metadata
         shell: bash
@@ -42,6 +51,8 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
       - name: Verify and build once
         run: ./gradlew clean check :mahjong-plugin:shadowJar --no-daemon --stacktrace
+        env:
+          MAHJONG_RULE_PACK_PUBLIC_KEY_BASE64: ${{ vars.MAHJONG_RULE_PACK_PUBLIC_KEY_BASE64 }}
       - name: Select release artifact
         id: artifact
         shell: bash
@@ -50,6 +61,14 @@ jobs:
           JAR="$(find modules/mahjong-plugin/build/libs -maxdepth 1 -name '*.jar' ! -name '*-dev.jar' ! -name '*-sources.jar' -print -quit)"
           test -n "$JAR"
           echo "jar=$JAR" >> "$GITHUB_OUTPUT"
+      - name: Verify embedded trust root
+        shell: bash
+        env:
+          RULE_PACK_PUBLIC_KEY: ${{ vars.MAHJONG_RULE_PACK_PUBLIC_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          EMBEDDED="$(unzip -p '${{ steps.artifact.outputs.jar }}' META-INF/mahjong-rule-trust-root.txt | tr -d '\r\n')"
+          test "$EMBEDDED" = "$RULE_PACK_PUBLIC_KEY"
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
