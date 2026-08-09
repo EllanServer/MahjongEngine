@@ -61,6 +61,8 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
             if (diff.toRevision() > table.desiredRevision) {
                 table.failed = false;
             }
+            table.bindingsInstalled = false;
+            interactions.replaceBindings(diff.tableId(), List.of());
             for (SceneNodeId removal : diff.removals()) {
                 table.desired.remove(removal);
                 table.dirty.add(removal);
@@ -71,6 +73,7 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
             }
             if (table.desired.size() > config.maxNodesPerTable()) {
                 table.failed = true;
+                table.desiredRevision = diff.toRevision();
                 failureSink.accept(
                         new CraftEngineTableFailure(
                                 diff.tableId(), diff.toRevision(), "scene-node-capacity"));
@@ -86,9 +89,9 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
                                                     binding.playerId(),
                                                     binding.actionToken()))
                             .toList();
-            interactions.replaceBindings(diff.tableId(), table.bindings);
         }
         markReady(diff.tableId(), table);
+        installBindingsIfReady(diff.tableId(), table);
     }
 
     /** Called only after CraftEngineReloadEvent confirms the atomically installed bundle is live. */
@@ -102,6 +105,9 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
                         table.actual.clear();
                         table.dirty.addAll(table.forced);
                         table.failed = false;
+                        table.applyEpoch++;
+                        table.bindingsInstalled = false;
+                        interactions.replaceBindings(tableId, List.of());
                     }
                     markReady(tableId, table);
                 });
@@ -123,8 +129,14 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
                 region.scheduled = false;
             }
         });
-        tables.keySet().forEach(
-                tableId -> interactions.replaceBindings(tableId, List.of()));
+        tables.forEach(
+                (tableId, table) -> {
+                    synchronized (table) {
+                        table.applyEpoch++;
+                        table.bindingsInstalled = false;
+                        interactions.replaceBindings(tableId, List.of());
+                    }
+                });
     }
 
     public boolean ready() {
@@ -141,6 +153,7 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
             table.failed = false;
             table.desired.clear();
             table.dirty.addAll(table.actual.keySet());
+            table.bindingsInstalled = false;
             interactions.replaceBindings(tableId, List.of());
         }
         markReady(tableId, table);
@@ -243,6 +256,7 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
                 }
                 Mutation mutation = nextMutation(table);
                 if (mutation == null) {
+                    installBindingsIfReady(tableId, table);
                     finishClosedTable(tableId, table);
                     continue;
                 }
@@ -276,7 +290,7 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
                     iterator.remove();
                     continue;
                 }
-                return new Mutation(id, desired);
+                return new Mutation(id, desired, table.applyEpoch);
             }
             return null;
         }
@@ -290,17 +304,27 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
                 gateway.upsert(tableId, mutation.desired());
             }
             synchronized (table) {
+                if (mutation.applyEpoch() != table.applyEpoch) {
+                    return true;
+                }
                 if (mutation.desired() == null) {
                     table.actual.remove(mutation.id());
                 } else {
                     table.actual.put(mutation.id(), mutation.desired());
                 }
-                table.dirty.remove(mutation.id());
                 table.forced.remove(mutation.id());
+                if (Objects.equals(table.desired.get(mutation.id()), mutation.desired())) {
+                    table.dirty.remove(mutation.id());
+                } else {
+                    table.dirty.add(mutation.id());
+                }
             }
             return true;
         } catch (RuntimeException failure) {
             synchronized (table) {
+                if (mutation.applyEpoch() != table.applyEpoch) {
+                    return true;
+                }
                 table.failed = true;
             }
             failureSink.accept(
@@ -336,10 +360,25 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
     }
 
     private void finishClosedTable(TableId tableId, TableState table) {
+        installBindingsIfReady(tableId, table);
         synchronized (table) {
             if (table.closed && table.actual.isEmpty() && table.dirty.isEmpty()) {
                 tables.remove(tableId, table);
             }
+        }
+    }
+
+    private void installBindingsIfReady(TableId tableId, TableState table) {
+        synchronized (table) {
+            if (!ready.get()
+                    || table.closed
+                    || table.failed
+                    || !table.dirty.isEmpty()
+                    || table.bindingsInstalled) {
+                return;
+            }
+            interactions.replaceBindings(tableId, table.bindings);
+            table.bindingsInstalled = true;
         }
     }
 
@@ -353,6 +392,8 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
         private boolean regionQueued;
         private boolean failed;
         private boolean closed;
+        private boolean bindingsInstalled;
+        private long applyEpoch;
     }
 
     private static final class RegionState {
@@ -360,5 +401,5 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
         private boolean scheduled;
     }
 
-    private record Mutation(SceneNodeId id, SceneNode desired) {}
+    private record Mutation(SceneNodeId id, SceneNode desired, long applyEpoch) {}
 }

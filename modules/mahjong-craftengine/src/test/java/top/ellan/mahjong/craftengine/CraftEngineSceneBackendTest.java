@@ -9,16 +9,21 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import top.ellan.mahjong.application.InteractionHandle;
 import top.ellan.mahjong.application.InteractionRouter;
 import top.ellan.mahjong.application.TableActorRegistry;
 import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.presentation.SceneInteractionBinding;
 import top.ellan.mahjong.presentation.FurnitureNode;
 import top.ellan.mahjong.presentation.SceneDiff;
 import top.ellan.mahjong.presentation.SceneNode;
 import top.ellan.mahjong.presentation.SceneNodeId;
 import top.ellan.mahjong.presentation.SceneTransform;
 import top.ellan.mahjong.presentation.SceneVisibility;
+import top.ellan.mahjong.spi.ActionToken;
+import top.ellan.mahjong.spi.PlayerId;
 
 class CraftEngineSceneBackendTest {
     private static final RegionKey REGION = new RegionKey("world", 0, 0);
@@ -123,17 +128,145 @@ class CraftEngineSceneBackendTest {
         assertFalse(gateway.live.getOrDefault(table, Map.of()).containsKey(node));
     }
 
+    @Test
+    void interactionTokensOpenOnlyAfterTheirSceneRevisionIsApplied() {
+        ManualRegionScheduler scheduler = new ManualRegionScheduler();
+        RecordingGateway gateway = new RecordingGateway();
+        InteractionRouter interactions = new InteractionRouter(new TableActorRegistry());
+        CraftEngineSceneBackend backend =
+                backend(gateway, scheduler, interactions, ignored -> {});
+        TableId table = TableId.random();
+        PlayerId player = new PlayerId(UUID.randomUUID());
+        InteractionHandle handle = new InteractionHandle(UUID.randomUUID());
+        SceneDiff initial = withBinding(diff(table, 1), handle, player, 1);
+
+        backend.submit(initial);
+        assertEquals(0, interactions.routeCount());
+        backend.onCraftEngineReloaded();
+        assertEquals(0, interactions.routeCount());
+
+        scheduler.runUntilIdle(REGION, 4);
+        assertEquals(1, interactions.routeCount());
+
+        SceneNode changed =
+                new FurnitureNode(
+                        new SceneNodeId("tile/0"),
+                        SceneVisibility.publicToAll(),
+                        "mahjong:tile/back",
+                        new SceneTransform(2, 0, 0, 0, 0, 0, 1));
+        SceneDiff next =
+                new SceneDiff(
+                        table,
+                        1,
+                        2,
+                        List.of(),
+                        List.of(changed),
+                        List.of(
+                                new SceneInteractionBinding(
+                                        handle,
+                                        player,
+                                        new ActionToken(UUID.randomUUID(), player, 2))));
+
+        backend.submit(next);
+        assertEquals(0, interactions.routeCount());
+
+        scheduler.runUntilIdle(REGION, 4);
+        assertEquals(1, interactions.routeCount());
+    }
+
+    @Test
+    void newerSceneSubmittedDuringMutationCannotBeClearedByTheOlderResult() {
+        ManualRegionScheduler scheduler = new ManualRegionScheduler();
+        RecordingGateway gateway = new RecordingGateway();
+        CraftEngineSceneBackend backend = backend(gateway, scheduler, ignored -> {});
+        TableId table = TableId.random();
+        SceneNodeId nodeId = new SceneNodeId("tile/0");
+        SceneNode newest =
+                new FurnitureNode(
+                        nodeId,
+                        SceneVisibility.publicToAll(),
+                        "mahjong:tile/back",
+                        new SceneTransform(3, 0, 0, 0, 0, 0, 1));
+        gateway.duringFirstUpsert =
+                () ->
+                        backend.submit(
+                                new SceneDiff(
+                                        table,
+                                        1,
+                                        2,
+                                        List.of(),
+                                        List.of(newest),
+                                        List.of()));
+
+        backend.submit(diff(table, 1));
+        backend.onCraftEngineReloaded();
+        scheduler.runUntilIdle(REGION, 4);
+
+        assertEquals(2, gateway.upserted.getOrDefault(table, 0));
+        assertEquals(newest, gateway.live.getOrDefault(table, Map.of()).get(nodeId));
+    }
+
+    @Test
+    void failedCraftEngineRevisionNeverOpensItsInteractionTokens() {
+        ManualRegionScheduler scheduler = new ManualRegionScheduler();
+        RecordingGateway gateway = new RecordingGateway();
+        InteractionRouter interactions = new InteractionRouter(new TableActorRegistry());
+        CraftEngineSceneBackend backend =
+                backend(gateway, scheduler, interactions, ignored -> {});
+        TableId table = TableId.random();
+        PlayerId player = new PlayerId(UUID.randomUUID());
+        gateway.broken = table;
+
+        backend.submit(
+                withBinding(
+                        diff(table, 1),
+                        new InteractionHandle(UUID.randomUUID()),
+                        player,
+                        1));
+        backend.onCraftEngineReloaded();
+        scheduler.runUntilIdle(REGION, 4);
+
+        assertEquals(0, interactions.routeCount());
+    }
+
     private static CraftEngineSceneBackend backend(
             RecordingGateway gateway,
             ManualRegionScheduler scheduler,
+            java.util.function.Consumer<CraftEngineTableFailure> failures) {
+        return backend(
+                gateway,
+                scheduler,
+                new InteractionRouter(new TableActorRegistry()),
+                failures);
+    }
+
+    private static CraftEngineSceneBackend backend(
+            RecordingGateway gateway,
+            ManualRegionScheduler scheduler,
+            InteractionRouter interactions,
             java.util.function.Consumer<CraftEngineTableFailure> failures) {
         return new CraftEngineSceneBackend(
                 gateway,
                 scheduler,
                 ignored -> REGION,
-                new InteractionRouter(new TableActorRegistry()),
+                interactions,
                 new CraftEngineBackendConfig(16, 1_000_000_000L, 1_024, 256),
                 failures);
+    }
+
+    private static SceneDiff withBinding(
+            SceneDiff diff, InteractionHandle handle, PlayerId player, long revision) {
+        return new SceneDiff(
+                diff.tableId(),
+                diff.fromRevision(),
+                diff.toRevision(),
+                diff.removals(),
+                diff.upserts(),
+                List.of(
+                        new SceneInteractionBinding(
+                                handle,
+                                player,
+                                new ActionToken(UUID.randomUUID(), player, revision))));
     }
 
     private static SceneDiff diff(TableId table, int nodes) {
@@ -185,6 +318,7 @@ class CraftEngineSceneBackendTest {
         private final Map<TableId, Integer> upserted = new HashMap<>();
         private final Map<TableId, Map<SceneNodeId, SceneNode>> live = new HashMap<>();
         private TableId broken;
+        private Runnable duringFirstUpsert;
 
         @Override
         public void upsert(TableId tableId, SceneNode node) {
@@ -192,6 +326,11 @@ class CraftEngineSceneBackendTest {
                 throw new IllegalStateException("isolated CE failure");
             }
             upserted.merge(tableId, 1, Integer::sum);
+            Runnable callback = duringFirstUpsert;
+            duringFirstUpsert = null;
+            if (callback != null) {
+                callback.run();
+            }
             live.computeIfAbsent(tableId, ignored -> new HashMap<>()).put(node.id(), node);
         }
 
