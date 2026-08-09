@@ -13,7 +13,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import top.ellan.mahjong.application.TableActorRegistry;
+import top.ellan.mahjong.application.table.TableActorRegistry;
 import top.ellan.mahjong.domain.CompetitionRef;
 import top.ellan.mahjong.domain.TableAnchor;
 import top.ellan.mahjong.domain.TableId;

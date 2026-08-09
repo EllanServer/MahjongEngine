@@ -10,7 +10,7 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Entity;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
-import top.ellan.mahjong.application.InteractionHandle;
+import top.ellan.mahjong.application.interaction.InteractionHandle;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.presentation.FurnitureNode;
 import top.ellan.mahjong.presentation.InteractionNode;

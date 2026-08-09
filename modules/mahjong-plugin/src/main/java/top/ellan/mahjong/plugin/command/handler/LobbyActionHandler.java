@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import top.ellan.mahjong.application.TableActionResult;
+import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.plugin.command.CommandSupport;
 import top.ellan.mahjong.plugin.command.SubcommandHandler;
 import top.ellan.mahjong.domain.TableId;

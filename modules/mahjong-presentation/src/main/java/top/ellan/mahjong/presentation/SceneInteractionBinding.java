@@ -1,8 +1,8 @@
 package top.ellan.mahjong.presentation;
 
 import java.util.Objects;
-import top.ellan.mahjong.application.InteractionHandle;
-import top.ellan.mahjong.application.InteractionPurpose;
+import top.ellan.mahjong.application.interaction.InteractionHandle;
+import top.ellan.mahjong.application.interaction.InteractionPurpose;
 import top.ellan.mahjong.spi.ActionToken;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.TileInstanceId;

@@ -1,7 +1,7 @@
 package top.ellan.mahjong.craftengine;
 
 import org.bukkit.entity.Player;
-import top.ellan.mahjong.application.TableActionResult;
+import top.ellan.mahjong.application.table.TableActionResult;
 
 /** Schedules user feedback on the player's owning entity thread. */
 @FunctionalInterface

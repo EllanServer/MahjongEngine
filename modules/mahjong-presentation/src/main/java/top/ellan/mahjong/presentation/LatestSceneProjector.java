@@ -8,9 +8,9 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import top.ellan.mahjong.application.SceneProjectionPort;
-import top.ellan.mahjong.application.TableProjection;
-import top.ellan.mahjong.application.TaskScheduler;
+import top.ellan.mahjong.application.projection.SceneProjectionPort;
+import top.ellan.mahjong.application.projection.TableProjection;
+import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.domain.TableId;
 
 /** Per-table latest-only scene precomputation. Superseded frames are discarded before mapping. */

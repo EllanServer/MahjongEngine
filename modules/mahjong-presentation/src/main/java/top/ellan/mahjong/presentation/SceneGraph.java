@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.application.InteractionHandle;
+import top.ellan.mahjong.application.interaction.InteractionHandle;
 import top.ellan.mahjong.spi.PlayerId;
 
 /** Complete immutable desired scene for one table revision. */

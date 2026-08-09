@@ -15,11 +15,11 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import top.ellan.mahjong.application.EventStorePort;
-import top.ellan.mahjong.application.MatchEventRecord;
-import top.ellan.mahjong.application.MatchWriteBatch;
-import top.ellan.mahjong.application.PersistAck;
-import top.ellan.mahjong.application.SnapshotWrite;
+import top.ellan.mahjong.application.persistence.EventStorePort;
+import top.ellan.mahjong.application.persistence.MatchEventRecord;
+import top.ellan.mahjong.application.persistence.MatchWriteBatch;
+import top.ellan.mahjong.application.persistence.PersistAck;
+import top.ellan.mahjong.application.persistence.SnapshotWrite;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
 
 /** Ordered, idempotent JDBC event store. All blocking calls run on the supplied bounded IO executor. */

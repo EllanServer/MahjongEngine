@@ -1,6 +1,6 @@
 package top.ellan.mahjong.presentation;
 
-import top.ellan.mahjong.application.TableProjection;
+import top.ellan.mahjong.application.projection.TableProjection;
 
 /** CPU-only conversion from generic rule views to desired scene state. */
 @FunctionalInterface

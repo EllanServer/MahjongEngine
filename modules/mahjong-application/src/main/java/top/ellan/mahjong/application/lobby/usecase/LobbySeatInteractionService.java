@@ -2,8 +2,8 @@ package top.ellan.mahjong.application.lobby.usecase;
 
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import top.ellan.mahjong.application.TableActionCode;
-import top.ellan.mahjong.application.TableActionResult;
+import top.ellan.mahjong.application.table.TableActionCode;
+import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.application.lobby.command.LobbyCommand;
 import top.ellan.mahjong.application.lobby.port.ActiveSeatLookupPort;
 import top.ellan.mahjong.application.lobby.port.SeatInteractionAdmission;

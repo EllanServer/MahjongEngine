@@ -1,7 +1,7 @@
 package top.ellan.mahjong.presentation;
 
 import java.util.Objects;
-import top.ellan.mahjong.application.InteractionHandle;
+import top.ellan.mahjong.application.interaction.InteractionHandle;
 
 /** Public CraftEngine hit-region furniture. Authorization remains per-player in its bindings. */
 public record InteractionNode(

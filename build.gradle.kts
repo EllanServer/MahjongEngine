@@ -85,6 +85,35 @@ val architectureCheck =
                             violations += "$relative leaks $forbidden into a core module"
                         }
                 }
+                if (
+                    module == "mahjong-application" &&
+                        relative.startsWith(
+                            "modules/mahjong-application/src/main/java/top/ellan/mahjong/application/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-application/src/main/java/top/ellan/mahjong/application/",
+                            ).contains('/').not()
+                ) {
+                    violations +=
+                        "$relative is unclassified; application types must live in a responsibility package"
+                }
+                if (relative.endsWith("/plugin/MahjongRuntime.java")) {
+                    if (text.lineSequence().count() > 500) {
+                        violations +=
+                            "$relative exceeds the 500-line composition-root limit"
+                    }
+                    listOf(
+                            "com.zaxxer.hikari.",
+                            "java.net.http.",
+                            "net.momirealms.craftengine.",
+                            "top.ellan.mahjong.persistence.sql.Jdbc",
+                        ).filter(text::contains)
+                        .forEach { forbidden ->
+                            violations +=
+                                "$relative owns concrete bootstrap logic for $forbidden"
+                        }
+                }
             }
             listOf("src", "native", "perf").forEach { removedRoot ->
                 if (file(removedRoot).exists()) {

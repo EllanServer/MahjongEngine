@@ -2,7 +2,7 @@ package top.ellan.mahjong.plugin;
 
 import java.util.List;
 import java.util.Objects;
-import top.ellan.mahjong.application.TableActor;
+import top.ellan.mahjong.application.table.actor.TableActor;
 import top.ellan.mahjong.domain.MatchBinding;
 import top.ellan.mahjong.domain.TableId;
 import top.ellan.mahjong.domain.TableParticipant;
