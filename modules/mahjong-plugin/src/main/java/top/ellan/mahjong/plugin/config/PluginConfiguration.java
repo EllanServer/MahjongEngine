@@ -1,9 +1,14 @@
 package top.ellan.mahjong.plugin.config;
 
 import java.nio.file.Path;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
+import top.ellan.mahjong.spi.RulePresentationCueType;
 
 /** Validated restart-scoped configuration. */
 public record PluginConfiguration(
@@ -13,7 +18,8 @@ public record PluginConfiguration(
         CraftEngineAssets craftEngineAssets,
         LayoutGeometry layoutGeometry,
         ViewSettings viewSettings,
-        OpeningSettings openingSettings) {
+        OpeningSettings openingSettings,
+        SoundSettings soundSettings) {
     public PluginConfiguration {
         Objects.requireNonNull(database, "database");
         registryUrl = Objects.requireNonNull(registryUrl, "registryUrl").trim();
@@ -22,6 +28,7 @@ public record PluginConfiguration(
         Objects.requireNonNull(layoutGeometry, "layoutGeometry");
         Objects.requireNonNull(viewSettings, "viewSettings");
         Objects.requireNonNull(openingSettings, "openingSettings");
+        Objects.requireNonNull(soundSettings, "soundSettings");
     }
 
     public static PluginConfiguration load(JavaPlugin plugin) {
@@ -94,7 +101,52 @@ public record PluginConfiguration(
                 new OpeningSettings(
                         config.getInt("presentation.opening.preview-frames", 3),
                         config.getInt("presentation.opening.roll-ticks", 20),
-                        config.getInt("presentation.opening.reveal-ticks", 12)));
+                        config.getInt("presentation.opening.reveal-ticks", 12)),
+                loadSoundSettings(config));
+    }
+
+    private static SoundSettings loadSoundSettings(FileConfiguration config) {
+        EnumMap<RulePresentationCueType, SoundProfile> cues =
+                new EnumMap<>(RulePresentationCueType.class);
+        for (RulePresentationCueType type : RulePresentationCueType.values()) {
+            String path = "presentation.sound.cues."
+                    + type.name().toLowerCase(Locale.ROOT).replace('_', '-');
+            cues.put(type, readSound(config, path, defaultCue(type)));
+        }
+        return new SoundSettings(
+                cues,
+                readSound(
+                        config,
+                        "presentation.sound.opening.dice",
+                        new SoundProfile("mahjongcraft:opening_dice", 0.7F, 1.0F)),
+                readSound(
+                        config,
+                        "presentation.sound.opening.wall-open",
+                        new SoundProfile("mahjongcraft:opening_wall_break", 0.8F, 1.0F)));
+    }
+
+    private static SoundProfile readSound(
+            FileConfiguration config, String path, SoundProfile fallback) {
+        return new SoundProfile(
+                config.getString(path + ".key", fallback.key()),
+                (float) config.getDouble(path + ".volume", fallback.volume()),
+                (float) config.getDouble(path + ".pitch", fallback.pitch()));
+    }
+
+    private static SoundProfile defaultCue(RulePresentationCueType type) {
+        String key = type == RulePresentationCueType.RIICHI
+                ? "minecraft:block.note_block.bell"
+                : "mahjongcraft:" + type.name().toLowerCase(Locale.ROOT);
+        return switch (type) {
+            case TILE_SHUFFLE -> new SoundProfile(key, 0.9F, 1.2F);
+            case TILE_DRAW -> new SoundProfile(key, 0.65F, 1.05F);
+            case TILE_DISCARD -> new SoundProfile(key, 0.75F, 1.05F);
+            case REACTION_CHI, REACTION_PON, REACTION_KAN ->
+                    new SoundProfile(key, 0.8F, 1.1F);
+            case RIICHI -> new SoundProfile(key, 0.8F, 1.25F);
+            case ROUND_WIN, ROUND_DRAW -> new SoundProfile(key, 0.9F, 1.0F);
+            case TURN_CHANGE -> new SoundProfile(key, 0.5F, 1.6F);
+        };
     }
 
     private static String requireToken(String value, String label) {
@@ -174,6 +226,32 @@ public record PluginConfiguration(
             }
             if (rollTicks < 1 || rollTicks > 200 || revealTicks < 1 || revealTicks > 200) {
                 throw new IllegalArgumentException("opening timings must be between 1 and 200 ticks");
+            }
+        }
+    }
+
+    public record SoundSettings(
+            Map<RulePresentationCueType, SoundProfile> cues,
+            SoundProfile openingDice,
+            SoundProfile openingWall) {
+        public SoundSettings {
+            cues = Map.copyOf(Objects.requireNonNull(cues, "cues"));
+            if (!cues.keySet().equals(EnumSet.allOf(RulePresentationCueType.class))) {
+                throw new IllegalArgumentException("sound cues must cover every cue type");
+            }
+            Objects.requireNonNull(openingDice, "openingDice");
+            Objects.requireNonNull(openingWall, "openingWall");
+        }
+    }
+
+    public record SoundProfile(String key, float volume, float pitch) {
+        public SoundProfile {
+            key = requireAsset(key, "sound key");
+            if (!Float.isFinite(volume) || volume < 0.0F || volume > 4.0F) {
+                throw new IllegalArgumentException("sound volume must be between 0 and 4");
+            }
+            if (!Float.isFinite(pitch) || pitch < 0.5F || pitch > 2.0F) {
+                throw new IllegalArgumentException("sound pitch must be between 0.5 and 2");
             }
         }
     }

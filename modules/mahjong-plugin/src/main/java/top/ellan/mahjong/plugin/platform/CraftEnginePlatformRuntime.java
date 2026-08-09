@@ -2,6 +2,8 @@ package top.ellan.mahjong.plugin.platform;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -33,6 +35,9 @@ import top.ellan.mahjong.craftengine.scene.DirectCraftEngineMutationGateway;
 import top.ellan.mahjong.craftengine.privateview.SparrowPrivateProjectionGateway;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.platform.paper.concurrent.BoundedPlatformExecutors;
+import top.ellan.mahjong.platform.paper.feedback.PaperOpeningSoundGateway;
+import top.ellan.mahjong.platform.paper.feedback.PaperSoundDispatcher;
+import top.ellan.mahjong.platform.paper.feedback.PaperSoundProfile;
 import top.ellan.mahjong.platform.paper.feedback.PaperTableSoundGateway;
 import top.ellan.mahjong.platform.paper.region.PaperRegionScheduler;
 import top.ellan.mahjong.platform.paper.anchor.PaperTableAnchorRegistry;
@@ -46,6 +51,7 @@ import top.ellan.mahjong.presentation.scene.SceneGraphDiffer;
 import top.ellan.mahjong.presentation.layout.TableGeometry;
 import top.ellan.mahjong.presentation.asset.TableSceneAssets;
 import top.ellan.mahjong.presentation.layout.UniversalTableLayout;
+import top.ellan.mahjong.spi.RulePresentationCueType;
 
 /** Owns the Paper/CraftEngine presentation boundary and its restart-scoped resources. */
 public final class CraftEnginePlatformRuntime implements AutoCloseable {
@@ -87,7 +93,10 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                         configuration.viewSettings().transitionTicks());
         interactions = new InteractionRouter(actors, privateProjection, privateProjection);
         mutations = new DirectCraftEngineMutationGateway(plugin, anchors, privateProjection);
-        presentationCues = new PaperTableSoundGateway(plugin);
+        PaperSoundDispatcher sounds = new PaperSoundDispatcher(plugin);
+        PluginConfiguration.SoundSettings soundSettings = configuration.soundSettings();
+        presentationCues = new PaperTableSoundGateway(
+                sounds, cueProfiles(soundSettings.cues()));
         sceneBackend =
                 new CraftEngineSceneBackend(
                         mutations,
@@ -122,7 +131,11 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                         configuration.craftEngineAssets().openingDieSlotPrefix(),
                         opening.previewFrames(),
                         Duration.ofMillis(Math.multiplyExact(opening.rollTicks(), 50L)),
-                        Duration.ofMillis(Math.multiplyExact(opening.revealTicks(), 50L))));
+                        Duration.ofMillis(Math.multiplyExact(opening.revealTicks(), 50L))),
+                new PaperOpeningSoundGateway(
+                        sounds,
+                        soundProfile(soundSettings.openingDice()),
+                        soundProfile(soundSettings.openingWall())));
     }
 
     /** Registers platform listeners and starts the immutable CE bundle installation once. */
@@ -333,6 +346,18 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                 configured.maxPointSticks(),
                 configured.maxAuxiliaryTiles(),
                 configured.maxActions());
+    }
+
+    private static Map<RulePresentationCueType, PaperSoundProfile> cueProfiles(
+            Map<RulePresentationCueType, PluginConfiguration.SoundProfile> configured) {
+        EnumMap<RulePresentationCueType, PaperSoundProfile> profiles =
+                new EnumMap<>(RulePresentationCueType.class);
+        configured.forEach((type, profile) -> profiles.put(type, soundProfile(profile)));
+        return Map.copyOf(profiles);
+    }
+
+    private static PaperSoundProfile soundProfile(PluginConfiguration.SoundProfile configured) {
+        return new PaperSoundProfile(configured.key(), configured.volume(), configured.pitch());
     }
 
     @Override

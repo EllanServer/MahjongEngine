@@ -28,6 +28,8 @@ object CraftEngineBundleGenerator {
         require(configurationFiles.isNotEmpty()) { "No CraftEngine configuration files found" }
         verifyTileFactory(configurationFiles, resourcepackDir)
         verifyOpeningDice(configurationFiles, resourcepackDir)
+        verifyFeedbackAssets(resourcepackDir)
+        verifyLocales(resourcepackDir)
 
         val outputRoot = outputDir.resolve("craftengine").resolve("mahjongpaper")
         val outputConfiguration = outputRoot.resolve("configuration")
@@ -127,6 +129,76 @@ object CraftEngineBundleGenerator {
                 .toSet()
         require(modelFaces == expectedFaces) {
             "CraftEngine opening dice models must contain faces 1 through 6"
+        }
+    }
+
+    private fun verifyFeedbackAssets(resourcepackDir: File) {
+        val sounds =
+            resourcepackDir
+                .resolve("assets/mahjongcraft/sounds.json")
+                .also { require(it.isFile) { "Mahjong sound registry is missing" } }
+                .readText(Charsets.UTF_8)
+        listOf("opening_dice", "opening_wall_break").forEach { cue ->
+            require(Regex("\"${Regex.escape(cue)}\"\\s*:").containsMatchIn(sounds)) {
+                "Opening sound event is missing: $cue"
+            }
+        }
+    }
+
+    private fun verifyLocales(resourcepackDir: File) {
+        val localeDir = resourcepackDir.resolve("assets/mahjongcraft/lang")
+        val expected = setOf("en_us", "zh_cn", "zh_tw", "ja_jp")
+        val files =
+            localeDir
+                .listFiles { file -> file.isFile && file.extension == "json" }
+                .orEmpty()
+                .associateBy { it.nameWithoutExtension }
+        require(files.keys == expected) {
+            "Mahjong locales must be exactly $expected; found=${files.keys}"
+        }
+        val keyPattern = Regex("\"([a-z0-9_.-]+)\"\\s*:")
+        val placeholderPattern = Regex("%([0-9]+\\$)?s")
+        val entries =
+            files.mapValues { (_, file) ->
+                val text = file.readText(Charsets.UTF_8)
+                val keys = keyPattern.findAll(text).map { it.groupValues[1] }.toList()
+                require(keys.size == keys.toSet().size) {
+                    "Locale ${file.name} contains duplicate translation keys"
+                }
+                keys.associateWith { key ->
+                    val value =
+                        Regex("\"${Regex.escape(key)}\"\\s*:\\s*\"([^\"]*)\"")
+                            .find(text)
+                            ?.groupValues
+                            ?.get(1)
+                            ?: error("Locale ${file.name} has an unsupported value for $key")
+                    placeholderPattern.findAll(value).count()
+                }
+            }
+        val canonical = entries.getValue("en_us")
+        entries.forEach { (locale, localized) ->
+            require(localized.keys == canonical.keys) {
+                "Locale $locale key set differs from en_us; " +
+                    "missing=${canonical.keys - localized.keys}, extra=${localized.keys - canonical.keys}"
+            }
+            require(localized == canonical) {
+                val mismatched = canonical.keys.filter { canonical[it] != localized[it] }
+                "Locale $locale placeholder counts differ for $mismatched"
+            }
+        }
+        setOf(
+            "mahjongpaper.command.help",
+            "mahjongpaper.command.failed",
+            "mahjongpaper.action.ready",
+            "mahjongpaper.action.unready",
+            "mahjongpaper.action.leave",
+            "mahjongpaper.action.start",
+            "mahjongpaper.action.transfer_owner_east",
+            "mahjongpaper.action.transfer_owner_south",
+            "mahjongpaper.action.transfer_owner_west",
+            "mahjongpaper.action.transfer_owner_north",
+        ).forEach { required ->
+            require(required in canonical) { "Required client translation is missing: $required" }
         }
     }
 

@@ -33,8 +33,8 @@ public final class TableCreateHandler implements SubcommandHandler {
     @Override
     public void execute(CommandSender sender, String[] arguments) {
         if (arguments.length < 2 || arguments.length > 3) {
-            throw new IllegalArgumentException(
-                    "Usage: /mahjong create <riichi|mcr|sichuan> [profile]");
+            throw CommandSupport.usage(
+                    "/mahjong create <riichi|mcr|sichuan> [profile]");
         }
         Player owner = support.requirePlayer(sender);
         RuleId ruleId = CommandSupport.ruleId(arguments[1]);
@@ -69,18 +69,21 @@ public final class TableCreateHandler implements SubcommandHandler {
                         profileId,
                         Map.of(),
                         4);
-        support.reply(sender, "Creating lobby " + tableId + " asynchronously...");
+        support.reply(
+                sender,
+                CommandSupport.message(
+                        "mahjongpaper.command.creating_lobby",
+                        "Creating lobby %s asynchronously...",
+                        tableId));
         support.complete(
                 sender,
                 support.runtime().createLobby(request, location),
-                hosted ->
-                        "CREATED "
-                                + hosted.tableId()
-                                + " rule="
-                                + hosted.state().ruleId()
-                                + " profile="
-                                + hosted.state().profileId()
-                                + "; click a CraftEngine chair to sit");
+                hosted -> CommandSupport.message(
+                        "mahjongpaper.command.lobby_created",
+                        "Created %s with %s/%s; click a CraftEngine chair to sit.",
+                        hosted.tableId(),
+                        hosted.state().ruleId(),
+                        hosted.state().profileId()));
     }
 
     @Override

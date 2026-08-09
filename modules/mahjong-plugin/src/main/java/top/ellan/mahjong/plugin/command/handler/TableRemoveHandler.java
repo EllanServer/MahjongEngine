@@ -23,9 +23,13 @@ public final class TableRemoveHandler implements SubcommandHandler {
     public void execute(CommandSender sender, String[] arguments) {
         support.requireAdmin(sender);
         if (arguments.length != 2) {
-            throw new IllegalArgumentException("Usage: /mahjong remove <table-id>");
+            throw CommandSupport.usage("/mahjong remove <table-id>");
         }
         TableId tableId = TableId.parse(arguments[1]);
-        support.complete(sender, support.runtime().remove(tableId), ignored -> "REMOVED " + tableId);
+        support.complete(
+                sender,
+                support.runtime().remove(tableId),
+                ignored -> CommandSupport.message(
+                        "mahjongpaper.command.table_removed", "Removed table %s.", tableId));
     }
 }

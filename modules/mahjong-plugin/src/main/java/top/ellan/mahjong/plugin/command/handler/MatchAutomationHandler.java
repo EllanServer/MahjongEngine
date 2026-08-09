@@ -26,19 +26,23 @@ public final class MatchAutomationHandler implements SubcommandHandler {
     @Override
     public void execute(CommandSender sender, String[] arguments) {
         if (arguments.length != 2) {
-            throw new IllegalArgumentException("Usage: /mahjong auto <on|off>");
+            throw CommandSupport.usage("/mahjong auto <on|off>");
         }
         Player player = support.requirePlayer(sender);
         boolean enabled = switch (arguments[1].toLowerCase(Locale.ROOT)) {
             case "on" -> true;
             case "off" -> false;
-            default -> throw new IllegalArgumentException("Usage: /mahjong auto <on|off>");
+            default -> throw CommandSupport.usage("/mahjong auto <on|off>");
         };
         support.complete(
                 sender,
                 support.runtime().setAutomation(
                         new PlayerId(player.getUniqueId()), enabled),
-                result -> result.code() + " " + result.reasonCode());
+                result -> CommandSupport.message(
+                        "mahjongpaper.command.automation_result",
+                        "%s - %s",
+                        result.code(),
+                        result.reasonCode()));
     }
 
     @Override

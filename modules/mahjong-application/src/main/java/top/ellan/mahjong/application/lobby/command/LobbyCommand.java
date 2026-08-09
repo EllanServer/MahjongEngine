@@ -15,6 +15,7 @@ public sealed interface LobbyCommand
                 LobbyCommand.Spectate,
                 LobbyCommand.Unspectate,
                 LobbyCommand.ToggleReady,
+                LobbyCommand.TransferOwner,
                 LobbyCommand.AddBot,
                 LobbyCommand.RemoveBot,
                 LobbyCommand.Start,
@@ -50,6 +51,13 @@ public sealed interface LobbyCommand
     record ToggleReady(PlayerId actor) implements LobbyCommand {
         public ToggleReady {
             Objects.requireNonNull(actor, "actor");
+        }
+    }
+
+    record TransferOwner(PlayerId actor, SeatId targetSeat) implements LobbyCommand {
+        public TransferOwner {
+            Objects.requireNonNull(actor, "actor");
+            Objects.requireNonNull(targetSeat, "targetSeat");
         }
     }
 

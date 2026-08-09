@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.Set;
 import org.bukkit.command.CommandSender;
 import top.ellan.mahjong.plugin.command.CommandSupport;
+import top.ellan.mahjong.plugin.command.CommandMessage;
 import top.ellan.mahjong.plugin.command.SubcommandHandler;
 import top.ellan.mahjong.runtime.admin.RulePackInventory;
 import top.ellan.mahjong.runtime.admin.RulePackVerification;
@@ -38,8 +39,13 @@ public final class RulePackAdminHandler implements SubcommandHandler {
                     support.complete(
                             sender,
                             support.runtime().collectRuleGarbage(),
-                            value -> "QUARANTINED " + value);
-            default -> throw new IllegalArgumentException("Unknown rules subcommand");
+                            value -> CommandSupport.message(
+                                    "mahjongpaper.command.rules_quarantined",
+                                    "Quarantined %s rule-pack versions.",
+                                    value));
+            default -> throw CommandSupport.failure(
+                    "mahjongpaper.command.unknown_rules_subcommand",
+                    "Unknown rules subcommand.");
         }
     }
 
@@ -59,20 +65,21 @@ public final class RulePackAdminHandler implements SubcommandHandler {
 
     private void install(CommandSender sender, String[] arguments) {
         if (arguments.length < 3 || arguments.length > 4) {
-            throw new IllegalArgumentException(
-                    "Usage: /mahjong rules " + arguments[1] + " <id> [version]");
+            throw CommandSupport.usage(
+                    "/mahjong rules " + arguments[1] + " <id> [version]");
         }
         Optional<String> version =
                 arguments.length == 4 ? Optional.of(arguments[3]) : Optional.empty();
         support.complete(
                 sender,
                 support.runtime().installRule(CommandSupport.ruleId(arguments[2]), version),
-                value -> "INSTALLED " + value);
+                value -> CommandSupport.message(
+                        "mahjongpaper.command.rule_installed", "Installed %s.", value));
     }
 
     private void verify(CommandSender sender, String[] arguments) {
         if (arguments.length > 3) {
-            throw new IllegalArgumentException("Usage: /mahjong rules verify [id]");
+            throw CommandSupport.usage("/mahjong rules verify [id]");
         }
         Optional<RuleId> ruleId =
                 arguments.length == 3
@@ -86,21 +93,24 @@ public final class RulePackAdminHandler implements SubcommandHandler {
 
     private void activate(CommandSender sender, String[] arguments) {
         if (arguments.length != 4) {
-            throw new IllegalArgumentException(
-                    "Usage: /mahjong rules activate <id> <version>");
+            throw CommandSupport.usage("/mahjong rules activate <id> <version>");
         }
         support.complete(
                 sender,
                 support.runtime()
                         .activateRule(CommandSupport.ruleId(arguments[2]), arguments[3]),
-                value -> "ACTIVATION_PENDING_RESTART " + value);
+                value -> CommandSupport.message(
+                        "mahjongpaper.command.rule_activation_pending",
+                        "Activation pending restart: %s.",
+                        value));
     }
 
-    private static String inventory(RulePackInventory inventory) {
+    private static CommandMessage inventory(RulePackInventory inventory) {
         if (inventory.installed().isEmpty()) {
-            return "No rule packs installed";
+            return CommandSupport.message(
+                    "mahjongpaper.command.no_rule_packs", "No rule packs are installed.");
         }
-        return inventory.installed().stream()
+        String detail = inventory.installed().stream()
                 .map(
                         pack ->
                                 pack.ruleId()
@@ -109,13 +119,17 @@ public final class RulePackAdminHandler implements SubcommandHandler {
                                         + (pack.active() ? "[active]" : "")
                                         + (pack.pending() ? "[pending-restart]" : ""))
                 .collect(java.util.stream.Collectors.joining(", "));
+        return CommandSupport.message(
+                "mahjongpaper.command.rules_result", "Rule packs: %s", detail);
     }
 
-    private static String verification(List<RulePackVerification> results) {
+    private static CommandMessage verification(List<RulePackVerification> results) {
         if (results.isEmpty()) {
-            return "No installed rule packs matched";
+            return CommandSupport.message(
+                    "mahjongpaper.command.no_rule_packs_matched",
+                    "No installed rule packs matched.");
         }
-        return results.stream()
+        String detail = results.stream()
                 .map(
                         result ->
                                 result.ruleId()
@@ -124,5 +138,7 @@ public final class RulePackAdminHandler implements SubcommandHandler {
                                         + '='
                                         + (result.valid() ? "valid" : result.detail()))
                 .collect(java.util.stream.Collectors.joining(", "));
+        return CommandSupport.message(
+                "mahjongpaper.command.rules_result", "Rule packs: %s", detail);
     }
 }

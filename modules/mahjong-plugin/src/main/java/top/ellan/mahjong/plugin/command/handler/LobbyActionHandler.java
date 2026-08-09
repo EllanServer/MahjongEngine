@@ -7,9 +7,9 @@ import java.util.Set;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import top.ellan.mahjong.application.table.TableActionResult;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.plugin.command.CommandSupport;
 import top.ellan.mahjong.plugin.command.SubcommandHandler;
-import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.ProfileId;
 import top.ellan.mahjong.spi.RuleId;
@@ -18,7 +18,17 @@ import top.ellan.mahjong.spi.SeatId;
 /** Player lobby actions; each delegates to the application actor facade. */
 public final class LobbyActionHandler implements SubcommandHandler {
     private static final Set<String> NAMES =
-            Set.of("join", "leave", "spectate", "unspectate", "ready", "bot", "start", "mode");
+            Set.of(
+                    "join",
+                    "leave",
+                    "spectate",
+                    "unspectate",
+                    "ready",
+                    "owner",
+                    "transfer",
+                    "bot",
+                    "start",
+                    "mode");
     private final CommandSupport support;
 
     public LobbyActionHandler(CommandSupport support) {
@@ -38,7 +48,7 @@ public final class LobbyActionHandler implements SubcommandHandler {
         java.util.concurrent.CompletionStage<TableActionResult> result =
                 switch (action) {
                     case "join" -> {
-                        requireLength(arguments, 3, "Usage: /mahjong join <table-id> <seat>");
+                        requireLength(arguments, 3, "/mahjong join <table-id> <seat>");
                         yield support.runtime()
                                 .lobbyUseCases()
                                 .join(
@@ -47,41 +57,47 @@ public final class LobbyActionHandler implements SubcommandHandler {
                                         actor);
                     }
                     case "leave" -> {
-                        requireLength(arguments, 1, "Usage: /mahjong leave");
+                        requireLength(arguments, 1, "/mahjong leave");
                         yield support.runtime().lobbyUseCases().leave(actor);
                     }
                     case "spectate" -> {
-                        requireLength(arguments, 2, "Usage: /mahjong spectate <table-id>");
+                        requireLength(arguments, 2, "/mahjong spectate <table-id>");
                         yield support.runtime()
                                 .lobbyUseCases()
                                 .spectate(TableId.parse(arguments[1]), actor);
                     }
                     case "unspectate" -> {
-                        requireLength(arguments, 1, "Usage: /mahjong unspectate");
+                        requireLength(arguments, 1, "/mahjong unspectate");
                         yield support.runtime().lobbyUseCases().unspectate(actor);
                     }
                     case "ready" -> {
-                        requireLength(arguments, 1, "Usage: /mahjong ready");
+                        requireLength(arguments, 1, "/mahjong ready");
                         yield support.runtime().lobbyUseCases().toggleReady(actor);
                     }
+                    case "owner", "transfer" -> {
+                        requireLength(arguments, 2, "/mahjong owner <seat>");
+                        yield support.runtime()
+                                .lobbyUseCases()
+                                .transferOwner(actor, seat(arguments[1]));
+                    }
                     case "bot" -> {
-                        requireLength(arguments, 3, "Usage: /mahjong bot <add|remove> <seat>");
+                        requireLength(arguments, 3, "/mahjong bot <add|remove> <seat>");
                         SeatId target = seat(arguments[2]);
                         yield switch (arguments[1].toLowerCase(Locale.ROOT)) {
                             case "add" -> support.runtime().lobbyUseCases().addBot(actor, target);
                             case "remove" -> support.runtime().lobbyUseCases().removeBot(actor, target);
-                            default -> throw new IllegalArgumentException(
-                                    "Usage: /mahjong bot <add|remove> <seat>");
+                            default -> throw CommandSupport.usage(
+                                    "/mahjong bot <add|remove> <seat>");
                         };
                     }
                     case "start" -> {
-                        requireLength(arguments, 1, "Usage: /mahjong start");
+                        requireLength(arguments, 1, "/mahjong start");
                         yield support.runtime().lobbyUseCases().start(actor);
                     }
                     case "mode" -> {
                         if (arguments.length < 2 || arguments.length > 3) {
-                            throw new IllegalArgumentException(
-                                    "Usage: /mahjong mode <riichi|mcr|sichuan> [profile]");
+                            throw CommandSupport.usage(
+                                    "/mahjong mode <riichi|mcr|sichuan> [profile]");
                         }
                         RuleId ruleId = CommandSupport.ruleId(arguments[1]);
                         ProfileId profile =
@@ -92,12 +108,18 @@ public final class LobbyActionHandler implements SubcommandHandler {
                                 .lobbyUseCases()
                                 .changeRules(actor, ruleId, profile, Map.of());
                     }
-                    default -> throw new IllegalArgumentException("Unknown lobby action");
+                    default -> throw CommandSupport.failure(
+                            "mahjongpaper.command.unknown_subcommand", "Unknown subcommand.");
                 };
         support.complete(
                 sender,
                 result,
-                value -> value.code() + " revision=" + value.revision() + " " + value.reasonCode());
+                value -> CommandSupport.message(
+                        "mahjongpaper.command.action_result",
+                        "%s - revision %s - %s",
+                        value.code(),
+                        value.revision(),
+                        value.reasonCode()));
     }
 
     @Override
@@ -111,6 +133,12 @@ public final class LobbyActionHandler implements SubcommandHandler {
         }
         if (arguments.length == 2 && "bot".equalsIgnoreCase(arguments[0])) {
             return CommandSupport.filter(arguments[1], List.of("add", "remove"));
+        }
+        if (arguments.length == 2
+                && ("owner".equalsIgnoreCase(arguments[0])
+                        || "transfer".equalsIgnoreCase(arguments[0]))) {
+            return CommandSupport.filter(
+                    arguments[1], List.of("east", "south", "west", "north"));
         }
         if (arguments.length == 3 && "bot".equalsIgnoreCase(arguments[0])) {
             return CommandSupport.filter(
@@ -126,13 +154,15 @@ public final class LobbyActionHandler implements SubcommandHandler {
                     case "south", "1" -> 1;
                     case "west", "2" -> 2;
                     case "north", "3" -> 3;
-                    default -> throw new IllegalArgumentException("Seat must be east/south/west/north");
+                    default -> throw CommandSupport.failure(
+                            "mahjongpaper.command.invalid_seat",
+                            "Seat must be east, south, west, or north.");
                 });
     }
 
-    private static void requireLength(String[] arguments, int expected, String usage) {
+    private static void requireLength(String[] arguments, int expected, String command) {
         if (arguments.length != expected) {
-            throw new IllegalArgumentException(usage);
+            throw CommandSupport.usage(command);
         }
     }
 }

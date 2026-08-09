@@ -25,5 +25,15 @@
   },
   "turn_change": {
     "sounds": ["mahjongcraft:turn_change"]
+  },
+  "opening_dice": {
+    "sounds": [
+      { "name": "mahjongcraft:tile_shuffle", "volume": 0.65, "pitch": 1.35 }
+    ]
+  },
+  "opening_wall_break": {
+    "sounds": [
+      { "name": "mahjongcraft:tile_draw", "volume": 0.9, "pitch": 0.8 }
+    ]
   }
 }

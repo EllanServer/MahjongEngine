@@ -32,17 +32,25 @@ public final class CommandSupport {
         if (sender instanceof Player player) {
             return player;
         }
-        throw new IllegalArgumentException("Only a player can use this command");
+        throw failure(
+                "mahjongpaper.command.player_only", "Only a player can use this command.");
     }
 
     public void requireAdmin(CommandSender sender) {
         if (!sender.hasPermission("mahjongpaper.admin")) {
-            throw new IllegalArgumentException("Missing mahjongpaper.admin");
+            throw failure(
+                    "mahjongpaper.command.admin_required",
+                    "Missing permission mahjongpaper.admin.");
         }
     }
 
-    public void reply(CommandSender sender, String message) {
-        Runnable send = () -> sender.sendMessage(Component.text(message));
+    public void reply(CommandSender sender, CommandMessage message) {
+        Objects.requireNonNull(sender, "sender");
+        Objects.requireNonNull(message, "message");
+        Component rendered = sender instanceof Player
+                ? message.playerComponent()
+                : Component.text(message.consoleText());
+        Runnable send = () -> sender.sendMessage(rendered);
         if (sender instanceof Player player) {
             player.getScheduler().run(plugin, ignored -> send.run(), null);
         } else {
@@ -53,15 +61,42 @@ public final class CommandSupport {
     public <T> void complete(
             CommandSender sender,
             CompletionStage<T> stage,
-            Function<T, String> formatter) {
+            Function<T, CommandMessage> formatter) {
         Objects.requireNonNull(stage, "stage")
                 .whenComplete(
-                        (value, failure) ->
+                        (value, failure) -> {
+                            if (failure != null) {
+                                Throwable cause = unwrap(failure);
                                 reply(
                                         sender,
-                                        failure == null
-                                                ? formatter.apply(value)
-                                                : "FAILED: " + safeMessage(unwrap(failure))));
+                                        cause instanceof LocalizedCommandException localized
+                                                ? localized.reply()
+                                                : failed(safeMessage(cause)));
+                                return;
+                            }
+                            try {
+                                reply(sender, formatter.apply(value));
+                            } catch (RuntimeException formattingFailure) {
+                                reply(sender, failed(safeMessage(formattingFailure)));
+                            }
+                        });
+    }
+
+    public static CommandMessage message(String key, String fallback, Object... arguments) {
+        return CommandMessage.of(key, fallback, arguments);
+    }
+
+    public static LocalizedCommandException failure(
+            String key, String fallback, Object... arguments) {
+        return new LocalizedCommandException(message(key, fallback, arguments));
+    }
+
+    public static LocalizedCommandException usage(String command) {
+        return failure("mahjongpaper.command.usage", "Usage: %s", command);
+    }
+
+    public static CommandMessage failed(String detail) {
+        return message("mahjongpaper.command.failed", "Failed: %s", detail);
     }
 
     public static RuleId ruleId(String raw) {

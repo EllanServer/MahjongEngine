@@ -44,20 +44,30 @@ public final class MahjongCommand implements CommandExecutor, TabCompleter {
         Objects.requireNonNull(arguments, "arguments");
         try {
             if (arguments.length == 0) {
-                support.reply(sender, "MahjongPaper 2.0 - " + support.runtime().status());
                 support.reply(
                         sender,
-                        "/mahjong <create|join|leave|spectate|ready|bot|start|mode|auto|list|state|remove|rules>");
+                        CommandSupport.message(
+                                "mahjongpaper.command.status",
+                                "MahjongPaper 2.0 - %s",
+                                support.runtime().status()));
+                support.reply(
+                        sender,
+                        CommandSupport.message(
+                                "mahjongpaper.command.help",
+                                "/mahjong <create|join|leave|spectate|ready|owner|bot|start|mode|auto|list|state|remove|rules>"));
                 return true;
             }
             SubcommandHandler handler =
                     handlers.get(arguments[0].toLowerCase(Locale.ROOT));
             if (handler == null) {
-                throw new IllegalArgumentException("Unknown subcommand");
+                throw CommandSupport.failure(
+                        "mahjongpaper.command.unknown_subcommand", "Unknown subcommand.");
             }
             handler.execute(sender, arguments);
+        } catch (LocalizedCommandException failure) {
+            support.reply(sender, failure.reply());
         } catch (RuntimeException failure) {
-            support.reply(sender, "FAILED: " + CommandSupport.safeMessage(failure));
+            support.reply(sender, CommandSupport.failed(CommandSupport.safeMessage(failure)));
         }
         return true;
     }

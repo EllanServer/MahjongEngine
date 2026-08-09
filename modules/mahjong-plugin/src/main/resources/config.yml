@@ -27,6 +27,22 @@ presentation:
     preview-frames: 3
     roll-ticks: 20
     reveal-ticks: 12
+  sound:
+    # Transient sounds stay in the Paper adapter; source files and aliases live in the resource pack.
+    opening:
+      dice: { key: "mahjongcraft:opening_dice", volume: 0.7, pitch: 1.0 }
+      wall-open: { key: "mahjongcraft:opening_wall_break", volume: 0.8, pitch: 1.0 }
+    cues:
+      tile-shuffle: { key: "mahjongcraft:tile_shuffle", volume: 0.9, pitch: 1.2 }
+      tile-draw: { key: "mahjongcraft:tile_draw", volume: 0.65, pitch: 1.05 }
+      tile-discard: { key: "mahjongcraft:tile_discard", volume: 0.75, pitch: 1.05 }
+      reaction-chi: { key: "mahjongcraft:reaction_chi", volume: 0.8, pitch: 1.1 }
+      reaction-pon: { key: "mahjongcraft:reaction_pon", volume: 0.8, pitch: 1.1 }
+      reaction-kan: { key: "mahjongcraft:reaction_kan", volume: 0.8, pitch: 1.1 }
+      riichi: { key: "minecraft:block.note_block.bell", volume: 0.8, pitch: 1.25 }
+      round-win: { key: "mahjongcraft:round_win", volume: 0.9, pitch: 1.0 }
+      round-draw: { key: "mahjongcraft:round_draw", volume: 0.9, pitch: 1.0 }
+      turn-change: { key: "mahjongcraft:turn_change", volume: 0.5, pitch: 1.6 }
   # Dynamic placement dimensions shared by all rule packs. Static furniture and hitboxes stay in CE YAML.
   geometry:
     tile-width: 0.1125

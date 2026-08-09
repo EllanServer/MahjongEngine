@@ -7,13 +7,16 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.application.concurrent.Cancellable;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.application.opening.TableOpeningBatch;
+import top.ellan.mahjong.application.opening.TableOpeningEffectPort;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.presentation.node.FurnitureNode;
 import top.ellan.mahjong.presentation.node.SceneNodeId;
+import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.RuleDiceRoll;
 import top.ellan.mahjong.spi.RuleId;
 import top.ellan.mahjong.spi.RuleOpeningPresentation;
@@ -24,6 +27,7 @@ class CraftEngineOpeningPresenterTest {
     void twoPhysicalRollsUseBoundedCeVariantChangesAndFinishByRemovingTheOverlay() {
         ManualScheduler scheduler = new ManualScheduler();
         ArrayList<OverlayCall> calls = new ArrayList<>();
+        ArrayList<String> effects = new ArrayList<>();
         CraftEngineOpeningPresenter presenter = new CraftEngineOpeningPresenter(
                 scheduler,
                 (table, generation, managed, desired) -> calls.add(
@@ -32,7 +36,18 @@ class CraftEngineOpeningPresenterTest {
                         "mahjongpaper:opening_die_slot_",
                         3,
                         Duration.ofSeconds(1),
-                        Duration.ofMillis(600)));
+                        Duration.ofMillis(600)),
+                new TableOpeningEffectPort() {
+                    @Override
+                    public void rollStarted(TableOpeningBatch batch, int rollIndex) {
+                        effects.add("roll-" + rollIndex);
+                    }
+
+                    @Override
+                    public void wallOpened(TableOpeningBatch batch) {
+                        effects.add("wall-open");
+                    }
+                });
         TableId table = TableId.random();
         RuleOpeningPresentation opening = new RuleOpeningPresentation(
                 3,
@@ -42,8 +57,14 @@ class CraftEngineOpeningPresenterTest {
                 new SeatId(2),
                 14);
 
-        presenter.present(new TableOpeningBatch(table, new RuleId("mcr"), 0, opening));
+        presenter.present(new TableOpeningBatch(
+                table,
+                new RuleId("mcr"),
+                0,
+                List.of(new PlayerId(UUID.randomUUID())),
+                opening));
         assertEquals(1, calls.size());
+        assertEquals(List.of("roll-0"), effects);
         assertEquals(2, calls.getFirst().desired().size());
         assertTrue(calls.getFirst().desired().stream()
                 .allMatch(node -> node.variant().matches("single_face_[1-6]")));
@@ -61,6 +82,7 @@ class CraftEngineOpeningPresenterTest {
                                         0, 0, 0, 0, 0, 0, 1))));
         assertTrue(calls.getLast().desired().isEmpty());
         assertEquals(4, calls.getLast().managed().size());
+        assertEquals(List.of("roll-0", "roll-1", "wall-open"), effects);
     }
 
     private record OverlayCall(

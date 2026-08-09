@@ -34,70 +34,80 @@ public final class TableQueryHandler implements SubcommandHandler {
 
     private void list(CommandSender sender, String[] arguments) {
         if (arguments.length != 1) {
-            throw new IllegalArgumentException("Usage: /mahjong list");
+            throw CommandSupport.usage("/mahjong list");
         }
         var lobbies = support.runtime().lobbyTables().list();
         var matches = support.runtime().liveTables().list();
-        support.reply(sender, "Tables: lobbies=" + lobbies.size() + ", matches=" + matches.size());
+        support.reply(
+                sender,
+                CommandSupport.message(
+                        "mahjongpaper.command.tables_summary",
+                        "Tables: %s lobbies, %s matches.",
+                        lobbies.size(),
+                        matches.size()));
         for (HostedLobby lobby : lobbies) {
             support.reply(
                     sender,
-                    lobby.tableId()
-                            + " LOBBY "
-                            + lobby.state().ruleId()
-                            + '/'
-                            + lobby.state().profileId()
-                            + " seats="
-                            + lobby.state().occupiedSeatCount()
-                            + '/'
-                            + lobby.state().seats().size());
+                    CommandSupport.message(
+                            "mahjongpaper.command.lobby_summary",
+                            "%s - lobby - %s/%s - seats %s/%s",
+                            lobby.tableId(),
+                            lobby.state().ruleId(),
+                            lobby.state().profileId(),
+                            lobby.state().occupiedSeatCount(),
+                            lobby.state().seats().size()));
         }
         for (StartedRulePackMatch match : matches) {
             support.reply(
                     sender,
-                    match.tableId()
-                            + " "
-                            + match.actor().snapshot().lifecycle()
-                            + " "
-                            + match.binding().rulePack());
+                    CommandSupport.message(
+                            "mahjongpaper.command.match_summary",
+                            "%s - %s - %s",
+                            match.tableId(),
+                            match.actor().snapshot().lifecycle(),
+                            match.binding().rulePack()));
         }
     }
 
     private void state(CommandSender sender, String[] arguments) {
         if (arguments.length > 2) {
-            throw new IllegalArgumentException("Usage: /mahjong state [table-id]");
+            throw CommandSupport.usage("/mahjong state [table-id]");
         }
         TableId tableId =
                 arguments.length == 2 ? TableId.parse(arguments[1]) : tableFor(sender);
         HostedLobby lobby = support.runtime().lobbyTables().find(tableId).orElse(null);
         if (lobby != null) {
-            support.reply(sender, lobby.state().toString());
+            support.reply(
+                    sender,
+                    CommandSupport.message(
+                            "mahjongpaper.command.state_detail", "%s", lobby.state()));
             return;
         }
         StartedRulePackMatch match =
                 support.runtime()
                         .liveTables()
                         .find(tableId)
-                        .orElseThrow(() -> new IllegalArgumentException("Unknown table"));
+                        .orElseThrow(() -> CommandSupport.failure(
+                                "mahjongpaper.command.unknown_table", "Unknown table."));
         var snapshot = match.actor().snapshot();
         support.reply(
                 sender,
-                tableId
-                        + " lifecycle="
-                        + snapshot.lifecycle()
-                        + " revision="
-                        + snapshot.revision()
-                        + " mailbox="
-                        + snapshot.mailboxDepth()
-                        + " ruleInFlight="
-                        + snapshot.ruleCalculationInFlight()
-                        + " outbox="
-                        + snapshot.outboxHealth());
+                CommandSupport.message(
+                        "mahjongpaper.command.table_state",
+                        "%s - lifecycle %s - revision %s - mailbox %s - rule in flight %s - outbox %s",
+                        tableId,
+                        snapshot.lifecycle(),
+                        snapshot.revision(),
+                        snapshot.mailboxDepth(),
+                        snapshot.ruleCalculationInFlight(),
+                        snapshot.outboxHealth()));
     }
 
     private TableId tableFor(CommandSender sender) {
         if (!(sender instanceof Player player)) {
-            throw new IllegalArgumentException("Console must provide a table id");
+            throw CommandSupport.failure(
+                    "mahjongpaper.command.console_table_required",
+                    "The console must provide a table id.");
         }
         PlayerId playerId = new PlayerId(player.getUniqueId());
         return support.runtime()
@@ -110,6 +120,7 @@ public final class TableQueryHandler implements SubcommandHandler {
                                         .liveTables()
                                         .findByPlayer(playerId)
                                         .map(StartedRulePackMatch::tableId))
-                .orElseThrow(() -> new IllegalArgumentException("You do not belong to a table"));
+                .orElseThrow(() -> CommandSupport.failure(
+                        "mahjongpaper.command.not_at_table", "You do not belong to a table."));
     }
 }

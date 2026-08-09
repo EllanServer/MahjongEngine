@@ -108,6 +108,31 @@ class LobbyReducerTest {
     }
 
     @Test
+    void ownerCanExplicitlyTransferToAnOnlineHumanButNeverToABot() {
+        TableLobby state = lobby();
+        state = apply(state, new LobbyCommand.JoinSeat(player(1), new SeatId(0)));
+        state = apply(state, new LobbyCommand.JoinSeat(player(2), new SeatId(1)));
+        state = apply(state, new LobbyCommand.AddBot(player(1), new SeatId(2)));
+
+        LobbyReduction botRejected =
+                reducer.apply(state, new LobbyCommand.TransferOwner(player(1), new SeatId(2)));
+        assertFalse(botRejected.accepted());
+        assertEquals("target-human-required", botRejected.reasonCode());
+
+        state = apply(state, new LobbyCommand.TransferOwner(player(1), new SeatId(1)));
+        assertEquals(player(2), state.ownerId());
+        LobbyReduction formerOwner = reducer.apply(
+                state,
+                new LobbyCommand.ChangeRules(
+                        player(1),
+                        new RuleId("mcr"),
+                        new ProfileId("green-book"),
+                        Map.of()));
+        assertFalse(formerOwner.accepted());
+        assertEquals("owner-required", formerOwner.reasonCode());
+    }
+
+    @Test
     void ownerCanFillAndRemoveSeatsWithRuleNeutralReadyBots() {
         TableLobby state = apply(lobby(), new LobbyCommand.JoinSeat(player(1), new SeatId(0)));
         for (int index = 1; index < 4; index++) {

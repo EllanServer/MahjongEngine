@@ -31,6 +31,7 @@ public final class LobbyReducer {
             case LobbyCommand.Spectate spectate -> spectate(state, spectate.actor());
             case LobbyCommand.Unspectate unspectate -> unspectate(state, unspectate.actor());
             case LobbyCommand.ToggleReady ready -> toggleReady(state, ready.actor());
+            case LobbyCommand.TransferOwner transfer -> transferOwner(state, transfer);
             case LobbyCommand.AddBot bot -> addBot(state, bot);
             case LobbyCommand.RemoveBot bot -> removeBot(state, bot);
             case LobbyCommand.Start start -> start(state, start.actor());
@@ -132,6 +133,37 @@ public final class LobbyReducer {
         ArrayList<LobbySeat> seats = new ArrayList<>(state.seats());
         seats.set(index, current.withReady(!current.ready()));
         return changed(state, seats, state.spectators(), current.ready() ? "unready" : "ready");
+    }
+
+    private static LobbyReduction transferOwner(
+            TableLobby state, LobbyCommand.TransferOwner command) {
+        if (!state.ownerId().equals(command.actor())) {
+            return LobbyReduction.rejected(state, "owner-required");
+        }
+        int index = command.targetSeat().value();
+        if (index >= state.seats().size()) {
+            return LobbyReduction.rejected(state, "seat-out-of-range");
+        }
+        LobbySeat target = state.seats().get(index);
+        if (target.occupant().isEmpty()) {
+            return LobbyReduction.rejected(state, "target-seat-empty");
+        }
+        if (state.isBotSeat(target)) {
+            return LobbyReduction.rejected(state, "target-human-required");
+        }
+        if (target.presence() != SeatPresence.ONLINE) {
+            return LobbyReduction.rejected(state, "target-offline");
+        }
+        PlayerId nextOwner = target.occupant().orElseThrow();
+        if (nextOwner.equals(command.actor())) {
+            return LobbyReduction.accepted(state, false, false, "owner-unchanged");
+        }
+        return changed(
+                state,
+                nextOwner,
+                state.seats(),
+                state.spectators(),
+                "owner-transferred");
     }
 
     private static LobbyReduction addBot(TableLobby state, LobbyCommand.AddBot command) {

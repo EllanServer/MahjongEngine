@@ -24,7 +24,9 @@
 application/
   automation/          托管入口与平台中立玩家在线状态端口
   concurrent/          有界规则池、单次任务调度
+  feedback/            规则瞬时 cue 批次与平台端口
   interaction/         O(1) 路由、选牌与俯视视角端口
+  opening/             开局骰子/开门阶段批次与表现端口
   persistence/         事件、快照和每桌 outbox
   projection/          平台无关桌面投影端口和值对象
   security/            revision-bound 动作令牌签发
@@ -42,9 +44,9 @@ application/
 
 `mahjong-craftengine` 同样没有根包杂糅：`bundle` 只管理构建产物安装与 reload 门禁，`interaction` 只把 CE 交互转为平台中立输入，`port` 保存跨平台边界，`scene` 执行公开家具差分，`privateview` 只负责本人暗手、HUD 与相机。私有投影内部进一步把无锁目标/活动索引、region-thread 显示渲染、选牌状态和俯视相机拆成独立组件；网关只做端口及玩家生命周期转发，不再同时持有所有实现细节。公开场景后端也分为每桌目标状态、每 region 公平调度和单节点 mutation 执行器，故障与积压不会穿过该边界。CraftEngine 生产类由 CI 强制限制在 350 行以内。Paper/Folia 适配只能依赖 `port`，不能反向依赖 CE 的具体场景实现。
 
-其中 `opening` 是独立子包，只编排规则声明的有限开局阶段；它不保存模型或空间几何。骰子槽位、桌面高度、旋转、阴影、裁剪与 `single_face_*`/`double_face_*` variant 全部属于 CE YAML。
+其中 `opening` 是独立子包，只编排规则声明的有限开局阶段；它不保存模型或空间几何。骰子槽位、桌面高度、旋转、阴影、裁剪与 `single_face_*`/`double_face_*` variant 全部属于 CE YAML。开门动画只通过平台中立 `TableOpeningEffectPort` 发出有界阶段信号；Paper 的 `feedback` 适配器负责逐玩家调度声音，不能反向进入 application 或 CE 场景模块。
 
-`mahjong-platform-paper` 只放 Paper/Folia 适配，并按 `anchor / concurrent / region` 分类：世界锚点、平台线程池和区域调度各自独立，不在平台根包堆积工具类。Paper 模块同时拥有窄化的锚点查询与 region 调度端口；`mahjong-craftengine` 可以依赖这些 Paper 端口，Paper 绝不能反向依赖 CraftEngine 实现。
+`mahjong-platform-paper` 只放 Paper/Folia 适配，并按 `anchor / concurrent / feedback / region` 分类：世界锚点、平台线程池、瞬时音效和区域调度各自独立，不在平台根包堆积工具类。Paper 模块同时拥有窄化的锚点查询与 region 调度端口；`mahjong-craftengine` 可以依赖这些 Paper 端口，Paper 绝不能反向依赖 CraftEngine 实现。
 
 `mahjong-persistence-sql` 按 `connection / schema / event / match / lobby / anchor / recovery / common` 分类。比赛身份行映射、初始恢复元数据和大厅消费是独立 SQL 组件；大厅变为比赛时仍共用一个 JDBC 事务，不以模块化为代价拆散原子性。
 
@@ -71,6 +73,10 @@ SPI 1.5 的 `ScheduledRuleAction` 由规则包为不可变状态给出已入座 
 CraftEngine bundle 在构建期复制已审查的 `craftengine/configuration` 与 `resourcepack`，并生成 SHA-256 清单；启动时逐文件校验后原子安装。内容完全未变且 CE registry 已加载时可直接恢复；任一文件变化后必须等新的 `CraftEngineReloadEvent`，期间场景保持关闭。家具模型、牌姿态、座椅、hitbox、interaction 与 entity culling 都由 CraftEngine YAML 的 template/config factory 表达，不由 Java 拼装。
 
 开局骰子同样遵守这条边界：四个稳定槽位家具和所有 face/layout variant 由 CE 配置生成。Java 只提交槽位与点数；同一节点变化时在目标 Folia region 调用 CE `setVariant`，不删除并重建实体。只有节点首次出现和开局层结束时才执行 `place/remove`。
+
+声音不是场景实体。规则只发出平台无关 cue，`presentation.sound` 将 cue 映射为资源包 sound event、音量和音高，Paper 每名听众至多提交一个 Folia player-scheduler 任务。骰子开始和墙打开与 CE 动画阶段同步，但声音失败只丢失该次装饰性反馈，不能取消动画或规则 transition。资源包定义声音文件与复用别名，Java 不复制音源。
+
+玩家文字使用 Adventure translatable component，翻译键随 CE 资源包提供 `en_us/zh_cn/zh_tw/ja_jp` 四套文件；控制台使用代码内英文回退。构建期强制四个 locale 的键集合与 `%s` 参数数量完全一致，因此新增命令、动作或反馈不能只补一种语言。
 
 Java 仅负责：
 

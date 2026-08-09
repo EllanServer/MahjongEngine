@@ -237,7 +237,7 @@ val architectureCheck =
                             ).contains('/').not()
                 ) {
                     violations +=
-                        "$relative is unclassified; Paper adapters must live in anchor/concurrent/region"
+                        "$relative is unclassified; Paper adapters must live in anchor/concurrent/feedback/region"
                 }
                 if (
                     module == "mahjong-platform-paper" &&

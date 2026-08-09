@@ -44,6 +44,7 @@ class TableOpeningPublisherTest {
         assertEquals(List.of(first, second), batches.stream()
                 .map(TableOpeningBatch::opening)
                 .toList());
+        assertEquals(1, batches.getFirst().audience().size());
     }
 
     @Test

@@ -10,7 +10,7 @@ depend:
 commands:
   mahjong:
     description: MahjongPaper 2.0 administration and match commands.
-    usage: /mahjong <create|join|leave|spectate|ready|bot|start|mode|auto|list|state|remove|rules>
+    usage: /mahjong <create|join|leave|spectate|ready|owner|bot|start|mode|auto|list|state|remove|rules>
     permission: mahjongpaper.command
 permissions:
   mahjongpaper.command:
