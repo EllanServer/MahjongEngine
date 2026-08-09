@@ -41,6 +41,8 @@ application/
 
 `mahjong-presentation` 只保存平台无关的桌面语义，并按 `asset / layout / node / port / projection / scene` 分类：资产名、通用桌面坐标编译、节点值对象、后端端口、规则视图映射和场景差分互不混放。具体 CraftEngine 家具调用仍只存在于 `mahjong-craftengine`。
 
+`mahjong-rule-runtime` 按 `activation / admin / catalog / common / install / lifecycle / loading / registry / security / storage` 分类，激活状态、管理命令、下载安装、类加载、签名注册表和本地文件边界彼此独立。`mahjong-rule-spi` 是三个外部规则仓共同编译的稳定公共协议，因此保持扁平且版本化，不把一次内部整理变成规则包 ABI 破坏。
+
 规则包只通过父 classloader 提供的 SPI 通信。规则包是完整 JVM 受信代码；Ed25519 签名验证来源，不宣称提供 Java 沙箱。
 
 ## 动作链路

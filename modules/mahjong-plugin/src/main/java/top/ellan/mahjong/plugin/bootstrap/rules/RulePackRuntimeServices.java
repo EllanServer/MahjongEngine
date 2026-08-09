@@ -3,9 +3,9 @@ package top.ellan.mahjong.plugin.bootstrap.rules;
 import java.io.IOException;
 import java.util.Objects;
 import java.util.Optional;
-import top.ellan.mahjong.runtime.RulePackAdminService;
-import top.ellan.mahjong.runtime.RulePackInventoryReader;
-import top.ellan.mahjong.runtime.RulePackRuntime;
+import top.ellan.mahjong.runtime.admin.RulePackAdminService;
+import top.ellan.mahjong.runtime.admin.RulePackInventoryReader;
+import top.ellan.mahjong.runtime.lifecycle.RulePackRuntime;
 
 /** Restart-scoped rule-pack runtime and administration services. */
 public record RulePackRuntimeServices(

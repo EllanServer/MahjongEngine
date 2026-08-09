@@ -11,20 +11,20 @@ import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import top.ellan.mahjong.runtime.EmbeddedRuleTrustRoot;
-import top.ellan.mahjong.runtime.HttpArtifactDownloader;
-import top.ellan.mahjong.runtime.HttpRegistrySource;
-import top.ellan.mahjong.runtime.OfficialTrustRoot;
-import top.ellan.mahjong.runtime.RuleActivationStore;
-import top.ellan.mahjong.runtime.RulePackAdminService;
-import top.ellan.mahjong.runtime.RulePackException;
-import top.ellan.mahjong.runtime.RulePackGarbageCollector;
-import top.ellan.mahjong.runtime.RulePackInstaller;
-import top.ellan.mahjong.runtime.RulePackInventoryReader;
-import top.ellan.mahjong.runtime.RulePackLoader;
-import top.ellan.mahjong.runtime.RulePackPaths;
-import top.ellan.mahjong.runtime.RulePackReferenceIndex;
-import top.ellan.mahjong.runtime.RulePackRuntime;
+import top.ellan.mahjong.runtime.security.EmbeddedRuleTrustRoot;
+import top.ellan.mahjong.runtime.install.HttpArtifactDownloader;
+import top.ellan.mahjong.runtime.registry.HttpRegistrySource;
+import top.ellan.mahjong.runtime.security.OfficialTrustRoot;
+import top.ellan.mahjong.runtime.activation.RuleActivationStore;
+import top.ellan.mahjong.runtime.admin.RulePackAdminService;
+import top.ellan.mahjong.runtime.common.RulePackException;
+import top.ellan.mahjong.runtime.admin.RulePackGarbageCollector;
+import top.ellan.mahjong.runtime.install.RulePackInstaller;
+import top.ellan.mahjong.runtime.admin.RulePackInventoryReader;
+import top.ellan.mahjong.runtime.loading.RulePackLoader;
+import top.ellan.mahjong.runtime.storage.RulePackPaths;
+import top.ellan.mahjong.runtime.storage.RulePackReferenceIndex;
+import top.ellan.mahjong.runtime.lifecycle.RulePackRuntime;
 
 /** Starts installed providers and builds the signed official-package administration boundary. */
 public final class RulePackBootstrap {

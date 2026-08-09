@@ -42,9 +42,9 @@ import top.ellan.mahjong.plugin.recovery.MatchRecoveryService;
 import top.ellan.mahjong.plugin.runtime.FailureSupport;
 import top.ellan.mahjong.plugin.runtime.RuntimeServices;
 import top.ellan.mahjong.plugin.table.LiveTableDirectory;
-import top.ellan.mahjong.runtime.RulePackAdminService;
-import top.ellan.mahjong.runtime.RulePackInventory;
-import top.ellan.mahjong.runtime.RulePackVerification;
+import top.ellan.mahjong.runtime.admin.RulePackAdminService;
+import top.ellan.mahjong.runtime.admin.RulePackInventory;
+import top.ellan.mahjong.runtime.admin.RulePackVerification;
 import top.ellan.mahjong.spi.RuleId;
 
 /** Restart-scoped 2.0 composition root. All concrete setup lives in classified bootstraps. */

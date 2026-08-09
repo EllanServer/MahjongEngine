@@ -22,7 +22,7 @@ import top.ellan.mahjong.persistence.sql.match.MatchInstanceRecord;
 import top.ellan.mahjong.persistence.sql.recovery.MatchRecoveryData;
 import top.ellan.mahjong.persistence.sql.recovery.RuleStateReplayVerifier;
 import top.ellan.mahjong.persistence.sql.recovery.VerifiedRecovery;
-import top.ellan.mahjong.runtime.RulePackRuntime;
+import top.ellan.mahjong.runtime.lifecycle.RulePackRuntime;
 import top.ellan.mahjong.spi.RulePackProvider;
 import top.ellan.mahjong.spi.RulePackRef;
 

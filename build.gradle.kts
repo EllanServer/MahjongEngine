@@ -180,6 +180,26 @@ val architectureCheck =
                         "$relative exceeds the 500-line plugin responsibility limit"
                 }
                 if (
+                    module == "mahjong-rule-runtime" &&
+                        relative.startsWith(
+                            "modules/mahjong-rule-runtime/src/main/java/top/ellan/mahjong/runtime/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-rule-runtime/src/main/java/top/ellan/mahjong/runtime/",
+                            ).contains('/').not()
+                ) {
+                    violations +=
+                        "$relative is unclassified; rule runtime types must live in activation/admin/catalog/common/install/lifecycle/loading/registry/security/storage"
+                }
+                if (
+                    module == "mahjong-rule-runtime" &&
+                        text.lineSequence().count() > 350
+                ) {
+                    violations +=
+                        "$relative exceeds the 350-line rule-runtime responsibility limit"
+                }
+                if (
                     module == "mahjong-application" &&
                         text.lineSequence().count() > 550
                 ) {

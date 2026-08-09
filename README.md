@@ -10,6 +10,8 @@ The pre-match path is modular as well: immutable lobby state lives in `mahjong-d
 
 Production packages are classified by responsibility. Application, presentation, CraftEngine, SQL, and plugin integration roots reject unclassified classes in CI; the plugin root contains only the JavaPlugin entry point and the composition root.
 
+The signed rule-pack runtime is likewise separated into activation, administration, installation, class loading, registry verification, security, storage, and lifecycle packages. The Java-only rule SPI remains a deliberately flat, versioned external contract for the three rule repositories.
+
 Create a reusable table with `/mahjong create <riichi|mcr|sichuan> [profile]`. Players sit by clicking the four CraftEngine-configured chairs, then use the projected ready/start actions. `/mahjong join`, `leave`, `spectate`, `ready`, `start`, and `mode` remain lightweight command entry points.
 
 All modes share one physical table compiler. A rule pack supplies only its actual tile instances, wall stacks and draw origin, zone ordering, rotations/stacks, and typed action placement; the core contains no 108/136/144-tile mode branches.

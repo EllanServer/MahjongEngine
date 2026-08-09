@@ -6,8 +6,8 @@ import java.util.Set;
 import org.bukkit.command.CommandSender;
 import top.ellan.mahjong.plugin.command.CommandSupport;
 import top.ellan.mahjong.plugin.command.SubcommandHandler;
-import top.ellan.mahjong.runtime.RulePackInventory;
-import top.ellan.mahjong.runtime.RulePackVerification;
+import top.ellan.mahjong.runtime.admin.RulePackInventory;
+import top.ellan.mahjong.runtime.admin.RulePackVerification;
 import top.ellan.mahjong.spi.RuleId;
 
 /** Signed official rule-pack lifecycle commands. */
