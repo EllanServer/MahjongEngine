@@ -4,7 +4,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
 import top.ellan.mahjong.application.projection.TableProjection;
-import top.ellan.mahjong.domain.TableLifecycle;
+import top.ellan.mahjong.domain.table.TableLifecycle;
 
 /** Publishes derived scene state without allowing a renderer failure to block the table. */
 final class TableProjectionPublisher {

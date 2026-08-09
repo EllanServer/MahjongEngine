@@ -1,7 +1,7 @@
 package top.ellan.mahjong.application.lobby.command;
 
 import java.util.Objects;
-import top.ellan.mahjong.domain.TableLobby;
+import top.ellan.mahjong.domain.lobby.TableLobby;
 
 /** Pure reducer result. Rejections always retain the identical state instance. */
 public record LobbyReduction(

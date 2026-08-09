@@ -6,7 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import top.ellan.mahjong.application.interaction.HandTileSelectionPort;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.presentation.node.PrivateItemNode;
 import top.ellan.mahjong.presentation.node.SceneTransform;
 import top.ellan.mahjong.spi.PlayerId;

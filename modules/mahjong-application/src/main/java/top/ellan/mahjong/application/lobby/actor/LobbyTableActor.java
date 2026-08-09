@@ -29,9 +29,9 @@ import top.ellan.mahjong.application.lobby.port.LobbyStartPort;
 import top.ellan.mahjong.application.lobby.port.LobbyStateObserver;
 import top.ellan.mahjong.application.lobby.projection.LobbyProjectionFactory;
 import top.ellan.mahjong.application.lobby.projection.LobbyProjectionFrame;
-import top.ellan.mahjong.domain.LobbyPhase;
-import top.ellan.mahjong.domain.TableLifecycle;
-import top.ellan.mahjong.domain.TableLobby;
+import top.ellan.mahjong.domain.lobby.LobbyPhase;
+import top.ellan.mahjong.domain.table.TableLifecycle;
+import top.ellan.mahjong.domain.lobby.TableLobby;
 import top.ellan.mahjong.spi.ActionToken;
 import top.ellan.mahjong.spi.PlayerId;
 

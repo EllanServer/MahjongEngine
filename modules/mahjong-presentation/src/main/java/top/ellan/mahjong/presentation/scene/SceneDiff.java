@@ -2,7 +2,7 @@ package top.ellan.mahjong.presentation.scene;
 
 import java.util.List;
 import java.util.Objects;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.presentation.node.SceneNode;
 import top.ellan.mahjong.presentation.node.SceneNodeId;
 

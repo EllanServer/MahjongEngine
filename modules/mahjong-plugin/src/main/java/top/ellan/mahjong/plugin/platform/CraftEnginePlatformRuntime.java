@@ -25,7 +25,7 @@ import top.ellan.mahjong.craftengine.scene.CraftEngineSceneBackend;
 import top.ellan.mahjong.craftengine.bundle.CraftEngineVersion;
 import top.ellan.mahjong.craftengine.scene.DirectCraftEngineMutationGateway;
 import top.ellan.mahjong.craftengine.privateview.SparrowPrivateProjectionGateway;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.platform.paper.BoundedPlatformExecutors;
 import top.ellan.mahjong.platform.paper.PaperRegionScheduler;
 import top.ellan.mahjong.platform.paper.PaperTableAnchorRegistry;

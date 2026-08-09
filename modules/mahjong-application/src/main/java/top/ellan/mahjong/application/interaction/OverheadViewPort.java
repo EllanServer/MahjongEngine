@@ -2,7 +2,7 @@ package top.ellan.mahjong.application.interaction;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.spi.PlayerId;
 
 /** Non-blocking client-only overhead camera boundary. */

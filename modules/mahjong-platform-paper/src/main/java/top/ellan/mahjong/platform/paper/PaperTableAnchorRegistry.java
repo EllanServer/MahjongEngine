@@ -10,7 +10,7 @@ import org.bukkit.World;
 import top.ellan.mahjong.craftengine.port.RegionKey;
 import top.ellan.mahjong.craftengine.port.TableRegionResolver;
 import top.ellan.mahjong.craftengine.port.TableAnchorLookup;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 
 /** Immutable-value anchor lookup shared by Paper and the CE region budget coordinator. */
 public final class PaperTableAnchorRegistry implements TableRegionResolver, TableAnchorLookup {

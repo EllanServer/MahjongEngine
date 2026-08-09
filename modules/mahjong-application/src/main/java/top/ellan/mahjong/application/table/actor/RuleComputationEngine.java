@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import top.ellan.mahjong.application.table.TableActorConfig;
-import top.ellan.mahjong.domain.TableParticipant;
+import top.ellan.mahjong.domain.table.TableParticipant;
 import top.ellan.mahjong.spi.LegalAction;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.PrivateRuleView;

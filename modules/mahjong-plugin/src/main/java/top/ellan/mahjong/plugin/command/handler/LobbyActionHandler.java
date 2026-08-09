@@ -9,7 +9,7 @@ import org.bukkit.entity.Player;
 import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.plugin.command.CommandSupport;
 import top.ellan.mahjong.plugin.command.SubcommandHandler;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.ProfileId;
 import top.ellan.mahjong.spi.RuleId;

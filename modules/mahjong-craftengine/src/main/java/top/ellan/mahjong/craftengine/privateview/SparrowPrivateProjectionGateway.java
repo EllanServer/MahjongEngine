@@ -29,7 +29,7 @@ import top.ellan.mahjong.application.interaction.HandTileSelectionPort;
 import top.ellan.mahjong.application.interaction.OverheadViewPort;
 import top.ellan.mahjong.craftengine.port.PrivateProjectionGateway;
 import top.ellan.mahjong.craftengine.port.TableAnchorLookup;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.presentation.node.ActionLabelNode;
 import top.ellan.mahjong.presentation.node.CameraNode;
 import top.ellan.mahjong.presentation.node.HudNode;

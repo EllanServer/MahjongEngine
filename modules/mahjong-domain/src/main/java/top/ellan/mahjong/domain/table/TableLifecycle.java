@@ -1,4 +1,4 @@
-package top.ellan.mahjong.domain;
+package top.ellan.mahjong.domain.table;
 
 /** Core-owned lifecycle; rule-specific phase remains inside RuleState. */
 public enum TableLifecycle {

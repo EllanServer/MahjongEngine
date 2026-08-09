@@ -1,4 +1,4 @@
-package top.ellan.mahjong.domain;
+package top.ellan.mahjong.domain.match;
 
 import java.util.Objects;
 import java.util.UUID;

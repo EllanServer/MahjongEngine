@@ -1,7 +1,8 @@
-package top.ellan.mahjong.domain;
+package top.ellan.mahjong.domain.lobby;
 
 import java.util.Objects;
 import java.util.Optional;
+
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.SeatId;
 

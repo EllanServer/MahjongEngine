@@ -1,9 +1,12 @@
-package top.ellan.mahjong.domain;
+package top.ellan.mahjong.domain.table;
 
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+
+import top.ellan.mahjong.domain.match.CompetitionRef;
+import top.ellan.mahjong.domain.match.MatchBinding;
 
 /** Small immutable aggregate owned by a TableActor. */
 public record TableAggregate(

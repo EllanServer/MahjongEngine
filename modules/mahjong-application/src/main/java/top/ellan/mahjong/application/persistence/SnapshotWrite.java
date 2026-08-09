@@ -2,8 +2,8 @@ package top.ellan.mahjong.application.persistence;
 
 import java.time.Instant;
 import java.util.Objects;
-import top.ellan.mahjong.domain.MatchId;
-import top.ellan.mahjong.domain.TableLifecycle;
+import top.ellan.mahjong.domain.match.MatchId;
+import top.ellan.mahjong.domain.table.TableLifecycle;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
 
 /** Snapshot row written in the same transaction as its covering event batch. */

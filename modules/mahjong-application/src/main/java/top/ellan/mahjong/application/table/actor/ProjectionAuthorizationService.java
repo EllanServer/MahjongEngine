@@ -9,7 +9,7 @@ import java.util.Objects;
 import java.util.UUID;
 import top.ellan.mahjong.application.projection.TableProjection;
 import top.ellan.mahjong.application.security.ActionTokenIssuer;
-import top.ellan.mahjong.domain.TableAggregate;
+import top.ellan.mahjong.domain.table.TableAggregate;
 import top.ellan.mahjong.spi.ActionToken;
 import top.ellan.mahjong.spi.AuthorizedAction;
 import top.ellan.mahjong.spi.LegalAction;

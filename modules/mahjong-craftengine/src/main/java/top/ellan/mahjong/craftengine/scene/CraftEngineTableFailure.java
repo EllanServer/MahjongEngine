@@ -1,7 +1,7 @@
 package top.ellan.mahjong.craftengine.scene;
 
 import java.util.Objects;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 
 /** Render fault notification; it never changes rule or persistence state. */
 public record CraftEngineTableFailure(TableId tableId, long revision, String failureType) {

@@ -4,7 +4,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.Objects;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 
 /** Cross-aggregate lobby operation used by atomic lobby-to-match activation. */
 public final class LobbySqlTransactions {

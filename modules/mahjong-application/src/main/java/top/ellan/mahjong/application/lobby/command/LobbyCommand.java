@@ -2,7 +2,7 @@ package top.ellan.mahjong.application.lobby.command;
 
 import java.util.Map;
 import java.util.Objects;
-import top.ellan.mahjong.domain.SeatPresence;
+import top.ellan.mahjong.domain.lobby.SeatPresence;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.ProfileId;
 import top.ellan.mahjong.spi.RuleId;

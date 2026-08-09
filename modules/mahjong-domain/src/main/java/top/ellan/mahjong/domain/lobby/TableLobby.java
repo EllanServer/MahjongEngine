@@ -1,4 +1,4 @@
-package top.ellan.mahjong.domain;
+package top.ellan.mahjong.domain.lobby;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -10,6 +10,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+
+import top.ellan.mahjong.domain.table.ParticipantRole;
+import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.domain.table.TableParticipant;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.ProfileId;
 import top.ellan.mahjong.spi.RuleId;

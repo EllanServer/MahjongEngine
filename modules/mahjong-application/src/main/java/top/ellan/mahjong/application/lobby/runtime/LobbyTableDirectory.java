@@ -11,9 +11,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import top.ellan.mahjong.application.lobby.port.LobbyStateObserver;
-import top.ellan.mahjong.domain.LobbySeat;
-import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.domain.TableLobby;
+import top.ellan.mahjong.domain.lobby.LobbySeat;
+import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.domain.lobby.TableLobby;
 import top.ellan.mahjong.spi.PlayerId;
 
 /**

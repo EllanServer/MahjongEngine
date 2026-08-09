@@ -2,7 +2,7 @@ package top.ellan.mahjong.plugin.command.handler;
 
 import java.util.Set;
 import org.bukkit.command.CommandSender;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.plugin.command.CommandSupport;
 import top.ellan.mahjong.plugin.command.SubcommandHandler;
 

@@ -1,7 +1,8 @@
-package top.ellan.mahjong.domain;
+package top.ellan.mahjong.domain.match;
 
 import java.time.Instant;
 import java.util.Objects;
+
 import top.ellan.mahjong.spi.ProfileId;
 import top.ellan.mahjong.spi.RulePackRef;
 

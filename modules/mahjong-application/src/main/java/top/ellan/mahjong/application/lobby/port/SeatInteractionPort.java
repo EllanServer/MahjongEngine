@@ -1,6 +1,6 @@
 package top.ellan.mahjong.application.lobby.port;
 
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.SeatId;
 

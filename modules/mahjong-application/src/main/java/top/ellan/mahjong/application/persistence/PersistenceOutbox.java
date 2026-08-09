@@ -16,7 +16,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Consumer;
 import top.ellan.mahjong.application.concurrent.Cancellable;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
-import top.ellan.mahjong.domain.MatchId;
+import top.ellan.mahjong.domain.match.MatchId;
 
 /**
  * Per-match memory-first outbox. It batches in order, never blocks the actor, and reports

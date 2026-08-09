@@ -8,7 +8,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.plugin.Plugin;
-import top.ellan.mahjong.domain.TableAnchor;
+import top.ellan.mahjong.domain.table.TableAnchor;
 
 /** Region-safe conversion between domain anchors and loaded Paper worlds. */
 public final class PaperTableAnchorService {

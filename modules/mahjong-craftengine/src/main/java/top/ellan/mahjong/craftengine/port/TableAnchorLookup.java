@@ -2,7 +2,7 @@ package top.ellan.mahjong.craftengine.port;
 
 import java.util.Optional;
 import org.bukkit.Location;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 
 /** Read-only Bukkit anchor lookup implemented by the Paper adapter. */
 @FunctionalInterface

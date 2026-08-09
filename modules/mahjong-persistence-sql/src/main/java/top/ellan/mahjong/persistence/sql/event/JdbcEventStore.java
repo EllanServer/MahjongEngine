@@ -1,4 +1,5 @@
 package top.ellan.mahjong.persistence.sql.event;
+import top.ellan.mahjong.domain.table.TableLifecycle;
 
 import top.ellan.mahjong.persistence.sql.common.PersistenceConflictException;
 import top.ellan.mahjong.persistence.sql.connection.SqlConnectionFactory;
@@ -253,7 +254,7 @@ public final class JdbcEventStore implements EventStorePort {
             String matchId,
             long committedSequence,
             java.time.Instant updatedAt,
-            java.util.Optional<top.ellan.mahjong.domain.TableLifecycle> lifecycle)
+            java.util.Optional<top.ellan.mahjong.domain.table.TableLifecycle> lifecycle)
             throws SQLException {
         String sql = lifecycle.isPresent()
                 ? "UPDATE match_instance SET last_committed_sequence = ?, updated_at = ?, status = ? "

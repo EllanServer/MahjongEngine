@@ -2,7 +2,7 @@ package top.ellan.mahjong.application.persistence;
 
 import java.time.Instant;
 import java.util.Objects;
-import top.ellan.mahjong.domain.MatchId;
+import top.ellan.mahjong.domain.match.MatchId;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.RuleAction;
 import top.ellan.mahjong.spi.RuleEvent;

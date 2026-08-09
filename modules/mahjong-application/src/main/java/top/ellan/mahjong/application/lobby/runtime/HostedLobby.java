@@ -2,9 +2,9 @@ package top.ellan.mahjong.application.lobby.runtime;
 
 import java.util.Objects;
 import top.ellan.mahjong.application.lobby.actor.LobbyTableActor;
-import top.ellan.mahjong.domain.TableAnchor;
-import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.domain.TableLobby;
+import top.ellan.mahjong.domain.table.TableAnchor;
+import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.domain.lobby.TableLobby;
 
 /** Runtime handle for one pre-match table; values exposed by it are immutable snapshots. */
 public record HostedLobby(TableAnchor anchor, LobbyTableActor actor) {

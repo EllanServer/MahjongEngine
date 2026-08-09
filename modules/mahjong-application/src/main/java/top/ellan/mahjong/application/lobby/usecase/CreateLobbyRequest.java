@@ -2,7 +2,7 @@ package top.ellan.mahjong.application.lobby.usecase;
 
 import java.util.Map;
 import java.util.Objects;
-import top.ellan.mahjong.domain.TableAnchor;
+import top.ellan.mahjong.domain.table.TableAnchor;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.ProfileId;
 import top.ellan.mahjong.spi.RuleId;

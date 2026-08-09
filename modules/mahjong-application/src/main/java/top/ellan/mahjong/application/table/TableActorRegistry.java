@@ -5,7 +5,7 @@ import java.util.Optional;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 
 /** Lock-free table lookup used by the interaction router. */
 public final class TableActorRegistry {

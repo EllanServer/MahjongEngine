@@ -10,10 +10,10 @@ import top.ellan.mahjong.application.lobby.port.SeatInteractionAdmission;
 import top.ellan.mahjong.application.lobby.port.SeatInteractionPort;
 import top.ellan.mahjong.application.lobby.runtime.HostedLobby;
 import top.ellan.mahjong.application.lobby.runtime.LobbyTableDirectory;
-import top.ellan.mahjong.domain.LobbySeat;
-import top.ellan.mahjong.domain.SeatPresence;
-import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.domain.TableLobby;
+import top.ellan.mahjong.domain.lobby.LobbySeat;
+import top.ellan.mahjong.domain.lobby.SeatPresence;
+import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.domain.lobby.TableLobby;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.SeatId;
 

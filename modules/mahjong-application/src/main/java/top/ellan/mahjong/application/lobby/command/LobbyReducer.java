@@ -5,10 +5,10 @@ import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import top.ellan.mahjong.domain.LobbyPhase;
-import top.ellan.mahjong.domain.LobbySeat;
-import top.ellan.mahjong.domain.SeatPresence;
-import top.ellan.mahjong.domain.TableLobby;
+import top.ellan.mahjong.domain.lobby.LobbyPhase;
+import top.ellan.mahjong.domain.lobby.LobbySeat;
+import top.ellan.mahjong.domain.lobby.SeatPresence;
+import top.ellan.mahjong.domain.lobby.TableLobby;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.SeatId;
 

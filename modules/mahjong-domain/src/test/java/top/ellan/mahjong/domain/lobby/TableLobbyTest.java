@@ -1,4 +1,4 @@
-package top.ellan.mahjong.domain;
+package top.ellan.mahjong.domain.lobby;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -11,7 +11,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+
 import org.junit.jupiter.api.Test;
+import top.ellan.mahjong.domain.table.TableAnchor;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.ProfileId;
 import top.ellan.mahjong.spi.RuleId;

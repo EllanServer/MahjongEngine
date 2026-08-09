@@ -19,9 +19,9 @@ import top.ellan.mahjong.application.lobby.runtime.HostedLobby;
 import top.ellan.mahjong.application.lobby.runtime.LatestLobbySnapshotWriter;
 import top.ellan.mahjong.application.lobby.runtime.LobbyTableDirectory;
 import top.ellan.mahjong.craftengine.scene.CraftEngineSceneBackend;
-import top.ellan.mahjong.domain.TableAnchor;
-import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.domain.TableLobby;
+import top.ellan.mahjong.domain.table.TableAnchor;
+import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.domain.lobby.TableLobby;
 import top.ellan.mahjong.platform.paper.PaperTableAnchorService;
 import top.ellan.mahjong.presentation.projection.LatestSceneProjector;
 

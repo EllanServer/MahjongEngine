@@ -9,7 +9,7 @@ import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.application.lobby.command.LobbyCommand;
 import top.ellan.mahjong.application.lobby.runtime.HostedLobby;
 import top.ellan.mahjong.application.lobby.runtime.LobbyTableDirectory;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.ProfileId;
 import top.ellan.mahjong.spi.RuleId;

@@ -16,6 +16,8 @@
 
 核心的 `domain/application/rule-spi/presentation/rule-runtime` 不允许导入 Bukkit、CraftEngine 或 JDBC。平台和基础设施模块实现 application 端口，`mahjong-plugin` 是唯一装配根。
 
+`mahjong-domain` 按 `lobby / match / table` 分类：开局前座位与准备状态、比赛版本身份、活动桌生命周期互不混放。领域对象仍只依赖 Java 与规则 SPI 的公共 ID，不导入平台或持久化实现。
+
 `mahjong-application` 内部继续按职责分包，不允许把类放回 application 根包：
 
 ```text

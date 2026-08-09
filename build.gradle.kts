@@ -200,6 +200,26 @@ val architectureCheck =
                         "$relative exceeds the 350-line rule-runtime responsibility limit"
                 }
                 if (
+                    module == "mahjong-domain" &&
+                        relative.startsWith(
+                            "modules/mahjong-domain/src/main/java/top/ellan/mahjong/domain/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-domain/src/main/java/top/ellan/mahjong/domain/",
+                            ).contains('/').not()
+                ) {
+                    violations +=
+                        "$relative is unclassified; domain types must live in lobby/match/table"
+                }
+                if (
+                    module == "mahjong-domain" &&
+                        text.lineSequence().count() > 300
+                ) {
+                    violations +=
+                        "$relative exceeds the 300-line domain responsibility limit"
+                }
+                if (
                     module == "mahjong-application" &&
                         text.lineSequence().count() > 550
                 ) {

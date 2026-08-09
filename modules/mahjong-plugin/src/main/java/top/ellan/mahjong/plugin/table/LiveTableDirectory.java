@@ -6,8 +6,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import top.ellan.mahjong.plugin.match.StartedRulePackMatch;
-import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.domain.TableParticipant;
+import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.domain.table.TableParticipant;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.SeatId;
 

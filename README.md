@@ -8,7 +8,7 @@ Implemented foundations include bounded per-table actors, a fair bounded rule CP
 
 The pre-match path is modular as well: immutable lobby state lives in `mahjong-domain`; lobby commands, reducer, actor, projection factory, ports, runtime index, and use cases are separated under `mahjong-application`; JDBC stores only implement the persistence port; Paper owns world-anchor conversion; CraftEngine resolves its configured chair hitboxes; and `mahjong-plugin` contains only categorized command and lifecycle integration packages. Lobby-to-match activation consumes the durable lobby and creates the pinned initial rule snapshot in one SQL transaction.
 
-Production packages are classified by responsibility. Application, presentation, CraftEngine, SQL, and plugin integration roots reject unclassified classes in CI; the plugin root contains only the JavaPlugin entry point and the composition root.
+Production packages are classified by responsibility. Domain, application, presentation, CraftEngine, SQL, rule-runtime, and plugin integration roots reject unclassified classes in CI; the plugin root contains only the JavaPlugin entry point and the composition root.
 
 The signed rule-pack runtime is likewise separated into activation, administration, installation, class loading, registry verification, security, storage, and lifecycle packages. The Java-only rule SPI remains a deliberately flat, versioned external contract for the three rule repositories.
 

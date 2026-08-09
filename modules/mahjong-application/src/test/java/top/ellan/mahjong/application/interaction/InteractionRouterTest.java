@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.application.table.TableActionCode;
 import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.application.table.TableActorRegistry;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.spi.ActionToken;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.TileInstanceId;

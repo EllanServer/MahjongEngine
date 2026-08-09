@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import top.ellan.mahjong.application.lobby.port.LobbyRepositoryPort;
 import top.ellan.mahjong.application.lobby.port.LobbyStateObserver;
-import top.ellan.mahjong.domain.TableLobby;
+import top.ellan.mahjong.domain.lobby.TableLobby;
 
 /**
  * Per-table latest-only lobby writer. At most one blocking write is in flight and intermediate

@@ -2,7 +2,7 @@ package top.ellan.mahjong.craftengine.privateview;
 
 import java.util.Optional;
 import org.bukkit.entity.Player;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.presentation.node.CameraNode;
 import top.ellan.mahjong.spi.PlayerId;
 

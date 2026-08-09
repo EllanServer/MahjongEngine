@@ -3,7 +3,7 @@ package top.ellan.mahjong.application.persistence;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import top.ellan.mahjong.domain.MatchId;
+import top.ellan.mahjong.domain.match.MatchId;
 
 /** Ordered transaction request for one match only. */
 public record MatchWriteBatch(

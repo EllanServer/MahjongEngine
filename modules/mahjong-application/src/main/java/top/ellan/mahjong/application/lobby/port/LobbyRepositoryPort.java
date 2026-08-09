@@ -3,9 +3,9 @@ package top.ellan.mahjong.application.lobby.port;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import top.ellan.mahjong.domain.TableAnchor;
-import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.domain.TableLobby;
+import top.ellan.mahjong.domain.table.TableAnchor;
+import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.domain.lobby.TableLobby;
 
 /** Blocking persistence boundary; callers must invoke it only on the bounded I/O executor. */
 public interface LobbyRepositoryPort {

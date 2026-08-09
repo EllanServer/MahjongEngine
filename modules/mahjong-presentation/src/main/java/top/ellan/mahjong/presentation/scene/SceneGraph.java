@@ -5,7 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.application.interaction.InteractionHandle;
 import top.ellan.mahjong.presentation.node.InteractionNode;
 import top.ellan.mahjong.presentation.node.SceneNode;

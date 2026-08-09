@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import top.ellan.mahjong.application.persistence.MatchEventRecord;
-import top.ellan.mahjong.domain.MatchBinding;
+import top.ellan.mahjong.domain.match.MatchBinding;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.RuleAction;
 import top.ellan.mahjong.spi.RuleEvent;

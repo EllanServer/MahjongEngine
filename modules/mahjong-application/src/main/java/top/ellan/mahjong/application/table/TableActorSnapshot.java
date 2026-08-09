@@ -2,8 +2,8 @@ package top.ellan.mahjong.application.table;
 
 import java.util.Objects;
 import top.ellan.mahjong.application.persistence.OutboxHealth;
-import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.domain.TableLifecycle;
+import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.domain.table.TableLifecycle;
 
 /** Lock-free diagnostic snapshot published by the single writer. */
 public record TableActorSnapshot(

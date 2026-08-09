@@ -5,7 +5,7 @@ import top.ellan.mahjong.persistence.sql.match.MatchInstanceRecord;
 import java.util.List;
 import java.util.Objects;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
-import top.ellan.mahjong.domain.TableParticipant;
+import top.ellan.mahjong.domain.table.TableParticipant;
 
 /** Last durable snapshot plus actions committed after it. */
 public record MatchRecoveryData(

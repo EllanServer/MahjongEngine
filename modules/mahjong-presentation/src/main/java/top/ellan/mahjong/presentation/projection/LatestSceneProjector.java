@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
 import top.ellan.mahjong.application.projection.TableProjection;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.presentation.node.SceneNode;
 import top.ellan.mahjong.presentation.port.SceneBackendPort;
 import top.ellan.mahjong.presentation.scene.SceneDiff;

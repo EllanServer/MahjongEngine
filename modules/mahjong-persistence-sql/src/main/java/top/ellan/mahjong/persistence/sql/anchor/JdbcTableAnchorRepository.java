@@ -10,8 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import top.ellan.mahjong.domain.TableAnchor;
-import top.ellan.mahjong.domain.TableId;
+import top.ellan.mahjong.domain.table.TableAnchor;
+import top.ellan.mahjong.domain.table.TableId;
 
 /** Durable table anchors. Calls are blocking and belong on the bounded I/O executor. */
 public final class JdbcTableAnchorRepository {

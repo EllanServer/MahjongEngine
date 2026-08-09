@@ -19,7 +19,7 @@ import java.util.concurrent.RejectedExecutionException;
 import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.application.concurrent.Cancellable;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
-import top.ellan.mahjong.domain.MatchId;
+import top.ellan.mahjong.domain.match.MatchId;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.RuleAction;
 import top.ellan.mahjong.spi.RuleEvent;

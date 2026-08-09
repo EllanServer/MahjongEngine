@@ -2,9 +2,9 @@ package top.ellan.mahjong.persistence.sql.match;
 
 import java.time.Instant;
 import java.util.Objects;
-import top.ellan.mahjong.domain.MatchBinding;
-import top.ellan.mahjong.domain.TableId;
-import top.ellan.mahjong.domain.TableLifecycle;
+import top.ellan.mahjong.domain.match.MatchBinding;
+import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.domain.table.TableLifecycle;
 
 /** Durable match metadata; rule provenance is never inferred from current configuration. */
 public record MatchInstanceRecord(
