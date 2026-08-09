@@ -21,7 +21,7 @@ import top.ellan.mahjong.domain.table.TableLifecycle;
 import top.ellan.mahjong.persistence.sql.match.JdbcMatchRepository;
 import top.ellan.mahjong.persistence.sql.anchor.JdbcTableAnchorRepository;
 import top.ellan.mahjong.persistence.sql.match.MatchInstanceRecord;
-import top.ellan.mahjong.platform.paper.PaperTableAnchorService;
+import top.ellan.mahjong.platform.paper.anchor.PaperTableAnchorService;
 import top.ellan.mahjong.plugin.table.LiveTableDirectory;
 import top.ellan.mahjong.plugin.match.RulePackMatchCoordinator;
 import top.ellan.mahjong.plugin.runtime.FailureSupport;

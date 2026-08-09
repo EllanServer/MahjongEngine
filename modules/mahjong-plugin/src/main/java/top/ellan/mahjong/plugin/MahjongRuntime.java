@@ -26,7 +26,7 @@ import top.ellan.mahjong.application.lobby.usecase.CreateLobbyRequest;
 import top.ellan.mahjong.application.lobby.usecase.LobbyUseCases;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.domain.table.TableLifecycle;
-import top.ellan.mahjong.platform.paper.BoundedPlatformExecutors;
+import top.ellan.mahjong.platform.paper.concurrent.BoundedPlatformExecutors;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackBootstrap;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackRuntimeServices;
 import top.ellan.mahjong.plugin.bootstrap.sql.DatabaseBootstrap;

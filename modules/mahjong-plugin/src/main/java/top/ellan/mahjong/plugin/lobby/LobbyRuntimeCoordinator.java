@@ -31,7 +31,7 @@ import top.ellan.mahjong.domain.table.TableAnchor;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.domain.lobby.TableLobby;
 import top.ellan.mahjong.persistence.sql.match.MatchInstanceRecord;
-import top.ellan.mahjong.platform.paper.PaperTableAnchorService;
+import top.ellan.mahjong.platform.paper.anchor.PaperTableAnchorService;
 import top.ellan.mahjong.plugin.table.LiveTableDirectory;
 import top.ellan.mahjong.presentation.projection.LatestSceneProjector;
 

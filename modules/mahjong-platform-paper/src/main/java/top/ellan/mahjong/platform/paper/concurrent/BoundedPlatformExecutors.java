@@ -1,4 +1,4 @@
-package top.ellan.mahjong.platform.paper;
+package top.ellan.mahjong.platform.paper.concurrent;
 
 import java.time.Duration;
 import java.util.Objects;

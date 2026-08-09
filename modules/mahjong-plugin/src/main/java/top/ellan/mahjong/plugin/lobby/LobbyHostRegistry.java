@@ -22,7 +22,7 @@ import top.ellan.mahjong.craftengine.scene.CraftEngineSceneBackend;
 import top.ellan.mahjong.domain.table.TableAnchor;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.domain.lobby.TableLobby;
-import top.ellan.mahjong.platform.paper.PaperTableAnchorService;
+import top.ellan.mahjong.platform.paper.anchor.PaperTableAnchorService;
 import top.ellan.mahjong.presentation.projection.LatestSceneProjector;
 
 /** Owns hosted lobby actors, coalescing writers, and scene cleanup as one lifecycle unit. */

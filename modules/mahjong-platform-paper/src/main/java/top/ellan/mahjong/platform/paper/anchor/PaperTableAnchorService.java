@@ -1,4 +1,4 @@
-package top.ellan.mahjong.platform.paper;
+package top.ellan.mahjong.platform.paper.anchor;
 
 import java.util.Objects;
 import java.util.UUID;

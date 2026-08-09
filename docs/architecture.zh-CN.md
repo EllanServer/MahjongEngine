@@ -39,6 +39,8 @@ application/
 
 `mahjong-craftengine` 同样没有根包杂糅：`bundle` 只管理构建产物安装与 reload 门禁，`interaction` 只把 CE 交互转为平台中立输入，`port` 保存跨平台边界，`scene` 执行公开家具差分，`privateview` 只负责本人暗手、HUD 与相机。Paper/Folia 适配只能依赖 `port`，不能反向依赖 CE 的具体场景实现。
 
+`mahjong-platform-paper` 只放 Paper/Folia 适配，并按 `anchor / concurrent / region` 分类：世界锚点、平台线程池和区域调度各自独立，不在平台根包堆积工具类。
+
 `mahjong-persistence-sql` 按 `connection / schema / event / match / lobby / anchor / recovery / common` 分类。比赛身份行映射、初始恢复元数据和大厅消费是独立 SQL 组件；大厅变为比赛时仍共用一个 JDBC 事务，不以模块化为代价拆散原子性。
 
 `mahjong-presentation` 只保存平台无关的桌面语义，并按 `asset / layout / node / port / projection / scene` 分类：资产名、通用桌面坐标编译、节点值对象、后端端口、规则视图映射和场景差分互不混放。具体 CraftEngine 家具调用仍只存在于 `mahjong-craftengine`。

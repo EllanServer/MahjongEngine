@@ -220,6 +220,26 @@ val architectureCheck =
                         "$relative exceeds the 300-line domain responsibility limit"
                 }
                 if (
+                    module == "mahjong-platform-paper" &&
+                        relative.startsWith(
+                            "modules/mahjong-platform-paper/src/main/java/top/ellan/mahjong/platform/paper/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-platform-paper/src/main/java/top/ellan/mahjong/platform/paper/",
+                            ).contains('/').not()
+                ) {
+                    violations +=
+                        "$relative is unclassified; Paper adapters must live in anchor/concurrent/region"
+                }
+                if (
+                    module == "mahjong-platform-paper" &&
+                        text.lineSequence().count() > 200
+                ) {
+                    violations +=
+                        "$relative exceeds the 200-line Paper adapter responsibility limit"
+                }
+                if (
                     module == "mahjong-application" &&
                         text.lineSequence().count() > 550
                 ) {
