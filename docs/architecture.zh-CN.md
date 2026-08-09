@@ -43,7 +43,7 @@ application/
 
 `mahjong-persistence-sql` 按 `connection / schema / event / match / lobby / anchor / recovery / common` 分类。比赛身份行映射、初始恢复元数据和大厅消费是独立 SQL 组件；大厅变为比赛时仍共用一个 JDBC 事务，不以模块化为代价拆散原子性。
 
-`mahjong-presentation` 只保存平台无关的桌面语义，并按 `asset / layout / node / port / projection / scene` 分类：资产名、通用桌面坐标编译、节点值对象、后端端口、规则视图映射和场景差分互不混放。具体 CraftEngine 家具调用仍只存在于 `mahjong-craftengine`。
+`mahjong-presentation` 只保存平台无关的桌面语义，并按 `asset / layout / node / port / projection / scene` 分类：资产名、通用桌面坐标编译、节点值对象、后端端口、规则视图映射和场景差分互不混放。通用布局内部再分成有界缓存、冷路径编译器和不可变热路径查表计划；场景映射再按 `publicview / privateview / interaction / asset / support` 分解，公开实体、私有 HUD/暗手和 revision-bound 命中区不会堆在同一个类中。表现层生产类由 CI 强制限制在 300 行以内。具体 CraftEngine 家具调用仍只存在于 `mahjong-craftengine`。
 
 `mahjong-rule-runtime` 按 `activation / admin / catalog / common / install / lifecycle / loading / registry / security / storage` 分类，激活状态、管理命令、下载安装、类加载、签名注册表和本地文件边界彼此独立。`mahjong-rule-spi` 是三个外部规则仓共同编译的稳定公共协议，因此保持扁平且版本化，不把一次内部整理变成规则包 ABI 破坏。
 

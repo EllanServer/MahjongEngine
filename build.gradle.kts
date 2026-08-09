@@ -153,10 +153,10 @@ val architectureCheck =
                 }
                 if (
                     module == "mahjong-presentation" &&
-                        text.lineSequence().count() > 550
+                        text.lineSequence().count() > 300
                 ) {
                     violations +=
-                        "$relative exceeds the 550-line presentation responsibility limit"
+                        "$relative exceeds the 300-line presentation responsibility limit"
                 }
                 if (
                     module == "mahjong-plugin" &&
