@@ -98,6 +98,13 @@ val architectureCheck =
                     violations +=
                         "$relative is unclassified; application types must live in a responsibility package"
                 }
+                if (
+                    module == "mahjong-application" &&
+                        text.lineSequence().count() > 550
+                ) {
+                    violations +=
+                        "$relative exceeds the 550-line application responsibility limit"
+                }
                 if (relative.endsWith("/plugin/MahjongRuntime.java")) {
                     if (text.lineSequence().count() > 500) {
                         violations +=

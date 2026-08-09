@@ -16,6 +16,23 @@
 
 核心的 `domain/application/rule-spi/presentation/rule-runtime` 不允许导入 Bukkit、CraftEngine 或 JDBC。平台和基础设施模块实现 application 端口，`mahjong-plugin` 是唯一装配根。
 
+`mahjong-application` 内部继续按职责分包，不允许把类放回 application 根包：
+
+```text
+application/
+  concurrent/          有界规则池、单次任务调度
+  interaction/         O(1) 路由、选牌与俯视视角端口
+  persistence/         事件、快照和每桌 outbox
+  projection/          平台无关桌面投影端口和值对象
+  security/            revision-bound 动作令牌签发
+  table/
+    actor/              单写者循环及拆开的计算/授权/落库组件
+  lobby/
+    actor|command|port|projection|runtime|usecase
+```
+
+`MahjongRuntime` 只负责生命周期与用例委派。SQL 初始化位于 `plugin/bootstrap/sql`，规则包初始化位于 `plugin/bootstrap/rules`，CraftEngine/Paper 装配位于 `plugin/platform`，恢复位于 `plugin/recovery`。架构检查会拒绝 application 根包类、超过责任上限的 application 类，以及重新塞回 `MahjongRuntime` 的 JDBC、HTTP 或 CraftEngine 具体初始化代码。
+
 规则包只通过父 classloader 提供的 SPI 通信。规则包是完整 JVM 受信代码；Ed25519 签名验证来源，不宣称提供 Java 沙箱。
 
 ## 动作链路
