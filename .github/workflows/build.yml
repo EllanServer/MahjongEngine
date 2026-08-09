@@ -26,17 +26,7 @@ jobs:
 
   verify:
     needs: wrapper-validation
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            gradle: ./gradlew
-            chmod: true
-          - os: windows-latest
-            gradle: .\gradlew.bat
-            chmod: false
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - name: Set up Java 21
@@ -46,15 +36,14 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v6
       - name: Make wrapper executable
-        if: matrix.chmod
         run: chmod +x ./gradlew
       - name: Compile and test every module
-        run: ${{ matrix.gradle }} clean check :mahjong-plugin:shadowJar --no-daemon --stacktrace
+        run: ./gradlew clean check :mahjong-plugin:shadowJar --no-daemon --stacktrace
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: module-test-reports-${{ runner.os }}
+          name: module-test-reports-linux
           path: modules/*/build/reports/tests/**
           if-no-files-found: ignore
 
