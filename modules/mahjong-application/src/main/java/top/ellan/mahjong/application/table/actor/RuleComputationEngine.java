@@ -15,11 +15,14 @@ import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.PrivateRuleView;
 import top.ellan.mahjong.spi.PublicRuleView;
 import top.ellan.mahjong.spi.RuleAction;
+import top.ellan.mahjong.spi.RuleMatchResult;
 import top.ellan.mahjong.spi.RulePackProvider;
+import top.ellan.mahjong.spi.RulePlayerResult;
 import top.ellan.mahjong.spi.RuleState;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
 import top.ellan.mahjong.spi.RuleTransition;
 import top.ellan.mahjong.spi.ScheduledRuleAction;
+import top.ellan.mahjong.spi.SeatId;
 import top.ellan.mahjong.spi.TransitionDisposition;
 
 /** Executes and validates pure provider calls away from the actor scheduling loop. */
@@ -29,6 +32,7 @@ final class RuleComputationEngine {
     private final RulePackProvider provider;
     private final List<TableParticipant> participants;
     private final Set<PlayerId> participantIds;
+    private final Map<PlayerId, SeatId> seatedAssignments;
     private final TableActorConfig limits;
 
     RuleComputationEngine(
@@ -44,6 +48,10 @@ final class RuleComputationEngine {
         participantIds = this.participants.stream()
                 .map(TableParticipant::playerId)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        LinkedHashMap<PlayerId, SeatId> seats = new LinkedHashMap<>();
+        this.participants.forEach(participant ->
+                participant.seat().ifPresent(seat -> seats.put(participant.playerId(), seat)));
+        seatedAssignments = Map.copyOf(seats);
         this.limits = Objects.requireNonNull(limits, "limits");
     }
 
@@ -55,6 +63,7 @@ final class RuleComputationEngine {
                 null,
                 hash,
                 hash,
+                Optional.empty(),
                 Optional.empty(),
                 buildFrame(state, revision, automatedPlayers));
     }
@@ -79,13 +88,37 @@ final class RuleComputationEngine {
                 snapshotDue(transition, nextAcceptedAction)
                         ? Optional.of(provider.snapshot(targetState, resultingSequence))
                         : Optional.empty();
+        Optional<RuleMatchResult> matchResult = transition.disposition()
+                        == TransitionDisposition.MATCH_ENDED
+                ? Objects.requireNonNull(
+                        provider.matchResult(targetState),
+                        "provider returned null match result")
+                : Optional.empty();
+        if (transition.disposition() == TransitionDisposition.MATCH_ENDED) {
+            validateMatchResult(matchResult.orElseThrow(() ->
+                    new IllegalStateException("Provider omitted terminal match result")));
+        }
         return new RuleComputation(
                 targetState,
                 transition,
                 beforeHash,
                 afterHash,
                 snapshot,
+                matchResult,
                 buildFrame(targetState, targetRevision, automatedPlayers));
+    }
+
+    private void validateMatchResult(RuleMatchResult result) {
+        if (result.players().size() != seatedAssignments.size()) {
+            throw new IllegalStateException("Terminal result does not cover every seated player");
+        }
+        for (RulePlayerResult player : result.players()) {
+            SeatId expected = seatedAssignments.get(player.playerId());
+            if (expected == null || !expected.equals(player.seatId())) {
+                throw new IllegalStateException(
+                        "Terminal result contains an unknown player or mismatched seat");
+            }
+        }
     }
 
     private void validateTransition(

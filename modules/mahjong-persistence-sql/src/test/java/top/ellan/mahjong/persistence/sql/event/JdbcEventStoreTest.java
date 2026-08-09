@@ -23,6 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.application.persistence.MatchEventRecord;
 import top.ellan.mahjong.application.persistence.MatchWriteBatch;
+import top.ellan.mahjong.application.persistence.SnapshotWrite;
 import top.ellan.mahjong.domain.match.MatchBinding;
 import top.ellan.mahjong.domain.match.MatchId;
 import top.ellan.mahjong.domain.table.ParticipantRole;
@@ -34,7 +35,9 @@ import top.ellan.mahjong.spi.ProfileId;
 import top.ellan.mahjong.spi.RuleAction;
 import top.ellan.mahjong.spi.RuleEvent;
 import top.ellan.mahjong.spi.RuleId;
+import top.ellan.mahjong.spi.RuleMatchResult;
 import top.ellan.mahjong.spi.RulePackRef;
+import top.ellan.mahjong.spi.RulePlayerResult;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
 import top.ellan.mahjong.spi.SeatId;
 
@@ -96,6 +99,60 @@ class JdbcEventStoreTest {
                                         .toCompletableFuture()
                                         .join());
         assertInstanceOf(PersistenceConflictException.class, failure.getCause());
+    }
+
+    @Test
+    void terminalSnapshotPersistsResultsAndRankLedgerExactlyOnce() throws Exception {
+        MatchInstanceRecord match = match();
+        PlayerId first = PlayerId.parse("00000000-0000-0000-0000-000000000001");
+        PlayerId second = PlayerId.parse("00000000-0000-0000-0000-000000000002");
+        List<TableParticipant> participants = List.of(
+                new TableParticipant(
+                        first, ParticipantRole.PLAYER, Optional.of(new SeatId(0))),
+                new TableParticipant(
+                        second, ParticipantRole.PLAYER, Optional.of(new SeatId(1))));
+        matches.createRecoverableMatch(match, participants, snapshot(0, 0));
+        MatchWriteBatch eventsOnly = batch(match.binding().matchId(), false);
+        RuleMatchResult result = new RuleMatchResult(
+                "riichi.mahjong-soul.v1",
+                List.of(
+                        new RulePlayerResult(
+                                first, new SeatId(0), 1, 31_000, 4_000, new byte[] {1}),
+                        new RulePlayerResult(
+                                second, new SeatId(1), 2, 19_000, 3_000, new byte[] {2})));
+        SnapshotWrite terminal = new SnapshotWrite(
+                match.binding().matchId(),
+                1,
+                Instant.parse("2026-08-08T00:00:01Z"),
+                snapshot(2, 1),
+                Optional.of(TableLifecycle.FINISHED),
+                Optional.of(result));
+        MatchWriteBatch batch = new MatchWriteBatch(
+                match.binding().matchId(), eventsOnly.events(), Optional.of(terminal));
+
+        events.appendBatch(batch).toCompletableFuture().join();
+        events.appendBatch(batch).toCompletableFuture().join();
+
+        try (var connection = connections.open();
+                var statement = connection.createStatement()) {
+            try (var rows = statement.executeQuery(
+                    "SELECT COUNT(*), SUM(ranking_points_milli) FROM player_result")) {
+                rows.next();
+                assertEquals(2, rows.getInt(1));
+                assertEquals(7_000L, rows.getLong(2));
+            }
+            try (var rows = statement.executeQuery(
+                    "SELECT COUNT(*), SUM(ranking_points_milli) FROM rank_ledger")) {
+                rows.next();
+                assertEquals(2, rows.getInt(1));
+                assertEquals(7_000L, rows.getLong(2));
+            }
+            try (var rows = statement.executeQuery(
+                    "SELECT status FROM match_instance")) {
+                rows.next();
+                assertEquals(TableLifecycle.FINISHED.name(), rows.getString(1));
+            }
+        }
     }
 
     private static MatchInstanceRecord match() {

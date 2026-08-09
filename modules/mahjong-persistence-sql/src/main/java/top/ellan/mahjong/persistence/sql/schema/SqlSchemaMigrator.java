@@ -4,6 +4,7 @@ import top.ellan.mahjong.persistence.sql.connection.SqlConnectionFactory;
 import top.ellan.mahjong.persistence.sql.connection.SqlDialect;
 
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -13,7 +14,7 @@ import java.util.Objects;
 
 /** Creates the platform-neutral event, snapshot, result and rank projection tables. */
 public final class SqlSchemaMigrator {
-    public static final int SCHEMA_VERSION = 2;
+    public static final int SCHEMA_VERSION = 3;
 
     private final SqlConnectionFactory connections;
 
@@ -34,6 +35,7 @@ public final class SqlSchemaMigrator {
                         statement.execute(ddl);
                     }
                 }
+                upgradeResultProjection(connection);
                 recordSchemaVersion(connection);
                 connection.commit();
             } catch (SQLException | RuntimeException failure) {
@@ -43,6 +45,93 @@ public final class SqlSchemaMigrator {
                 connection.setAutoCommit(previousAutoCommit);
             }
         }
+    }
+
+    private static void upgradeResultProjection(Connection connection) throws SQLException {
+        ensureColumn(
+                connection,
+                "player_result",
+                "ranking_points_milli",
+                "BIGINT NOT NULL DEFAULT 0");
+        ensureColumn(
+                connection,
+                "rank_ledger",
+                "ranking_points_milli",
+                "BIGINT NOT NULL DEFAULT 0");
+        ensureIndex(
+                connection,
+                "player_result",
+                "idx_player_result_player",
+                "player_id, match_id");
+        ensureIndex(
+                connection,
+                "rank_ledger",
+                "idx_rank_ledger_system_player",
+                "rank_system, player_id, match_id");
+    }
+
+    private static void ensureColumn(
+            Connection connection, String table, String column, String definition)
+            throws SQLException {
+        String actualTable = resolveTableName(connection, table);
+        DatabaseMetaData metadata = connection.getMetaData();
+        try (ResultSet columns = metadata.getColumns(
+                connection.getCatalog(), null, actualTable, null)) {
+            while (columns.next()) {
+                if (column.equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
+                    return;
+                }
+            }
+        }
+        try (Statement statement = connection.createStatement()) {
+            statement.execute(
+                    "ALTER TABLE " + actualTable + " ADD COLUMN " + column + " " + definition);
+        }
+    }
+
+    private static void ensureIndex(
+            Connection connection, String table, String index, String columns)
+            throws SQLException {
+        String actualTable = resolveTableName(connection, table);
+        DatabaseMetaData metadata = connection.getMetaData();
+        try (ResultSet indexes = metadata.getIndexInfo(
+                connection.getCatalog(), null, actualTable, false, false)) {
+            while (indexes.next()) {
+                if (index.equalsIgnoreCase(indexes.getString("INDEX_NAME"))) {
+                    return;
+                }
+            }
+        }
+        try (Statement statement = connection.createStatement()) {
+            statement.execute(
+                    "CREATE INDEX " + index + " ON " + actualTable + " (" + columns + ")");
+        }
+    }
+
+    private static String resolveTableName(Connection connection, String expected)
+            throws SQLException {
+        DatabaseMetaData metadata = connection.getMetaData();
+        String resolved = findTable(metadata, connection.getCatalog(), expected);
+        if (resolved == null && connection.getCatalog() != null) {
+            resolved = findTable(metadata, null, expected);
+        }
+        if (resolved == null) {
+            throw new SQLException("Missing table during schema migration: " + expected);
+        }
+        return resolved;
+    }
+
+    private static String findTable(
+            DatabaseMetaData metadata, String catalog, String expected) throws SQLException {
+        try (ResultSet tables = metadata.getTables(catalog, null, "%", new String[] {"TABLE"})) {
+            while (tables.next()) {
+                String candidate = tables.getString("TABLE_NAME");
+                if (expected.equalsIgnoreCase(candidate)) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
     }
 
     private static void recordSchemaVersion(Connection connection) throws SQLException {
@@ -150,6 +239,7 @@ public final class SqlSchemaMigrator {
                 "CREATE TABLE IF NOT EXISTS player_result ("
                         + "match_id VARCHAR(36) NOT NULL, player_id VARCHAR(36) NOT NULL, "
                         + "seat_index INT NOT NULL, placement INT NOT NULL, score BIGINT NOT NULL, "
+                        + "ranking_points_milli BIGINT NOT NULL DEFAULT 0, "
                         + "result_payload "
                         + binary
                         + " NOT NULL, PRIMARY KEY (match_id, player_id), "
@@ -157,6 +247,7 @@ public final class SqlSchemaMigrator {
                 "CREATE TABLE IF NOT EXISTS rank_ledger ("
                         + "ledger_id VARCHAR(36) PRIMARY KEY, match_id VARCHAR(36) NOT NULL, "
                         + "player_id VARCHAR(36) NOT NULL, rank_system VARCHAR(64) NOT NULL, "
+                        + "ranking_points_milli BIGINT NOT NULL DEFAULT 0, "
                         + "delta_payload "
                         + binary
                         + " NOT NULL, created_at TIMESTAMP(6) NOT NULL, "

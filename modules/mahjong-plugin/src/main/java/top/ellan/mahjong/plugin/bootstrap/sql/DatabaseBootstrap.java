@@ -12,6 +12,7 @@ import top.ellan.mahjong.persistence.sql.event.JdbcEventStore;
 import top.ellan.mahjong.persistence.sql.match.JdbcMatchRepository;
 import top.ellan.mahjong.persistence.sql.anchor.JdbcTableAnchorRepository;
 import top.ellan.mahjong.persistence.sql.lobby.JdbcTableLobbyRepository;
+import top.ellan.mahjong.persistence.sql.history.JdbcPlayerRecordQuery;
 import top.ellan.mahjong.persistence.sql.connection.SqlConnectionFactory;
 import top.ellan.mahjong.persistence.sql.schema.SqlSchemaMigrator;
 import top.ellan.mahjong.plugin.config.PluginConfiguration;
@@ -46,7 +47,8 @@ public final class DatabaseBootstrap {
                     Optional.of(new JdbcMatchRepository(connections)),
                     Optional.of(new JdbcTableAnchorRepository(connections)),
                     Optional.of(new JdbcTableLobbyRepository(connections)),
-                    Optional.of(events));
+                    Optional.of(events),
+                    Optional.of(new JdbcPlayerRecordQuery(connections)));
         } catch (RuntimeException | SQLException failure) {
             if (dataSource != null) {
                 dataSource.close();

@@ -1,6 +1,5 @@
 package top.ellan.mahjong.plugin;
 
-import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -19,13 +18,14 @@ import java.util.logging.Level;
 import org.bukkit.Location;
 import top.ellan.mahjong.application.concurrent.BoundedDeadlineScheduler;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
+import top.ellan.mahjong.application.history.PlayerMatchHistoryEntry;
+import top.ellan.mahjong.application.history.PlayerRankingPage;
 import top.ellan.mahjong.application.table.TableActorRegistry;
 import top.ellan.mahjong.application.lobby.runtime.HostedLobby;
 import top.ellan.mahjong.application.lobby.runtime.LobbyTableDirectory;
 import top.ellan.mahjong.application.lobby.usecase.CreateLobbyRequest;
 import top.ellan.mahjong.application.lobby.usecase.LobbyUseCases;
 import top.ellan.mahjong.domain.table.TableId;
-import top.ellan.mahjong.domain.table.TableLifecycle;
 import top.ellan.mahjong.platform.paper.concurrent.BoundedPlatformExecutors;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackBootstrap;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackRuntimeServices;
@@ -36,8 +36,10 @@ import top.ellan.mahjong.plugin.lobby.LobbyRuntimeCoordinator;
 import top.ellan.mahjong.plugin.lobby.LobbyRuntimeServices;
 import top.ellan.mahjong.plugin.match.NewRulePackMatch;
 import top.ellan.mahjong.plugin.match.MatchAutomationService;
+import top.ellan.mahjong.plugin.match.MatchPersistenceCleanup;
 import top.ellan.mahjong.plugin.match.RulePackMatchCoordinator;
 import top.ellan.mahjong.plugin.match.StartedRulePackMatch;
+import top.ellan.mahjong.plugin.history.PlayerRecordService;
 import top.ellan.mahjong.plugin.platform.CraftEnginePlatformRuntime;
 import top.ellan.mahjong.plugin.recovery.MatchRecoveryService;
 import top.ellan.mahjong.plugin.runtime.FailureSupport;
@@ -47,6 +49,7 @@ import top.ellan.mahjong.runtime.admin.RulePackAdminService;
 import top.ellan.mahjong.runtime.admin.RulePackInventory;
 import top.ellan.mahjong.runtime.admin.RulePackVerification;
 import top.ellan.mahjong.spi.RuleId;
+import top.ellan.mahjong.spi.PlayerId;
 
 /** Restart-scoped 2.0 composition root. All concrete setup lives in classified bootstraps. */
 public final class MahjongRuntime implements AutoCloseable {
@@ -61,6 +64,7 @@ public final class MahjongRuntime implements AutoCloseable {
     private final TableActorRegistry actors = new TableActorRegistry();
     private final LiveTableDirectory liveTables = new LiveTableDirectory();
     private final MatchAutomationService automation = new MatchAutomationService(liveTables);
+    private final PlayerRecordService playerRecords;
     private final CraftEnginePlatformRuntime platform;
     private final LobbyRuntimeCoordinator lobbyRuntime;
     private final MatchRecoveryService recovery;
@@ -75,6 +79,10 @@ public final class MahjongRuntime implements AutoCloseable {
         this.configuration = Objects.requireNonNull(configuration, "configuration");
         int processors = Math.max(1, Runtime.getRuntime().availableProcessors());
         executors = new BoundedPlatformExecutors(processors);
+        playerRecords = new PlayerRecordService(
+                executors.io(),
+                () -> Optional.ofNullable(services.get())
+                        .flatMap(current -> current.database().playerRecords()));
         ruleExecutor =
                 new FairRuleExecutor(
                         Math.max(2, Math.min(processors, 8)), 1_024, "mahjong-rule");
@@ -218,7 +226,8 @@ public final class MahjongRuntime implements AutoCloseable {
                 .thenCompose(
                         ignored ->
                                 CompletableFuture.runAsync(
-                                        () -> removePersistedMatch(current, match),
+                                        () -> MatchPersistenceCleanup.closeMatch(
+                                                current.database(), match, Instant.now(clock)),
                                         executors.io()));
     }
 
@@ -241,6 +250,18 @@ public final class MahjongRuntime implements AutoCloseable {
 
     public CompletionStage<?> collectRuleGarbage() {
         return submitIo(requireAdmin()::collectGarbage);
+    }
+
+    public CompletionStage<List<PlayerMatchHistoryEntry>> playerHistory(
+            PlayerId playerId, int page, int pageSize) {
+        requireServices();
+        return playerRecords.history(playerId, page, pageSize);
+    }
+
+    public CompletionStage<PlayerRankingPage> playerRanking(
+            PlayerId playerId, RuleId ruleId, int page, int pageSize) {
+        requireServices();
+        return playerRecords.ranking(playerId, ruleId, page, pageSize);
     }
 
     private void initializeServices() {
@@ -357,38 +378,6 @@ public final class MahjongRuntime implements AutoCloseable {
         } else {
             state.set(State.DEGRADED);
             detail.set("lobby/admin only; active matches are fail-closed");
-        }
-    }
-
-    private void removePersistedMatch(
-            RuntimeServices current,
-            StartedRulePackMatch match) {
-        try {
-            current.database()
-                    .matches()
-                    .ifPresent(
-                            matches -> {
-                                try {
-                                    matches.updateStatus(
-                                            match.binding().matchId(),
-                                            TableLifecycle.CLOSED,
-                                            Instant.now(clock));
-                                } catch (SQLException failure) {
-                                    throw new CompletionException(failure);
-                                }
-                            });
-            current.database()
-                    .anchors()
-                    .ifPresent(
-                            anchors -> {
-                                try {
-                                    anchors.delete(match.tableId());
-                                } catch (SQLException failure) {
-                                    throw new CompletionException(failure);
-                                }
-                            });
-        } catch (CompletionException failure) {
-            throw failure;
         }
     }
 

@@ -41,6 +41,17 @@ public interface RulePackProvider {
         return Optional.empty();
     }
 
+    /**
+     * Returns the complete terminal result after a transition reports {@code MATCH_ENDED}.
+     *
+     * <p>The result is persisted atomically with the terminal snapshot. Implementations must
+     * return an empty optional for every non-terminal state and must derive the result only from
+     * the supplied immutable state.</p>
+     */
+    default Optional<RuleMatchResult> matchResult(RuleState state) {
+        return Optional.empty();
+    }
+
     PublicRuleView publicView(RuleState state, long revision);
 
     PrivateRuleView privateView(RuleState state, PlayerId viewer, long revision);

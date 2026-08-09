@@ -9,10 +9,12 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -25,6 +27,8 @@ import top.ellan.mahjong.application.persistence.MatchWriteBatch;
 import top.ellan.mahjong.application.persistence.PersistAck;
 import top.ellan.mahjong.application.persistence.SnapshotWrite;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
+import top.ellan.mahjong.spi.RuleMatchResult;
+import top.ellan.mahjong.spi.RulePlayerResult;
 
 /** Ordered, idempotent JDBC event store. All blocking calls run on the supplied bounded IO executor. */
 public final class JdbcEventStore implements EventStorePort {
@@ -113,7 +117,14 @@ public final class JdbcEventStore implements EventStorePort {
                 insertEvents(connection, newEvents);
                 long acknowledged = Math.max(committed, batchLast);
                 if (batch.snapshot().isPresent()) {
-                    persistSnapshot(connection, batch.snapshot().orElseThrow(), acknowledged);
+                    SnapshotWrite snapshot = batch.snapshot().orElseThrow();
+                    persistSnapshot(connection, snapshot, acknowledged);
+                    if (snapshot.matchResult().isPresent()) {
+                        persistMatchResult(
+                                connection,
+                                snapshot,
+                                snapshot.matchResult().orElseThrow());
+                    }
                 }
                 updateCommittedSequence(
                         connection,
@@ -245,6 +256,125 @@ public final class JdbcEventStore implements EventStorePort {
             insert.setBytes(5, snapshot.payload());
             insert.setString(6, snapshot.sha256());
             insert.setTimestamp(7, Timestamp.from(write.createdAt()));
+            insert.executeUpdate();
+        }
+    }
+
+    private static void persistMatchResult(
+            Connection connection, SnapshotWrite snapshot, RuleMatchResult result)
+            throws SQLException {
+        for (RulePlayerResult player : result.players()) {
+            verifyParticipant(connection, snapshot.matchId().toString(), player);
+            persistPlayerResult(connection, snapshot.matchId().toString(), player);
+            persistRankLedger(
+                    connection,
+                    snapshot,
+                    result.rankSystem(),
+                    player);
+        }
+    }
+
+    private static void verifyParticipant(
+            Connection connection, String matchId, RulePlayerResult player) throws SQLException {
+        String sql = "SELECT seat_id FROM match_participant WHERE match_id = ? AND player_id = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, matchId);
+            statement.setString(2, player.playerId().toString());
+            try (ResultSet row = statement.executeQuery()) {
+                if (!row.next()
+                        || !Integer.toString(player.seatId().value())
+                                .equals(row.getString("seat_id"))) {
+                    throw new PersistenceConflictException(
+                            "Terminal result player is not bound to the reported seat");
+                }
+            }
+        }
+    }
+
+    private static void persistPlayerResult(
+            Connection connection, String matchId, RulePlayerResult player) throws SQLException {
+        String selectSql = "SELECT seat_index, placement, score, ranking_points_milli, "
+                + "result_payload FROM player_result WHERE match_id = ? AND player_id = ?";
+        try (PreparedStatement select = connection.prepareStatement(selectSql)) {
+            select.setString(1, matchId);
+            select.setString(2, player.playerId().toString());
+            try (ResultSet row = select.executeQuery()) {
+                if (row.next()) {
+                    if (row.getInt("seat_index") != player.seatId().value()
+                            || row.getInt("placement") != player.placement()
+                            || row.getLong("score") != player.score()
+                            || row.getLong("ranking_points_milli")
+                                    != player.rankingPointsMilli()
+                            || !Arrays.equals(
+                                    row.getBytes("result_payload"),
+                                    player.canonicalPayload())) {
+                        throw new PersistenceConflictException(
+                                "Idempotent player result retry differs");
+                    }
+                    return;
+                }
+            }
+        }
+        String insertSql = "INSERT INTO player_result (match_id, player_id, seat_index, "
+                + "placement, score, ranking_points_milli, result_payload) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement insert = connection.prepareStatement(insertSql)) {
+            insert.setString(1, matchId);
+            insert.setString(2, player.playerId().toString());
+            insert.setInt(3, player.seatId().value());
+            insert.setInt(4, player.placement());
+            insert.setLong(5, player.score());
+            insert.setLong(6, player.rankingPointsMilli());
+            insert.setBytes(7, player.canonicalPayload());
+            insert.executeUpdate();
+        }
+    }
+
+    private static void persistRankLedger(
+            Connection connection,
+            SnapshotWrite snapshot,
+            String rankSystem,
+            RulePlayerResult player) throws SQLException {
+        String ledgerId = UUID.nameUUIDFromBytes(("mahjong-rank-ledger|"
+                        + snapshot.matchId()
+                        + "|"
+                        + rankSystem
+                        + "|"
+                        + player.playerId())
+                .getBytes(StandardCharsets.UTF_8))
+                .toString();
+        String selectSql = "SELECT match_id, player_id, rank_system, ranking_points_milli, "
+                + "delta_payload FROM rank_ledger WHERE ledger_id = ?";
+        try (PreparedStatement select = connection.prepareStatement(selectSql)) {
+            select.setString(1, ledgerId);
+            try (ResultSet row = select.executeQuery()) {
+                if (row.next()) {
+                    if (!snapshot.matchId().toString().equals(row.getString("match_id"))
+                            || !player.playerId().toString().equals(row.getString("player_id"))
+                            || !rankSystem.equals(row.getString("rank_system"))
+                            || row.getLong("ranking_points_milli")
+                                    != player.rankingPointsMilli()
+                            || !Arrays.equals(
+                                    row.getBytes("delta_payload"),
+                                    player.canonicalPayload())) {
+                        throw new PersistenceConflictException(
+                                "Idempotent rank ledger retry differs");
+                    }
+                    return;
+                }
+            }
+        }
+        String insertSql = "INSERT INTO rank_ledger (ledger_id, match_id, player_id, "
+                + "rank_system, ranking_points_milli, delta_payload, created_at) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement insert = connection.prepareStatement(insertSql)) {
+            insert.setString(1, ledgerId);
+            insert.setString(2, snapshot.matchId().toString());
+            insert.setString(3, player.playerId().toString());
+            insert.setString(4, rankSystem);
+            insert.setLong(5, player.rankingPointsMilli());
+            insert.setBytes(6, player.canonicalPayload());
+            insert.setTimestamp(7, Timestamp.from(snapshot.createdAt()));
             insert.executeUpdate();
         }
     }

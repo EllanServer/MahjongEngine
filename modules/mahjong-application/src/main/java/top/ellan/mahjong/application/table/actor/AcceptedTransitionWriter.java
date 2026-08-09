@@ -66,7 +66,8 @@ final class AcceptedTransitionWriter {
                                                         transition.disposition()
                                                                         == TransitionDisposition.MATCH_ENDED
                                                                 ? TableLifecycle.FINISHED
-                                                                : TableLifecycle.ACTIVE)));
+                                                                : TableLifecycle.ACTIVE),
+                                                computed.matchResult()));
         try {
             OutboxHealth health = outbox.offer(records, snapshot);
             return new TransitionWrite(

@@ -1,6 +1,7 @@
 package top.ellan.mahjong.application.table.actor;
 
 import java.util.Optional;
+import top.ellan.mahjong.spi.RuleMatchResult;
 import top.ellan.mahjong.spi.RuleState;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
 import top.ellan.mahjong.spi.RuleTransition;
@@ -12,4 +13,5 @@ record RuleComputation(
         String beforeHash,
         String afterHash,
         Optional<RuleStateSnapshot> snapshot,
+        Optional<RuleMatchResult> matchResult,
         RuleFrame frame) {}
