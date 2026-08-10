@@ -15,7 +15,7 @@
 2. 放入 `plugins/`，同时安装 CraftEngine。
 3. 首次启动会生成 `plugins/MahjongPaper/config.yml` 并把校验后的资源 bundle 原子安装到 `plugins/CraftEngine/resources/mahjongpaper`。
 4. 内容与已加载 bundle 完全相同时可直接恢复；首次安装或任一文件变化后执行 `/ce reload all`，插件只在安装完成后的 `CraftEngineReloadEvent` 恢复场景。
-5. 配置 `rules.registry-url` 和构建时内置的官方 Ed25519 公钥。
+5. 新安装默认使用 [`rule-registry-v2026.08.10.1`](https://github.com/EllanServer/MahjongEngine/releases/tag/rule-registry-v2026.08.10.1) 的签名 registry；已有配置若仍为空，设置 `rules.registry-url` 为该 Release 的 `registry.json`。正式核心 Release 会内置对应的官方 Ed25519 公钥。
 6. 用 `/mahjong rules install ...`、`verify`、`activate` 安装规则，然后完整重启。
 
 家具、牌姿态、碰撞、座位、交互 hitbox 与按玩家 entity culling 均由 `craftengine/configuration/mahjong.yml` 管理；修改后必须重新构建核心 JAR，并执行 `/ce reload all`。Java 端没有另一套实体配置回退。
@@ -36,4 +36,4 @@ plugins/MahjongPaper/rules/
 
 规则升级、激活与回滚都要求重启；进行中的比赛始终绑定原来的版本和 SHA-256。
 
-正式 Release 工作流要求 GitHub Actions repository variable `MAHJONG_RULE_PACK_PUBLIC_KEY_BASE64`，其值必须是 Ed25519 X.509 公钥 DER 的 Base64。变量缺失、格式错误或最终 JAR 内嵌值不一致都会直接阻止发布。签名私钥不得进入源码或构建日志。
+正式 Release 工作流要求 GitHub Actions repository variable `MAHJONG_RULE_PACK_PUBLIC_KEY_BASE64`，其值必须是 Ed25519 X.509 公钥 DER 的 Base64。变量缺失、格式错误或最终 JAR 内嵌值不一致都会直接阻止发布。签名私钥不得进入源码或构建日志；普通分支构建制品不等同于嵌入信任根的正式核心 Release。

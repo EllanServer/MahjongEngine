@@ -6,7 +6,7 @@ database:
   maximum-pool-size: 8
 rules:
   # HTTPS URL of the Ed25519-signed official registry envelope.
-  registry-url: ""
+  registry-url: "https://github.com/EllanServer/MahjongEngine/releases/download/rule-registry-v2026.08.10.1/registry.json"
 craftengine:
   bundle-folder: "mahjongpaper"
   assets:

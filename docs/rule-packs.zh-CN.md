@@ -16,11 +16,11 @@
 - 非 `SNAPSHOT` 语义版本；
 - `ServiceLoader` provider 与完整 descriptor；
 - JAR SHA-256、状态 schema、核心/SPI 兼容范围；
-- GitHub Release 中的签名 registry 元数据；
+- GitHub Release 中的 registry candidate 元数据，并由中央签名 registry 引用；
 - 官方 Ed25519 私钥只存在于发布环境；
 - 通过规则 TCK、规则准确性金标与快照重放测试。
 
-三个仓的 `2.0` 分支均包含 Release 工作流：只有 `build.gradle`、静态 descriptor 与 `vX.Y.Z` tag 完全一致且不是 `SNAPSHOT` 时才会发布 JAR 和 `registry-entry.json`。日麻产物通过 Shadow 打入固定版本后端并明确排除 SPI；MCR/四川没有第三方运行依赖。
+三个仓的 `2.0` 分支均包含 Release 工作流：只有 `build.gradle`、静态 descriptor 与 `vX.Y.Z` tag 完全一致且不是 `SNAPSHOT` 时才会发布 JAR 和 `registry-entry.json`。三个 `v2.0.1` 产物的生产运行时均为纯 Java、零第三方依赖并明确排除 SPI；日麻不再携带 Kotlin、反射桥或 native 后端。
 
 核心仓的 `Publish signed rule registry` 工作流会收集三个仓所有稳定 Release，重新下载并核对每个 JAR 的大小/SHA-256，再用发布环境中的 Ed25519 PKCS#8 私钥签署原始 payload。需要：
 
@@ -30,4 +30,4 @@
 
 运行时允许 GitHub Release 资产从 `github.com` 正常跳转到 GitHub HTTPS 对象存储，但不允许 HTTPS 降级到 HTTP。registry 原始 payload 必须先通过内置 Ed25519 公钥验证，规则 JAR 还必须同时满足签名条目中的 URL、长度和 SHA-256，重定向不替代任何完整性校验。
 
-当前 GitHub 尚未配置上述变量/secret，也没有非 `SNAPSHOT` 的正式规则 Release，因此正式签名 registry 和完整实服验收仍是 2.0 发布阻断项；不能把“源码/CI 可编译”描述成“已可正式服上线”。
+GitHub 已发布三个官方 [`v2.0.1`](https://github.com/EllanServer/riichi-mahjong-java/releases/tag/v2.0.1) 规则包（[MCR](https://github.com/EllanServer/mahjong-mcr-java/releases/tag/v2.0.1)、[四川](https://github.com/EllanServer/sichuan-mahjong-java/releases/tag/v2.0.1)）和中央 [`rule-registry-v2026.08.10.1`](https://github.com/EllanServer/MahjongEngine/releases/tag/rule-registry-v2026.08.10.1)。发布流水线已逐字节验证五个稳定版本条目的大小与 SHA-256，并完成 Ed25519 签名/公钥反验。规则包发布完成不等于核心 2.0 已发布稳定版；核心正式 Release、Paper/Folia/CE 实服矩阵和长期观察窗仍分别验收。
