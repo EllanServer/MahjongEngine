@@ -9,12 +9,14 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /** Creates the platform-neutral event, snapshot, result and rank projection tables. */
 public final class SqlSchemaMigrator {
-    public static final int SCHEMA_VERSION = 3;
+    public static final int SCHEMA_VERSION = 4;
 
     private final SqlConnectionFactory connections;
 
@@ -35,7 +37,11 @@ public final class SqlSchemaMigrator {
                         statement.execute(ddl);
                     }
                 }
-                upgradeResultProjection(connection);
+                // One catalog scan for every table this migration touches; the previous code
+                // re-listed the whole catalog for each column and index probe.
+                Map<String, String> tableNames = resolveTableNames(connection);
+                upgradeResultProjection(connection, tableNames);
+                backfillRankSummary(connection, tableNames);
                 recordSchemaVersion(connection);
                 connection.commit();
             } catch (SQLException | RuntimeException failure) {
@@ -47,33 +53,88 @@ public final class SqlSchemaMigrator {
         }
     }
 
-    private static void upgradeResultProjection(Connection connection) throws SQLException {
+    private static void upgradeResultProjection(
+            Connection connection, Map<String, String> tables) throws SQLException {
         ensureColumn(
                 connection,
+                tables,
                 "player_result",
                 "ranking_points_milli",
                 "BIGINT NOT NULL DEFAULT 0");
         ensureColumn(
                 connection,
+                tables,
                 "rank_ledger",
                 "ranking_points_milli",
                 "BIGINT NOT NULL DEFAULT 0");
         ensureIndex(
                 connection,
+                tables,
                 "player_result",
                 "idx_player_result_player",
                 "player_id, match_id");
         ensureIndex(
                 connection,
+                tables,
                 "rank_ledger",
                 "idx_rank_ledger_system_player",
                 "rank_system, player_id, match_id");
+        // History filters by player and orders by recency; the composite primary keys cannot serve
+        // either access path because player_id is not their leading column.
+        ensureIndex(
+                connection, tables, "match_participant", "idx_match_participant_player", "player_id");
+        ensureIndex(
+                connection, tables, "match_instance", "idx_match_instance_updated", "updated_at");
+        // Recovery and rule-pack reference scans filter on status, optionally scoped by rule.
+        ensureIndex(connection, tables, "match_instance", "idx_match_instance_status", "status");
+        ensureIndex(
+                connection, tables, "match_instance", "idx_match_instance_rule", "rule_id, status");
+        // MySQL creates the foreign-key index implicitly, H2 does not; created_at has no index at
+        // all even though the rank-system lookup orders by it.
+        ensureIndex(connection, tables, "rank_ledger", "idx_rank_ledger_match", "match_id");
+        ensureIndex(connection, tables, "rank_ledger", "idx_rank_ledger_created", "created_at");
+        ensureIndex(
+                connection,
+                tables,
+                "player_rank_summary",
+                "idx_rank_summary_board",
+                "rule_id, rank_system, ranking_points_milli DESC, total_score DESC, player_id");
+    }
+
+    /**
+     * Fills the leaderboard projection once when upgrading a database that already has ledger rows.
+     * Later matches maintain it incrementally inside the terminal-result transaction.
+     */
+    private static void backfillRankSummary(Connection connection, Map<String, String> tables)
+            throws SQLException {
+        String summary = requireTable(tables, "player_rank_summary");
+        try (PreparedStatement probe =
+                        connection.prepareStatement("SELECT 1 FROM " + summary);
+                ResultSet rows = probe.executeQuery()) {
+            if (rows.next()) {
+                return;
+            }
+        }
+        String sql = "INSERT INTO " + summary + " (rule_id, rank_system, player_id, "
+                + "ranking_points_milli, total_score, match_count, updated_at) "
+                + "SELECT m.rule_id, l.rank_system, l.player_id, "
+                + "SUM(l.ranking_points_milli), SUM(r.score), COUNT(*), MAX(l.created_at) "
+                + "FROM rank_ledger l JOIN match_instance m ON m.match_id = l.match_id "
+                + "JOIN player_result r ON r.match_id = l.match_id AND r.player_id = l.player_id "
+                + "GROUP BY m.rule_id, l.rank_system, l.player_id";
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate(sql);
+        }
     }
 
     private static void ensureColumn(
-            Connection connection, String table, String column, String definition)
+            Connection connection,
+            Map<String, String> tables,
+            String table,
+            String column,
+            String definition)
             throws SQLException {
-        String actualTable = resolveTableName(connection, table);
+        String actualTable = requireTable(tables, table);
         DatabaseMetaData metadata = connection.getMetaData();
         try (ResultSet columns = metadata.getColumns(
                 connection.getCatalog(), null, actualTable, null)) {
@@ -90,9 +151,13 @@ public final class SqlSchemaMigrator {
     }
 
     private static void ensureIndex(
-            Connection connection, String table, String index, String columns)
+            Connection connection,
+            Map<String, String> tables,
+            String table,
+            String index,
+            String columns)
             throws SQLException {
-        String actualTable = resolveTableName(connection, table);
+        String actualTable = requireTable(tables, table);
         DatabaseMetaData metadata = connection.getMetaData();
         try (ResultSet indexes = metadata.getIndexInfo(
                 connection.getCatalog(), null, actualTable, false, false)) {
@@ -108,30 +173,35 @@ public final class SqlSchemaMigrator {
         }
     }
 
-    private static String resolveTableName(Connection connection, String expected)
+    /** Lists the catalog once and keys every table by its lowercase name. */
+    private static Map<String, String> resolveTableNames(Connection connection)
             throws SQLException {
-        DatabaseMetaData metadata = connection.getMetaData();
-        String resolved = findTable(metadata, connection.getCatalog(), expected);
-        if (resolved == null && connection.getCatalog() != null) {
-            resolved = findTable(metadata, null, expected);
-        }
-        if (resolved == null) {
-            throw new SQLException("Missing table during schema migration: " + expected);
+        Map<String, String> resolved = new HashMap<>();
+        collectTables(connection.getMetaData(), connection.getCatalog(), resolved);
+        if (connection.getCatalog() != null) {
+            collectTables(connection.getMetaData(), null, resolved);
         }
         return resolved;
     }
 
-    private static String findTable(
-            DatabaseMetaData metadata, String catalog, String expected) throws SQLException {
+    private static void collectTables(
+            DatabaseMetaData metadata, String catalog, Map<String, String> target)
+            throws SQLException {
         try (ResultSet tables = metadata.getTables(catalog, null, "%", new String[] {"TABLE"})) {
             while (tables.next()) {
                 String candidate = tables.getString("TABLE_NAME");
-                if (expected.equalsIgnoreCase(candidate)) {
-                    return candidate;
-                }
+                target.putIfAbsent(candidate.toLowerCase(java.util.Locale.ROOT), candidate);
             }
         }
-        return null;
+    }
+
+    private static String requireTable(Map<String, String> tables, String expected)
+            throws SQLException {
+        String resolved = tables.get(expected.toLowerCase(java.util.Locale.ROOT));
+        if (resolved == null) {
+            throw new SQLException("Missing table during schema migration: " + expected);
+        }
+        return resolved;
     }
 
     private static void recordSchemaVersion(Connection connection) throws SQLException {
@@ -251,6 +321,16 @@ public final class SqlSchemaMigrator {
                         + "delta_payload "
                         + binary
                         + " NOT NULL, created_at TIMESTAMP(6) NOT NULL, "
-                        + "FOREIGN KEY (match_id) REFERENCES match_instance(match_id))");
+                        + "FOREIGN KEY (match_id) REFERENCES match_instance(match_id))",
+                // Incrementally maintained leaderboard projection. Ranking used to aggregate the
+                // whole ledger on every request, which no index could accelerate.
+                "CREATE TABLE IF NOT EXISTS player_rank_summary ("
+                        + "rule_id VARCHAR(32) NOT NULL, rank_system VARCHAR(64) NOT NULL, "
+                        + "player_id VARCHAR(36) NOT NULL, "
+                        + "ranking_points_milli BIGINT NOT NULL DEFAULT 0, "
+                        + "total_score BIGINT NOT NULL DEFAULT 0, "
+                        + "match_count BIGINT NOT NULL DEFAULT 0, "
+                        + "updated_at TIMESTAMP(6) NOT NULL, "
+                        + "PRIMARY KEY (rule_id, rank_system, player_id))");
     }
 }

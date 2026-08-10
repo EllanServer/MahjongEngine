@@ -5,13 +5,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.ByteBuffer;
 import java.sql.DriverManager;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import top.ellan.mahjong.application.persistence.MatchEventRecord;
+import top.ellan.mahjong.application.persistence.MatchWriteBatch;
+import top.ellan.mahjong.application.persistence.SnapshotWrite;
 import top.ellan.mahjong.domain.match.MatchBinding;
 import top.ellan.mahjong.domain.match.MatchId;
 import top.ellan.mahjong.domain.table.ParticipantRole;
@@ -19,13 +21,18 @@ import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.domain.table.TableLifecycle;
 import top.ellan.mahjong.domain.table.TableParticipant;
 import top.ellan.mahjong.persistence.sql.connection.SqlConnectionFactory;
+import top.ellan.mahjong.persistence.sql.event.JdbcEventStore;
 import top.ellan.mahjong.persistence.sql.match.JdbcMatchRepository;
 import top.ellan.mahjong.persistence.sql.match.MatchInstanceRecord;
 import top.ellan.mahjong.persistence.sql.schema.SqlSchemaMigrator;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.ProfileId;
+import top.ellan.mahjong.spi.RuleAction;
+import top.ellan.mahjong.spi.RuleEvent;
 import top.ellan.mahjong.spi.RuleId;
+import top.ellan.mahjong.spi.RuleMatchResult;
 import top.ellan.mahjong.spi.RulePackRef;
+import top.ellan.mahjong.spi.RulePlayerResult;
 import top.ellan.mahjong.spi.RuleStateSnapshot;
 import top.ellan.mahjong.spi.SeatId;
 
@@ -73,61 +80,40 @@ class JdbcPlayerRecordQueryTest {
         assertEquals(2, ranking.ownEntry().orElseThrow().position());
     }
 
+    /**
+     * Writes the terminal result through the production event store so the leaderboard projection
+     * is maintained exactly the way a finished match maintains it.
+     */
     private void insertResults(MatchId matchId) throws Exception {
-        try (var connection = connections.open()) {
-            connection.setAutoCommit(false);
-            try (var result = connection.prepareStatement(
-                            "INSERT INTO player_result (match_id, player_id, seat_index, "
-                                    + "placement, score, ranking_points_milli, result_payload) "
-                                    + "VALUES (?, ?, ?, ?, ?, ?, ?)");
-                    var ledger = connection.prepareStatement(
-                            "INSERT INTO rank_ledger (ledger_id, match_id, player_id, "
-                                    + "rank_system, ranking_points_milli, delta_payload, created_at) "
-                                    + "VALUES (?, ?, ?, ?, ?, ?, ?)")) {
-                insertResult(result, matchId, FIRST, 0, 1, 31_000, 4_000);
-                insertResult(result, matchId, SECOND, 1, 2, 19_000, 3_000);
-                result.executeBatch();
-                insertLedger(ledger, matchId, FIRST, 4_000);
-                insertLedger(ledger, matchId, SECOND, 3_000);
-                ledger.executeBatch();
-            }
-            connection.commit();
-        }
-    }
-
-    private static void insertResult(
-            java.sql.PreparedStatement statement,
-            MatchId matchId,
-            PlayerId player,
-            int seat,
-            int placement,
-            long score,
-            long points)
-            throws Exception {
-        statement.setString(1, matchId.toString());
-        statement.setString(2, player.toString());
-        statement.setInt(3, seat);
-        statement.setInt(4, placement);
-        statement.setLong(5, score);
-        statement.setLong(6, points);
-        statement.setBytes(7, new byte[] {(byte) placement});
-        statement.addBatch();
-    }
-
-    private static void insertLedger(
-            java.sql.PreparedStatement statement,
-            MatchId matchId,
-            PlayerId player,
-            long points)
-            throws Exception {
-        statement.setString(1, UUID.randomUUID().toString());
-        statement.setString(2, matchId.toString());
-        statement.setString(3, player.toString());
-        statement.setString(4, "riichi.mahjong-soul.v1");
-        statement.setLong(5, points);
-        statement.setBytes(6, new byte[] {1});
-        statement.setTimestamp(7, Timestamp.from(Instant.parse("2026-08-08T00:01:00Z")));
-        statement.addBatch();
+        JdbcEventStore events = new JdbcEventStore(connections, Runnable::run);
+        RuleMatchResult result = new RuleMatchResult(
+                "riichi.mahjong-soul.v1",
+                List.of(
+                        new RulePlayerResult(
+                                FIRST, new SeatId(0), 1, 31_000, 4_000, new byte[] {1}),
+                        new RulePlayerResult(
+                                SECOND, new SeatId(1), 2, 19_000, 3_000, new byte[] {2})));
+        SnapshotWrite terminal = new SnapshotWrite(
+                matchId,
+                1,
+                Instant.parse("2026-08-08T00:01:00Z"),
+                new RuleStateSnapshot(
+                        1, 1, ByteBuffer.allocate(4).putInt(1).array(), "1".repeat(64)),
+                Optional.of(TableLifecycle.FINISHED),
+                Optional.of(result));
+        MatchEventRecord event = new MatchEventRecord(
+                matchId,
+                1,
+                1,
+                Instant.parse("2026-08-08T00:01:00Z"),
+                FIRST,
+                new RuleAction("discard", new byte[] {7}),
+                new RuleEvent("discarded", new byte[] {8}),
+                "0".repeat(64),
+                "1".repeat(64));
+        events.appendBatch(new MatchWriteBatch(matchId, List.of(event), Optional.of(terminal)))
+                .toCompletableFuture()
+                .join();
     }
 
     private static MatchInstanceRecord match(Instant createdAt) {

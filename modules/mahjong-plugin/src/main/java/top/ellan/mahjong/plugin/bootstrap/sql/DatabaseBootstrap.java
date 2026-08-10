@@ -72,6 +72,13 @@ public final class DatabaseBootstrap {
         hikari.setConnectionTimeout(2_000L);
         hikari.setValidationTimeout(1_000L);
         hikari.setInitializationFailTimeout(-1L);
+        // Every outbox flush re-prepares the same handful of statements. The driver defaults cache
+        // 25 statements and skip anything longer than 256 characters, which excludes most of the
+        // event-store SQL; server-side prepares stay off because the pool is short-lived by design.
+        hikari.addDataSourceProperty("cachePrepStmts", "true");
+        hikari.addDataSourceProperty("prepStmtCacheSize", "500");
+        hikari.addDataSourceProperty("prepStmtCacheSqlLimit", "1024");
+        hikari.addDataSourceProperty("useServerPrepStmts", "false");
         return hikari;
     }
 }

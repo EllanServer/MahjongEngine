@@ -25,6 +25,11 @@ import top.ellan.mahjong.spi.SeatId;
 public final class JdbcPlayerRecordQuery implements PlayerRecordQueryPort {
     private static final int MAX_PAGE_SIZE = 50;
     private static final int MAX_PAGE = 100_000;
+    private static final String RANK_COLUMNS =
+            "SELECT player_id, ranking_points_milli, total_score, match_count "
+                    + "FROM player_rank_summary";
+    private static final String RANK_ORDER =
+            " ORDER BY ranking_points_milli DESC, total_score DESC, player_id";
 
     private final SqlConnectionFactory connections;
 
@@ -90,8 +95,9 @@ public final class JdbcPlayerRecordQuery implements PlayerRecordQueryPort {
                     ruleId, Optional.empty(), page, pageSize, List.of(), Optional.empty(), false);
         }
         int offset = Math.multiplyExact(page - 1, pageSize);
+        // One extra row proves whether a next page exists without a second count query.
         List<PlayerRankingEntry> fetched = rankingRange(
-                ruleId, rankSystem.orElseThrow(), offset + 1L, offset + pageSize + 1L);
+                ruleId, rankSystem.orElseThrow(), offset + 1L, pageSize + 1L);
         boolean hasNext = fetched.size() > pageSize;
         List<PlayerRankingEntry> entries = hasNext
                 ? List.copyOf(fetched.subList(0, pageSize))
@@ -103,9 +109,8 @@ public final class JdbcPlayerRecordQuery implements PlayerRecordQueryPort {
     }
 
     private Optional<String> latestRankSystem(RuleId ruleId) throws SQLException {
-        String sql = "SELECT l.rank_system FROM rank_ledger l JOIN match_instance m "
-                + "ON m.match_id = l.match_id WHERE m.rule_id = ? "
-                + "ORDER BY l.created_at DESC, l.rank_system";
+        String sql = "SELECT rank_system FROM player_rank_summary WHERE rule_id = ? "
+                + "ORDER BY updated_at DESC, rank_system";
         try (Connection connection = connections.open();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, ruleId.value());
@@ -118,47 +123,83 @@ public final class JdbcPlayerRecordQuery implements PlayerRecordQueryPort {
         }
     }
 
+    /**
+     * Reads one leaderboard window straight from the maintained projection. Ranks are derived from
+     * the row order rather than a window function, so the ordered index serves the whole query.
+     */
     private List<PlayerRankingEntry> rankingRange(
-            RuleId ruleId, String rankSystem, long first, long last) throws SQLException {
-        String sql = rankedQuery() + " WHERE rank_position BETWEEN ? AND ? ORDER BY rank_position";
+            RuleId ruleId, String rankSystem, long first, long count) throws SQLException {
+        String sql = RANK_COLUMNS
+                + " WHERE rule_id = ? AND rank_system = ?"
+                + RANK_ORDER
+                + " LIMIT ? OFFSET ?";
         List<PlayerRankingEntry> entries = new ArrayList<>();
         try (Connection connection = connections.open();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             bindRankingScope(statement, ruleId, rankSystem);
-            statement.setLong(3, first);
-            statement.setLong(4, last);
+            statement.setLong(3, count);
+            statement.setLong(4, first - 1);
+            long position = first;
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
-                    entries.add(readRanking(rows));
+                    entries.add(readRanking(rows, position++));
                 }
             }
         }
         return List.copyOf(entries);
     }
 
+    /**
+     * Resolves one player's own row plus its rank. The rank is counted with an aggregate over the
+     * same ordered index instead of materialising the full leaderboard.
+     */
     private Optional<PlayerRankingEntry> rankingForPlayer(
             RuleId ruleId, String rankSystem, PlayerId playerId) throws SQLException {
-        String sql = rankedQuery() + " WHERE player_id = ?";
+        String sql = RANK_COLUMNS + " WHERE rule_id = ? AND rank_system = ? AND player_id = ?";
         try (Connection connection = connections.open();
                 PreparedStatement statement = connection.prepareStatement(sql)) {
             bindRankingScope(statement, ruleId, rankSystem);
             statement.setString(3, playerId.toString());
             try (ResultSet rows = statement.executeQuery()) {
-                return rows.next() ? Optional.of(readRanking(rows)) : Optional.empty();
+                if (!rows.next()) {
+                    return Optional.empty();
+                }
+                long points = rows.getLong("ranking_points_milli");
+                long score = rows.getLong("total_score");
+                long matches = rows.getLong("match_count");
+                long position = rankPosition(
+                        connection, ruleId, rankSystem, playerId, points, score);
+                return Optional.of(new PlayerRankingEntry(
+                        position, playerId, points, score, matches));
             }
         }
     }
 
-    private static String rankedQuery() {
-        return "SELECT rank_position, player_id, ranking_points_milli, total_score, "
-                + "match_count FROM (SELECT ROW_NUMBER() OVER (ORDER BY "
-                + "SUM(l.ranking_points_milli) DESC, SUM(r.score) DESC, l.player_id) "
-                + "AS rank_position, l.player_id, SUM(l.ranking_points_milli) "
-                + "AS ranking_points_milli, SUM(r.score) AS total_score, COUNT(*) "
-                + "AS match_count FROM rank_ledger l JOIN match_instance m "
-                + "ON m.match_id = l.match_id JOIN player_result r ON r.match_id = l.match_id "
-                + "AND r.player_id = l.player_id WHERE m.rule_id = ? AND l.rank_system = ? "
-                + "GROUP BY l.player_id) ranked";
+    private static long rankPosition(
+            Connection connection,
+            RuleId ruleId,
+            String rankSystem,
+            PlayerId playerId,
+            long points,
+            long score)
+            throws SQLException {
+        String sql = "SELECT COUNT(*) FROM player_rank_summary WHERE rule_id = ? "
+                + "AND rank_system = ? AND (ranking_points_milli > ? "
+                + "OR (ranking_points_milli = ? AND total_score > ?) "
+                + "OR (ranking_points_milli = ? AND total_score = ? AND player_id < ?))";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, ruleId.value());
+            statement.setString(2, rankSystem);
+            statement.setLong(3, points);
+            statement.setLong(4, points);
+            statement.setLong(5, score);
+            statement.setLong(6, points);
+            statement.setLong(7, score);
+            statement.setString(8, playerId.toString());
+            try (ResultSet rows = statement.executeQuery()) {
+                return rows.next() ? rows.getLong(1) + 1L : 1L;
+            }
+        }
     }
 
     private static void bindRankingScope(
@@ -167,9 +208,10 @@ public final class JdbcPlayerRecordQuery implements PlayerRecordQueryPort {
         statement.setString(2, rankSystem);
     }
 
-    private static PlayerRankingEntry readRanking(ResultSet row) throws SQLException {
+    private static PlayerRankingEntry readRanking(ResultSet row, long position)
+            throws SQLException {
         return new PlayerRankingEntry(
-                row.getLong("rank_position"),
+                position,
                 PlayerId.parse(row.getString("player_id")),
                 row.getLong("ranking_points_milli"),
                 row.getLong("total_score"),
