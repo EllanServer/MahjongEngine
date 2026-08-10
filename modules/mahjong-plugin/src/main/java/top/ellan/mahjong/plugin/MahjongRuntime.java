@@ -28,6 +28,7 @@ import top.ellan.mahjong.application.lobby.usecase.LobbyUseCases;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.platform.paper.concurrent.BoundedPlatformExecutors;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackBootstrap;
+import top.ellan.mahjong.plugin.bootstrap.rules.RulePackOperations;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackRuntimeServices;
 import top.ellan.mahjong.plugin.bootstrap.sql.DatabaseBootstrap;
 import top.ellan.mahjong.plugin.bootstrap.sql.DatabaseRuntime;
@@ -43,10 +44,10 @@ import top.ellan.mahjong.plugin.match.StartedRulePackMatch;
 import top.ellan.mahjong.plugin.history.PlayerRecordService;
 import top.ellan.mahjong.plugin.platform.CraftEnginePlatformRuntime;
 import top.ellan.mahjong.plugin.recovery.MatchRecoveryService;
+import top.ellan.mahjong.plugin.runtime.ActorDrain;
 import top.ellan.mahjong.plugin.runtime.FailureSupport;
 import top.ellan.mahjong.plugin.runtime.RuntimeServices;
 import top.ellan.mahjong.plugin.table.LiveTableDirectory;
-import top.ellan.mahjong.runtime.admin.RulePackAdminService;
 import top.ellan.mahjong.runtime.admin.RulePackInventory;
 import top.ellan.mahjong.runtime.admin.RulePackVerification;
 import top.ellan.mahjong.spi.RuleId;
@@ -232,7 +233,12 @@ public final class MahjongRuntime implements AutoCloseable {
         actors.remove(tableId, match.actor());
         return match.actor()
                 .closeAndDrain()
-                .whenComplete((ignored, failure) -> platform.removeTable(tableId))
+                .whenComplete(
+                        (ignored, failure) -> {
+                            platform.removeTable(tableId);
+                            MatchPersistenceCleanup.releaseRulePackLease(
+                                    current.rules(), match, tableId);
+                        })
                 .thenCompose(
                         ignored ->
                                 CompletableFuture.runAsync(
@@ -242,24 +248,39 @@ public final class MahjongRuntime implements AutoCloseable {
     }
 
     public CompletionStage<RulePackInventory> listRules() {
-        RuntimeServices current = requireServices();
-        return submitIo(current.rules().inventory()::read);
+        return submitIo(ruleAdmin().inventory()::read);
     }
 
     public CompletionStage<?> installRule(RuleId ruleId, Optional<String> version) {
-        return submitIo(() -> requireAdmin().install(ruleId, version));
+        return submitIo(() -> ruleAdmin().install(ruleId, version));
     }
 
     public CompletionStage<List<RulePackVerification>> verifyRules(Optional<RuleId> ruleId) {
-        return submitIo(() -> requireAdmin().verify(ruleId));
+        return submitIo(() -> ruleAdmin().verify(ruleId));
     }
 
     public CompletionStage<?> activateRule(RuleId ruleId, String version) {
-        return submitIo(() -> requireAdmin().activate(ruleId, version));
+        return submitIo(() -> ruleAdmin().activate(ruleId, version));
+    }
+
+    public CompletionStage<String> swapRule(RuleId ruleId, String version) {
+        return submitIo(() -> ruleAdmin().swap(ruleId, version));
+    }
+
+    public CompletionStage<String> deactivateRule(RuleId ruleId) {
+        return submitIo(() -> ruleAdmin().deactivate(ruleId));
+    }
+
+    public CompletionStage<String> rollbackRule(RuleId ruleId) {
+        return submitIo(() -> ruleAdmin().rollback(ruleId));
     }
 
     public CompletionStage<?> collectRuleGarbage() {
-        return submitIo(requireAdmin()::collectGarbage);
+        return submitIo(ruleAdmin()::collectGarbage);
+    }
+
+    private RulePackOperations ruleAdmin() {
+        return new RulePackOperations(requireServices().rules(), ruleExecutor);
     }
 
     public CompletionStage<List<PlayerMatchHistoryEntry>> playerHistory(
@@ -413,16 +434,6 @@ public final class MahjongRuntime implements AutoCloseable {
                                         "Database or rule runtime is unavailable"));
     }
 
-    private RulePackAdminService requireAdmin() {
-        return requireServices()
-                .rules()
-                .admin()
-                .orElseThrow(
-                        () ->
-                                new IllegalStateException(
-                                        "Signed registry administration is unavailable"));
-    }
-
     private <T> CompletionStage<T> submitIo(Callable<T> operation) {
         return CompletableFuture.supplyAsync(
                 () -> {
@@ -442,7 +453,7 @@ public final class MahjongRuntime implements AutoCloseable {
         }
         state.set(State.STOPPING);
         lobbyRuntime.close();
-        drainActors();
+        ActorDrain.awaitAll(actors, SHUTDOWN_TIMEOUT, plugin.getLogger());
         platform.close();
         deadlines.close();
         ruleExecutor.close();
@@ -453,31 +464,6 @@ public final class MahjongRuntime implements AutoCloseable {
         executors.close(SHUTDOWN_TIMEOUT);
         state.set(State.STOPPED);
         detail.set("stopped");
-    }
-
-    private void drainActors() {
-        List<CompletionStage<Void>> drains = actors.closeAll();
-        CompletableFuture<?>[] futures =
-                drains.stream()
-                        .map(CompletionStage::toCompletableFuture)
-                        .toArray(CompletableFuture<?>[]::new);
-        if (futures.length == 0) {
-            return;
-        }
-        try {
-            CompletableFuture.allOf(futures)
-                    .get(SHUTDOWN_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-        } catch (TimeoutException failure) {
-            plugin.getLogger().warning("Timed out draining persistence outboxes");
-        } catch (InterruptedException failure) {
-            Thread.currentThread().interrupt();
-        } catch (java.util.concurrent.ExecutionException failure) {
-            plugin.getLogger()
-                    .log(
-                            Level.WARNING,
-                            "A persistence outbox failed during shutdown",
-                            failure);
-        }
     }
 
     private enum State {

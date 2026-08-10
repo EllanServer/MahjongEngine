@@ -35,6 +35,9 @@ public final class RulePackAdminHandler implements SubcommandHandler {
             case "install", "update" -> install(sender, arguments);
             case "verify" -> verify(sender, arguments);
             case "activate" -> activate(sender, arguments);
+            case "swap" -> swap(sender, arguments);
+            case "deactivate" -> ruleLifecycle(sender, arguments, true);
+            case "rollback" -> ruleLifecycle(sender, arguments, false);
             case "gc" ->
                     support.complete(
                             sender,
@@ -53,10 +56,27 @@ public final class RulePackAdminHandler implements SubcommandHandler {
     public List<String> complete(CommandSender sender, String[] arguments) {
         if (arguments.length == 2) {
             return CommandSupport.filter(
-                    arguments[1], List.of("list", "install", "update", "verify", "activate", "gc"));
+                    arguments[1],
+                    List.of(
+                            "list",
+                            "install",
+                            "update",
+                            "verify",
+                            "activate",
+                            "swap",
+                            "deactivate",
+                            "rollback",
+                            "gc"));
         }
         if (arguments.length == 3
-                && List.of("install", "update", "verify", "activate")
+                && List.of(
+                                "install",
+                                "update",
+                                "verify",
+                                "activate",
+                                "swap",
+                                "deactivate",
+                                "rollback")
                         .contains(arguments[1].toLowerCase(java.util.Locale.ROOT))) {
             return CommandSupport.filter(arguments[2], List.of("riichi", "mcr", "sichuan"));
         }
@@ -102,6 +122,38 @@ public final class RulePackAdminHandler implements SubcommandHandler {
                 value -> CommandSupport.message(
                         "mahjongpaper.command.rule_activation_pending",
                         "Activation pending restart: %s.",
+                        value));
+    }
+
+    /** Activates a version for new matches immediately; running matches keep their generation. */
+    private void swap(CommandSender sender, String[] arguments) {
+        if (arguments.length != 4) {
+            throw CommandSupport.usage("/mahjong rules swap <id> <version>");
+        }
+        support.complete(
+                sender,
+                support.runtime().swapRule(CommandSupport.ruleId(arguments[2]), arguments[3]),
+                value -> CommandSupport.message(
+                        "mahjongpaper.command.rule_swapped",
+                        "Rule pack swapped for new matches: %s",
+                        value));
+    }
+
+    private void ruleLifecycle(CommandSender sender, String[] arguments, boolean deactivate) {
+        if (arguments.length != 3) {
+            throw CommandSupport.usage("/mahjong rules " + arguments[1] + " <id>");
+        }
+        RuleId ruleId = CommandSupport.ruleId(arguments[2]);
+        support.complete(
+                sender,
+                deactivate
+                        ? support.runtime().deactivateRule(ruleId)
+                        : support.runtime().rollbackRule(ruleId),
+                value -> CommandSupport.message(
+                        deactivate
+                                ? "mahjongpaper.command.rule_deactivated"
+                                : "mahjongpaper.command.rule_rolled_back",
+                        deactivate ? "Rule pack deactivated: %s" : "Rule pack rolled back: %s",
                         value));
     }
 

@@ -101,6 +101,9 @@ public final class RulePackMatchCoordinator {
                                         new IllegalStateException(
                                                 "No active rule pack for " + command.ruleId()));
         RulePackRef reference = rulePacks.activeReference(command.ruleId()).orElseThrow();
+        // Lease the generation this match is bound to so a running replacement cannot unload it
+        // while the match is still playing.
+        rulePacks.acquire(reference, command.tableId());
         return rules.submit(
                         command.ruleId(),
                         () -> RuleMatchStateFactory.initialize(command, provider, reference, clock))
@@ -111,7 +114,13 @@ public final class RulePackMatchCoordinator {
                                         provider,
                                         initialized,
                                         replacedEndpoint,
-                                        consumeLobby));
+                                        consumeLobby))
+                .whenComplete(
+                        (started, failure) -> {
+                            if (failure != null) {
+                                rulePacks.release(reference, command.tableId());
+                            }
+                        });
     }
 
     public CompletionStage<StartedRulePackMatch> recover(
@@ -142,8 +151,10 @@ public final class RulePackMatchCoordinator {
     private RecoveryInput loadRecoveryInput(MatchId matchId) {
         try {
             MatchRecoveryData data = matches.recover(matchId);
-            RulePackProvider provider =
-                    rulePacks.providerForPinnedMatch(data.match().binding().rulePack());
+            RulePackRef pinned = data.match().binding().rulePack();
+            RulePackProvider provider = rulePacks.providerForPinnedMatch(pinned);
+            // A recovered match may pin a superseded generation; lease it the same way.
+            rulePacks.acquire(pinned, data.match().tableId());
             return new RecoveryInput(data, provider);
         } catch (Exception failure) {
             throw new CompletionException(failure);

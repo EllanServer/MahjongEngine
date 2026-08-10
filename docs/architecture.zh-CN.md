@@ -56,6 +56,21 @@ application/
 
 规则包只通过父 classloader 提供的 SPI 通信。规则包是完整 JVM 受信代码；Ed25519 签名验证来源，不宣称提供 Java 沙箱。
 
+### 运行时热插拔与双代并存
+
+规则包支持不重启替换。语义对应「一局 = 一个会话」：新开局拿到新版本，进行中的牌局继续跑创建时的版本，旧版本引用归零后才卸载。
+
+- `LoadedRulePack` 持有租约集合。建局与恢复时按 `tableId` acquire，牌桌 `closeAndDrain()` 完成后 release。还有租约的版本不能 close。
+- `RulePackRuntime` 同时维护 `active` 与 `superseded` 两代。`providerForNewMatch` 只返回 active 代，`providerForPinnedMatch` 也能返回 superseded 代，因此恢复旧局始终可用。
+- `RuleActivationStore.activateNow` 立即写入 active，不依赖 `pendingJvmStartMillis` 的 JVM epoch 判据；`requestActivation` 保留为需重启的降级路径。`previous` 字段记录被取代的坐标，`rollback` 据此一键回退，`deactivate` 同样把坐标存入 `previous`。
+- `unload` 只接受无租约且非 active 的坐标，返回 classloader 的 `WeakReference`，用于验证 loader 真被回收而不是静默泄漏。
+- 卸载后 `FairRuleExecutor.renewWorkers()` 逐个替换规则 worker 线程。规则代码可能留下 ThreadLocal，其 value 由规则包 classloader 加载会让 loader 无法回收；换线程是唯一可靠做法，反射清 `ThreadLocalMap` 不线程安全。worker 线程的 context classloader 固定为宿主 loader。
+- `RulePackLoader` 在校验期就拒绝会导致泄漏或重复类定义的产物：JAR 不得包含 `top/ellan/mahjong/` 下除自身 `rules/` 外的核心类，也不得声明 `META-INF/services/java.sql.Driver`（driver 会被 `DriverManager` 静态表永久持有）。`ChildFirstRuleClassLoader` 的资源查找与类查找同为 child-first。
+- 垃圾回收前会向运行时查询仍处于 loaded 的坐标并跳过它们：classloader 未关闭时 JAR 句柄仍打开，Windows 上 `Files.move` 会因文件占用失败。
+- `stateSchemaVersion` 不一致时不允许把进行中的局切到新包（pinned 校验已强制），`status()` 中的 `supersededInUse` 暴露双代共存状态。
+
+命令：`/mahjong rules swap <id> <version>` 立即对新开局生效，`/mahjong rules deactivate <id>` 停止分配新局，`/mahjong rules rollback <id>` 回退到上一个坐标。`activate` 仍是需重启的路径。
+
 ## 动作链路
 
 1. CraftEngine 交互实体只携带稳定 `InteractionHandle`。

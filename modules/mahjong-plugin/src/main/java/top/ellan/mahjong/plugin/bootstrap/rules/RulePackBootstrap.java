@@ -62,7 +62,7 @@ public final class RulePackBootstrap {
         RuleActivationStore activation = new RuleActivationStore(paths.activationState());
         RulePackInventoryReader inventory = new RulePackInventoryReader(paths, activation);
         Optional<RulePackRuntime> running = startRuntime(paths, loader, activation);
-        Optional<RulePackAdminService> admin = createAdmin(paths, loader, activation);
+        Optional<RulePackAdminService> admin = createAdmin(paths, loader, activation, running);
         return new RulePackRuntimeServices(running, admin, inventory);
     }
 
@@ -88,7 +88,8 @@ public final class RulePackBootstrap {
     private Optional<RulePackAdminService> createAdmin(
             RulePackPaths paths,
             RulePackLoader loader,
-            RuleActivationStore activation) {
+            RuleActivationStore activation,
+            Optional<RulePackRuntime> running) {
         if (registryUrl.isBlank()) {
             return Optional.empty();
         }
@@ -117,7 +118,17 @@ public final class RulePackBootstrap {
                             loader,
                             clock);
             RulePackGarbageCollector garbageCollector =
-                    new RulePackGarbageCollector(paths, references, activation, clock);
+                    new RulePackGarbageCollector(
+                            paths,
+                            references,
+                            activation,
+                            // A still-open classloader keeps its JAR handle open, so quarantining
+                            // that directory would fail on Windows. Ask the runtime every time.
+                            () -> running
+                                    .map(RulePackRuntime::loadedReferences)
+                                    .map(refs -> (Iterable<top.ellan.mahjong.spi.RulePackRef>) refs)
+                                    .orElse(java.util.List.of()),
+                            clock);
             return Optional.of(
                     new RulePackAdminService(
                             paths,

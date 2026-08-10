@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 import top.ellan.mahjong.runtime.activation.RuleActivationState;
 import top.ellan.mahjong.runtime.activation.RuleActivationStore;
@@ -26,6 +27,7 @@ public final class RulePackGarbageCollector {
     private final RulePackPaths paths;
     private final RulePackReferenceIndex references;
     private final RuleActivationStore activationStore;
+    private final Supplier<Iterable<RulePackRef>> loadedCoordinates;
     private final Clock clock;
 
     public RulePackGarbageCollector(
@@ -33,9 +35,19 @@ public final class RulePackGarbageCollector {
             RulePackReferenceIndex references,
             RuleActivationStore activationStore,
             Clock clock) {
+        this(paths, references, activationStore, List::of, clock);
+    }
+
+    public RulePackGarbageCollector(
+            RulePackPaths paths,
+            RulePackReferenceIndex references,
+            RuleActivationStore activationStore,
+            Supplier<Iterable<RulePackRef>> loadedCoordinates,
+            Clock clock) {
         this.paths = Objects.requireNonNull(paths, "paths");
         this.references = Objects.requireNonNull(references, "references");
         this.activationStore = Objects.requireNonNull(activationStore, "activationStore");
+        this.loadedCoordinates = Objects.requireNonNull(loadedCoordinates, "loadedCoordinates");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -45,7 +57,11 @@ public final class RulePackGarbageCollector {
         RuleActivationState activation = activationStore.read();
         addCoordinates(protectedCoordinates, activation.active().values());
         addCoordinates(protectedCoordinates, activation.pending().values());
+        addCoordinates(protectedCoordinates, activation.previous().values());
         addCoordinates(protectedCoordinates, references.referencedRulePacks());
+        // A version whose classloader is still open keeps its JAR handle open too. Moving the
+        // directory would fail outright on Windows, so skip it until the pack is unloaded.
+        addCoordinates(protectedCoordinates, loadedCoordinates.get());
         List<Path> quarantined = new ArrayList<>();
         for (RuleId ruleId : OfficialRuleIds.ALL) {
             Path ruleDirectory = paths.root().resolve(ruleId.value());

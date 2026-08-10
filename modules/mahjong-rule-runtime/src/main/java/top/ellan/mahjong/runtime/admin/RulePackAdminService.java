@@ -100,17 +100,42 @@ public final class RulePackAdminService {
 
     public RuleActivationState activate(RuleId ruleId, String version)
             throws IOException, InterruptedException, RulePackException {
+        return activationStore.requestActivation(verifiedReference(ruleId, version));
+    }
+
+    /**
+     * Activates a version for new matches without waiting for a restart.
+     *
+     * <p>The coordinate is fully verified against the signed registry first, so a failed probe
+     * leaves the previous selection untouched. In-progress matches keep the generation they were
+     * created with.</p>
+     */
+    public RuleActivationState activateNow(RuleId ruleId, String version)
+            throws IOException, InterruptedException, RulePackException {
+        return activationStore.activateNow(verifiedReference(ruleId, version));
+    }
+
+    /** Restores the coordinate that the last immediate activation or deactivation replaced. */
+    public RuleActivationState rollback(RuleId ruleId) throws IOException, RulePackException {
+        return activationStore.rollback(requireOfficial(ruleId));
+    }
+
+    /** Stops handing this rule to new matches; installed artifacts are left in place. */
+    public RuleActivationState deactivate(RuleId ruleId) throws IOException, RulePackException {
+        return activationStore.deactivate(requireOfficial(ruleId));
+    }
+
+    private RulePackRef verifiedReference(RuleId ruleId, String version)
+            throws IOException, InterruptedException, RulePackException {
         requireOfficial(ruleId);
         RulePackRegistryEntry expected = refreshRegistry().registry()
                 .find(ruleId, Optional.of(version))
                 .orElseThrow(() -> new RulePackException(
                         "Requested rule-pack version is absent from signed registry"));
         Path artifact = paths.installedJar(ruleId, version);
-        RulePackRef reference;
         try (LoadedRulePack loaded = loader.load(artifact, expected)) {
-            reference = loaded.reference();
+            return loaded.reference();
         }
-        return activationStore.requestActivation(reference);
     }
 
     public List<Path> collectGarbage() throws Exception {

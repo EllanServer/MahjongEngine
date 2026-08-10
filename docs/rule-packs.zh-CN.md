@@ -30,4 +30,16 @@
 
 运行时允许 GitHub Release 资产从 `github.com` 正常跳转到 GitHub HTTPS 对象存储，但不允许 HTTPS 降级到 HTTP。registry 原始 payload 必须先通过内置 Ed25519 公钥验证，规则 JAR 还必须同时满足签名条目中的 URL、长度和 SHA-256，重定向不替代任何完整性校验。
 
+## 运行时替换
+
+安装、验证、激活、停用和回滚都可以在服务器运行中完成：
+
+- `/mahjong rules install <id> [version]` 下载并原子安装；
+- `/mahjong rules swap <id> <version>` 让新开局立即使用该版本，进行中的牌局继续跑原版本直到结束；
+- `/mahjong rules deactivate <id>` 停止分配新局；
+- `/mahjong rules rollback <id>` 回到上一个坐标；
+- `/mahjong rules activate <id> <version>` 仍是「下次重启生效」的保守路径。
+
+被取代的版本在最后一局结束后自动卸载，并校验 classloader 已被回收。因此规则包不应使用 ThreadLocal、注册 JDBC driver 或 MBean，也不得在 JAR 中打包 `top.ellan.mahjong.spi` 之外的核心类——这三类做法都会让 classloader 无法回收，加载期即被拒绝。
+
 GitHub 已发布三个官方 [`v2.0.1`](https://github.com/EllanServer/riichi-mahjong-java/releases/tag/v2.0.1) 规则包（[MCR](https://github.com/EllanServer/mahjong-mcr-java/releases/tag/v2.0.1)、[四川](https://github.com/EllanServer/sichuan-mahjong-java/releases/tag/v2.0.1)）和中央 [`rule-registry-v2026.08.10.1`](https://github.com/EllanServer/MahjongEngine/releases/tag/rule-registry-v2026.08.10.1)。发布流水线已逐字节验证五个稳定版本条目的大小与 SHA-256，并完成 Ed25519 签名/公钥反验。规则包发布完成不等于核心 2.0 已发布稳定版；核心正式 Release、Paper/Folia/CE 实服矩阵和长期观察窗仍分别验收。

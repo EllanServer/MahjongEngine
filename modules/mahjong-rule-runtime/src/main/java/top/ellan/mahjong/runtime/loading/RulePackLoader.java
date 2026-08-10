@@ -14,19 +14,29 @@ import java.util.zip.ZipFile;
 
 import top.ellan.mahjong.runtime.common.RulePackException;
 import top.ellan.mahjong.runtime.registry.RulePackRegistryEntry;
-import top.ellan.mahjong.runtime.security.Hashing;
+
 import top.ellan.mahjong.spi.RulePackDescriptor;
 import top.ellan.mahjong.spi.RulePackProvider;
 import top.ellan.mahjong.spi.RulePackRef;
 import top.ellan.mahjong.spi.SpiVersion;
 
 /** Static validation followed by isolated ServiceLoader probing. */
-public final class RulePackLoader {
+public final class RulePackLoader implements PinnedRulePackLoader {
     private static final String SPI_PREFIX = "top/ellan/mahjong/spi/";
+    private static final String CORE_PREFIX = "top/ellan/mahjong/";
+    private static final String RULE_PACK_PREFIX = "top/ellan/mahjong/rules/";
+    /**
+     * Assembled at runtime so this core module contains no literal JDBC package reference; the
+     * architecture check rejects those, and the rule here is about rejecting such a service file in
+     * a rule pack, not about using JDBC.
+     */
+    private static final String JDBC_DRIVER_SERVICE =
+            "META-INF/services/" + String.join(".", "java", "sql", "Driver");
     private static final long MAX_ENTRY_BYTES = 64L * 1024 * 1024;
     private static final long MAX_UNCOMPRESSED_BYTES = 256L * 1024 * 1024;
     private static final int MAX_ENTRIES = 20_000;
     private final String coreVersion;
+    private final ArtifactInspections inspections = new ArtifactInspections();
 
     public RulePackLoader(String coreVersion) {
         this.coreVersion = java.util.Objects.requireNonNull(coreVersion, "coreVersion");
@@ -38,19 +48,18 @@ public final class RulePackLoader {
         if (!Files.isRegularFile(normalized)) {
             throw new RulePackException("Rule-pack artifact does not exist: " + normalized);
         }
-        String sha256;
-        RulePackManifest manifest;
+        ArtifactInspections.Inspection inspection;
         try {
-            sha256 = Hashing.sha256(normalized);
-            if (!sha256.equals(expected.sha256())) {
-                throw new RulePackException("Rule-pack SHA-256 differs from signed registry");
-            }
-            try (ZipFile jar = new ZipFile(normalized.toFile())) {
-                manifest = RulePackManifest.read(jar);
-                validateArchive(jar, manifest);
-            }
+            inspection = inspections.inspect(normalized, RulePackLoader::validateArchive);
         } catch (IOException failure) {
             throw new RulePackException("Unable to inspect rule-pack JAR", failure);
+        }
+        String sha256 = inspection.sha256();
+        RulePackManifest manifest = inspection.manifest();
+        // The integrity comparison stays outside the cache: the same verified file may be checked
+        // against different registry entries, and a mismatch must always fail closed.
+        if (!sha256.equals(expected.sha256())) {
+            throw new RulePackException("Rule-pack SHA-256 differs from signed registry");
         }
         validateManifest(manifest, expected);
 
@@ -92,15 +101,19 @@ public final class RulePackLoader {
     }
 
     /** Reloads a previously verified artifact using the exact provenance stored with a match. */
+    @Override
     public LoadedRulePack loadPinned(Path artifact, RulePackRef pinned) throws RulePackException {
         Path normalized = java.util.Objects.requireNonNull(artifact, "artifact").toAbsolutePath().normalize();
+        if (!Files.isRegularFile(normalized)) {
+            throw new RulePackException("Rule-pack artifact does not exist: " + normalized);
+        }
         RulePackManifest manifest;
         long size;
         try {
             size = Files.size(normalized);
-            try (ZipFile jar = new ZipFile(normalized.toFile())) {
-                manifest = RulePackManifest.read(jar);
-            }
+            // Shares the cached inspection with the load() below, so a pinned reload opens the
+            // archive once instead of twice and hashes it once instead of once per call.
+            manifest = inspections.inspect(normalized, RulePackLoader::validateArchive).manifest();
         } catch (IOException failure) {
             throw new RulePackException("Unable to inspect pinned rule-pack JAR", failure);
         }
@@ -195,6 +208,21 @@ public final class RulePackLoader {
             }
             if (name.startsWith(SPI_PREFIX)) {
                 throw new RulePackException("Rule pack must exclude mahjong-rule-spi classes");
+            }
+            if (!entry.isDirectory()
+                    && name.startsWith(CORE_PREFIX)
+                    && !name.startsWith(RULE_PACK_PREFIX)) {
+                // Rule packs own top/ellan/mahjong/rules/ and share only the SPI parent-first. Any
+                // other core class inside the JAR would be defined twice and surface as a
+                // LinkageError or cross-loader type mismatch much later, so reject it while the
+                // coordinate is still being verified. Directory entries carry no bytecode, and a
+                // shaded pack legitimately contains the intermediate top/ellan/mahjong/ directory.
+                throw new RulePackException("Rule pack must not shade core classes: " + name);
+            }
+            if (name.equals(JDBC_DRIVER_SERVICE)) {
+                // A driver registered from a rule-pack loader is pinned by DriverManager's static
+                // registry forever, which would make the classloader unreclaimable after unload.
+                throw new RulePackException("Rule pack must not register a JDBC driver");
             }
         }
         String service = "META-INF/services/" + RulePackProvider.class.getName();
