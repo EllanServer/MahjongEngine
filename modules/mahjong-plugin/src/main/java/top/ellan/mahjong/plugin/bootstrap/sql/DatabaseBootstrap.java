@@ -64,7 +64,13 @@ public final class DatabaseBootstrap {
     private HikariConfig hikariConfiguration() {
         HikariConfig hikari = new HikariConfig();
         hikari.setPoolName("MahjongPaper-SQL");
-        hikari.setJdbcUrl(configuration.jdbcUrl());
+        String jdbcUrl = configuration.jdbcUrl();
+        hikari.setJdbcUrl(jdbcUrl);
+        // DriverManager#getDriver scans ServiceLoader providers with the caller's context
+        // class loader, which cannot see drivers shaded inside the plugin JAR. Resolving the
+        // driver class explicitly through Hikari's own loader keeps JDBC working under the
+        // server's plugin class loader.
+        hikari.setDriverClassName(driverClassName(jdbcUrl));
         hikari.setUsername(configuration.username());
         hikari.setPassword(configuration.password());
         hikari.setMaximumPoolSize(configuration.maximumPoolSize());
@@ -80,5 +86,18 @@ public final class DatabaseBootstrap {
         hikari.addDataSourceProperty("prepStmtCacheSqlLimit", "1024");
         hikari.addDataSourceProperty("useServerPrepStmts", "false");
         return hikari;
+    }
+
+    static String driverClassName(String jdbcUrl) {
+        if (jdbcUrl.startsWith("jdbc:h2:")) {
+            return "org.h2.Driver";
+        }
+        if (jdbcUrl.startsWith("jdbc:mariadb:")) {
+            return "org.mariadb.jdbc.Driver";
+        }
+        if (jdbcUrl.startsWith("jdbc:mysql:")) {
+            return "com.mysql.cj.jdbc.Driver";
+        }
+        throw new IllegalArgumentException("Unsupported JDBC URL scheme: " + jdbcUrl);
     }
 }

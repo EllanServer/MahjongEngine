@@ -1,8 +1,6 @@
 package top.ellan.mahjong.plugin;
 
-import java.util.Objects;
 import java.util.logging.Level;
-import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 import top.ellan.mahjong.plugin.command.MahjongCommand;
 import top.ellan.mahjong.plugin.config.PluginConfiguration;
@@ -17,10 +15,7 @@ public final class MahjongPaperPlugin extends JavaPlugin {
             PluginConfiguration configuration = PluginConfiguration.load(this);
             runtime = new MahjongRuntime(this, configuration);
             MahjongCommand command = new MahjongCommand(this, runtime);
-            PluginCommand mahjong =
-                    Objects.requireNonNull(getCommand("mahjong"), "mahjong command descriptor");
-            mahjong.setExecutor(command);
-            mahjong.setTabCompleter(command);
+            registerCommand("mahjong", command);
             runtime.start();
             getLogger().info("MahjongPaper 2.0 is initializing asynchronously");
         } catch (RuntimeException failure) {

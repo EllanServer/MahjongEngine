@@ -6,6 +6,16 @@ plugins {
     id("com.gradleup.shadow")
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+    toolchain.languageVersion.set(JavaLanguageVersion.of(25))
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(25)
+}
+
 val generatedResources = layout.buildDirectory.dir("generated/resources/mahjong")
 val generateCraftEngineBundle =
     tasks.register("generateCraftEngineBundle") {
@@ -55,7 +65,7 @@ dependencies {
     implementation(project(":mahjong-platform-paper"))
     implementation(project(":mahjong-craftengine"))
 
-    compileOnly("io.papermc.paper:paper-api:1.20.1-R0.1-SNAPSHOT")
+    compileOnly("io.papermc.paper:paper-api:26.2.build.111-stable")
     compileOnly("net.momirealms:craft-engine-core:26.7")
     compileOnly("net.momirealms:craft-engine-bukkit:26.7")
 

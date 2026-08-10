@@ -1,14 +1,14 @@
 package top.ellan.mahjong.plugin.command;
 
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
+import io.papermc.paper.command.brigadier.BasicCommand;
+import io.papermc.paper.command.brigadier.CommandSourceStack;
 import org.bukkit.command.CommandSender;
-import org.bukkit.command.TabCompleter;
 import top.ellan.mahjong.plugin.MahjongPaperPlugin;
 import top.ellan.mahjong.plugin.MahjongRuntime;
 import top.ellan.mahjong.plugin.command.handler.LobbyActionHandler;
@@ -21,7 +21,7 @@ import top.ellan.mahjong.plugin.command.handler.TableQueryHandler;
 import top.ellan.mahjong.plugin.command.handler.TableRemoveHandler;
 
 /** Thin O(1) command router; use cases live behind dedicated handlers. */
-public final class MahjongCommand implements CommandExecutor, TabCompleter {
+public final class MahjongCommand implements BasicCommand {
     private final CommandSupport support;
     private final Map<String, SubcommandHandler> handlers;
 
@@ -40,11 +40,24 @@ public final class MahjongCommand implements CommandExecutor, TabCompleter {
     }
 
     @Override
-    public boolean onCommand(
-            CommandSender sender, Command command, String label, String[] arguments) {
+    public void execute(CommandSourceStack stack, String[] arguments) {
+        Objects.requireNonNull(stack, "stack");
+        onCommand(stack.getSender(), arguments);
+    }
+
+    @Override
+    public Collection<String> suggest(CommandSourceStack stack, String[] arguments) {
+        Objects.requireNonNull(stack, "stack");
+        return onTabComplete(stack.getSender(), arguments);
+    }
+
+    @Override
+    public String permission() {
+        return "mahjongpaper.command";
+    }
+
+    private void onCommand(CommandSender sender, String[] arguments) {
         Objects.requireNonNull(sender, "sender");
-        Objects.requireNonNull(command, "command");
-        Objects.requireNonNull(label, "label");
         Objects.requireNonNull(arguments, "arguments");
         try {
             if (arguments.length == 0) {
@@ -59,7 +72,7 @@ public final class MahjongCommand implements CommandExecutor, TabCompleter {
                         CommandSupport.message(
                                 "mahjongpaper.command.help",
                                 "/mahjong <create|join|leave|spectate|ready|owner|bot|start|mode|auto|referee|list|state|history|rank|remove|rules>"));
-                return true;
+                return;
             }
             SubcommandHandler handler =
                     handlers.get(arguments[0].toLowerCase(Locale.ROOT));
@@ -73,12 +86,9 @@ public final class MahjongCommand implements CommandExecutor, TabCompleter {
         } catch (RuntimeException failure) {
             support.reply(sender, CommandSupport.failed(CommandSupport.safeMessage(failure)));
         }
-        return true;
     }
 
-    @Override
-    public List<String> onTabComplete(
-            CommandSender sender, Command command, String alias, String[] arguments) {
+    private List<String> onTabComplete(CommandSender sender, String[] arguments) {
         if (arguments.length == 1) {
             return CommandSupport.filter(arguments[0], handlers.keySet().stream().sorted().toList());
         }
