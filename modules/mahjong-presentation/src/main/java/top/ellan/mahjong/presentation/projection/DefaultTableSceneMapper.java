@@ -16,6 +16,7 @@ import top.ellan.mahjong.presentation.projection.asset.RuleTileFurnitureResolver
 import top.ellan.mahjong.presentation.projection.interaction.InteractionSceneProjector;
 import top.ellan.mahjong.presentation.projection.privateview.PrivateSceneProjector;
 import top.ellan.mahjong.presentation.projection.publicview.PublicSceneProjector;
+import top.ellan.mahjong.presentation.projection.support.ViewerZoneCounts;
 import top.ellan.mahjong.presentation.scene.SceneGraph;
 import top.ellan.mahjong.presentation.scene.SceneInteractionBinding;
 import top.ellan.mahjong.spi.TileInstanceId;
@@ -58,8 +59,12 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
                 layout.resolve(projection.publicView().tablePresentation());
         Set<TileInstanceId> publiclyRevealedHands =
                 publicScene.project(nodes, projection, resolvedLayout);
-        privateScene.project(nodes, projection, resolvedLayout, publiclyRevealedHands);
-        interactionScene.project(nodes, bindings, projection, resolvedLayout);
+        // Private tiles and hand actions are positioned from the same per-viewer counts, so they are
+        // computed once for the frame and shared instead of recounted by each projector.
+        ViewerZoneCounts viewerCounts = new ViewerZoneCounts();
+        privateScene.project(
+                nodes, projection, resolvedLayout, publiclyRevealedHands, viewerCounts);
+        interactionScene.project(nodes, bindings, projection, resolvedLayout, viewerCounts);
         return new SceneGraph(projection.tableId(), projection.revision(), nodes, bindings);
     }
 }

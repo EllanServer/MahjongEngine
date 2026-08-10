@@ -1,6 +1,7 @@
 package top.ellan.mahjong.presentation.projection.privateview;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import top.ellan.mahjong.application.projection.TableProjection;
 import top.ellan.mahjong.presentation.layout.ResolvedTableLayout;
@@ -11,6 +12,7 @@ import top.ellan.mahjong.presentation.node.SceneNode;
 import top.ellan.mahjong.presentation.node.SceneNodeId;
 import top.ellan.mahjong.presentation.node.SceneVisibility;
 import top.ellan.mahjong.presentation.projection.support.SceneNodeIdentity;
+import top.ellan.mahjong.presentation.projection.support.ViewerZoneCounts;
 import top.ellan.mahjong.presentation.projection.support.ZoneTileCounts;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.PrivateRuleView;
@@ -34,34 +36,53 @@ public final class PrivateSceneProjector {
             Map<SceneNodeId, SceneNode> nodes,
             TableProjection projection,
             ResolvedTableLayout layout,
-            Set<TileInstanceId> publiclyRevealedHands) {
+            Set<TileInstanceId> publiclyRevealedHands,
+            ViewerZoneCounts viewerCounts) {
+        Objects.requireNonNull(viewerCounts, "viewerCounts");
+        Set<PlayerId> audience = Set.copyOf(projection.privateViews().keySet());
+        if (!audience.isEmpty()) {
+            // Phase and public attributes are identical for every seat, so they are projected once
+            // for the shared audience rather than duplicated per viewer.
+            projectSharedHud(nodes, projection, audience);
+        }
         for (Map.Entry<PlayerId, PrivateRuleView> entry : projection.privateViews().entrySet()) {
             projectViewer(
                     nodes,
-                    projection,
                     entry.getKey(),
                     entry.getValue(),
+                    projection,
                     layout,
-                    publiclyRevealedHands);
+                    publiclyRevealedHands,
+                    viewerCounts);
         }
+    }
+
+    private static void projectSharedHud(
+            Map<SceneNodeId, SceneNode> nodes, TableProjection projection, Set<PlayerId> audience) {
+        SceneVisibility visibility = SceneVisibility.privateTo(audience);
+        SceneNodeId phaseId = SceneNodeId.trusted("hud/shared/phase");
+        nodes.put(
+                phaseId,
+                new HudNode(phaseId, visibility, "phase", projection.publicView().phase()));
+        addAttributes(nodes, visibility, "shared", "public", projection.publicView().attributes());
     }
 
     private void projectViewer(
             Map<SceneNodeId, SceneNode> nodes,
-            TableProjection projection,
             PlayerId viewer,
             PrivateRuleView privateView,
+            TableProjection projection,
             ResolvedTableLayout layout,
-            Set<TileInstanceId> publiclyRevealedHands) {
+            Set<TileInstanceId> publiclyRevealedHands,
+            ViewerZoneCounts viewerCounts) {
         SceneVisibility visibility = SceneVisibility.privateTo(viewer);
-        ZoneTileCounts counts = ZoneTileCounts.from(privateView.tiles());
+        ZoneTileCounts counts = viewerCounts.of(viewer, privateView);
         String viewerKey = SceneNodeIdentity.compact(viewer);
         for (RuleViewTile tile : privateView.tiles()) {
             if (publiclyRevealedHands.contains(tile.instanceId())) {
                 continue;
             }
-            SceneNodeId id = new SceneNodeId(
-                    "tile/private/" + viewerKey + '/' + tile.instanceId().value());
+            SceneNodeId id = SceneNodeIdentity.privateTile(viewer, tile.instanceId().value());
             nodes.put(
                     id,
                     new PrivateItemNode(
@@ -72,14 +93,9 @@ public final class PrivateSceneProjector {
                             layout.privateTile(tile, counts.count(tile))));
         }
 
-        SceneNodeId phaseId = new SceneNodeId("hud/" + viewerKey + "/phase");
-        nodes.put(
-                phaseId,
-                new HudNode(phaseId, visibility, "phase", projection.publicView().phase()));
-        addAttributes(nodes, visibility, viewer, "public", projection.publicView().attributes());
-        addAttributes(nodes, visibility, viewer, "private", privateView.attributes());
+        addAttributes(nodes, visibility, viewerKey, "private", privateView.attributes());
         if (overheadEnabled && projection.lifecycle().acceptsRuleActions()) {
-            SceneNodeId cameraId = new SceneNodeId("camera/" + viewerKey + "/river");
+            SceneNodeId cameraId = SceneNodeId.trusted("camera/" + viewerKey + "/river");
             nodes.put(
                     cameraId,
                     new CameraNode(
@@ -93,7 +109,7 @@ public final class PrivateSceneProjector {
     private static void addAttributes(
             Map<SceneNodeId, SceneNode> nodes,
             SceneVisibility visibility,
-            PlayerId viewer,
+            String viewerKey,
             String namespace,
             Map<String, String> attributes) {
         if (attributes.size() > 64) {
@@ -102,7 +118,7 @@ public final class PrivateSceneProjector {
         attributes.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> {
-                    SceneNodeId id = SceneNodeIdentity.hud(viewer, namespace, entry.getKey());
+                    SceneNodeId id = SceneNodeIdentity.hud(viewerKey, namespace, entry.getKey());
                     String contentKey = namespace + ':' + entry.getKey();
                     if (nodes.putIfAbsent(
                                     id,

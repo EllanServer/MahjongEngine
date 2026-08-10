@@ -96,39 +96,38 @@ public final class SparrowPrivateProjectionGateway
 
     @Override
     public void upsert(TableId tableId, SceneNode node) {
-        UpsertedNode upserted = state.upsert(tableId, node);
-        Player player = Bukkit.getPlayer(upserted.key().viewer().value());
-        if (player != null) {
-            tasks.execute(
-                    player,
-                    () -> renderer.apply(player, upserted.key(), upserted.generation()));
+        // A shared node resolves to one key per viewer; each is dispatched on its own player thread.
+        for (UpsertedNode upserted : state.upsert(tableId, node)) {
+            Player player = Bukkit.getPlayer(upserted.key().viewer().value());
+            if (player != null) {
+                tasks.execute(
+                        player,
+                        () -> renderer.apply(player, upserted.key(), upserted.generation()));
+            }
         }
     }
 
     @Override
     public void remove(TableId tableId, SceneNodeId nodeId) {
-        Optional<RemovedNode> removed = state.remove(tableId, nodeId);
-        if (removed.isEmpty()) {
-            return;
+        for (RemovedNode target : state.remove(tableId, nodeId)) {
+            if (target.node() instanceof CameraNode) {
+                cameras.removeCamera(tableId, target.key().viewer());
+            }
+            Player player = Bukkit.getPlayer(target.key().viewer().value());
+            if (player == null) {
+                renderer.forget(target.key());
+                continue;
+            }
+            boolean hudChanged = target.node() instanceof HudNode;
+            tasks.execute(
+                    player,
+                    () -> {
+                        renderer.remove(player, target.key());
+                        if (hudChanged) {
+                            renderer.refreshHud(player, target.key().viewer());
+                        }
+                    });
         }
-        RemovedNode target = removed.orElseThrow();
-        if (target.node() instanceof CameraNode) {
-            cameras.removeCamera(tableId, target.key().viewer());
-        }
-        Player player = Bukkit.getPlayer(target.key().viewer().value());
-        if (player == null) {
-            renderer.forget(target.key());
-            return;
-        }
-        boolean hudChanged = target.node() instanceof HudNode;
-        tasks.execute(
-                player,
-                () -> {
-                    renderer.remove(player, target.key());
-                    if (hudChanged) {
-                        renderer.refreshHud(player, target.key().viewer());
-                    }
-                });
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

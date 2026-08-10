@@ -33,7 +33,7 @@ class PrivateProjectionStateTest {
         TileInstanceId tileId = new TileInstanceId(17);
         SceneNodeId nodeId = new SceneNodeId("private/tile/17");
 
-        PrivateProjectionState.UpsertedNode upserted = state.upsert(
+        var upserted = state.upsert(
                 tableId,
                 new PrivateItemNode(
                         nodeId,
@@ -42,11 +42,60 @@ class PrivateProjectionStateTest {
                         new TileVisualId("riichi:tile/m5"),
                         TRANSFORM));
 
-        assertEquals(upserted.key(), state.handTile(tableId, VIEWER, tileId));
+        assertEquals(1, upserted.size());
+        assertEquals(upserted.getFirst().key(), state.handTile(tableId, VIEWER, tileId));
         assertEquals(1, state.desiredNodes(VIEWER).size());
-        assertTrue(state.remove(tableId, nodeId).isPresent());
+        assertEquals(1, state.remove(tableId, nodeId).size());
         assertNull(state.handTile(tableId, VIEWER, tileId));
         assertTrue(state.desiredNodes(VIEWER).isEmpty());
+    }
+
+    @Test
+    void sharedNodeIsIndexedOncePerViewerAndRemovedForAll() {
+        PrivateProjectionState state = new PrivateProjectionState();
+        TableId tableId = TableId.random();
+        SceneNodeId nodeId = new SceneNodeId("hud/shared/phase");
+
+        var upserted = state.upsert(
+                tableId,
+                new top.ellan.mahjong.presentation.node.HudNode(
+                        nodeId,
+                        SceneVisibility.privateTo(java.util.Set.of(VIEWER, OTHER)),
+                        "phase",
+                        "DISCARD"));
+
+        assertEquals(2, upserted.size());
+        assertEquals(1, state.desiredNodes(VIEWER).size());
+        assertEquals(1, state.desiredNodes(OTHER).size());
+
+        assertEquals(2, state.remove(tableId, nodeId).size());
+        assertTrue(state.desiredNodes(VIEWER).isEmpty());
+        assertTrue(state.desiredNodes(OTHER).isEmpty());
+    }
+
+    @Test
+    void shrinkingASharedAudienceForgetsTheDroppedViewer() {
+        PrivateProjectionState state = new PrivateProjectionState();
+        TableId tableId = TableId.random();
+        SceneNodeId nodeId = new SceneNodeId("hud/shared/phase");
+        state.upsert(
+                tableId,
+                new top.ellan.mahjong.presentation.node.HudNode(
+                        nodeId,
+                        SceneVisibility.privateTo(java.util.Set.of(VIEWER, OTHER)),
+                        "phase",
+                        "DISCARD"));
+
+        state.upsert(
+                tableId,
+                new top.ellan.mahjong.presentation.node.HudNode(
+                        nodeId,
+                        SceneVisibility.privateTo(java.util.Set.of(VIEWER)),
+                        "phase",
+                        "DRAW"));
+
+        assertEquals(1, state.desiredNodes(VIEWER).size());
+        assertTrue(state.desiredNodes(OTHER).isEmpty());
     }
 
     @Test

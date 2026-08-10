@@ -60,6 +60,12 @@ import top.ellan.mahjong.spi.TileInstanceId;
 import top.ellan.mahjong.spi.TileVisualId;
 
 class SceneGraphTest {
+    private static final PlayerId SECOND_PLAYER =
+            new PlayerId(UUID.fromString("00000000-0000-0000-0000-0000000000b2"));
+    private static final PlayerId THIRD_PLAYER =
+            new PlayerId(UUID.fromString("00000000-0000-0000-0000-0000000000b3"));
+    private static final PlayerId FOURTH_PLAYER =
+            new PlayerId(UUID.fromString("00000000-0000-0000-0000-0000000000b4"));
     private static final PlayerId PLAYER =
             new PlayerId(UUID.fromString("00000000-0000-0000-0000-000000000001"));
     private static final SeatId SEAT_ZERO = new SeatId(0);
@@ -160,6 +166,48 @@ class SceneGraphTest {
                 .map(FurnitureNode.class::cast)
                 .anyMatch(node -> node.assetId()
                         .equals("mahjongpaper:tile_standing_m5_red")));
+    }
+
+    @Test
+    void publicHudIsProjectedOncePerTableRatherThanOncePerSeat() {
+        SceneGraph graph = mapper().map(fourSeatProjection(TableId.random(), 7));
+
+        List<HudNode> huds = graph.nodes().values().stream()
+                .filter(HudNode.class::isInstance)
+                .map(HudNode.class::cast)
+                .toList();
+        List<HudNode> shared = huds.stream()
+                .filter(node -> node.visibility().viewers().size() > 1)
+                .toList();
+
+        // Phase plus three public attributes are shared by all four seats; each seat still gets its
+        // own private attribute. Duplicating the public part per seat would produce 16 + 4 nodes.
+        assertEquals(8, huds.size());
+        assertEquals(4, shared.size());
+        for (HudNode node : shared) {
+            assertEquals(4, node.visibility().viewers().size());
+            assertFalse(node.visibility().isPublic());
+            assertFalse(node.worldBacked());
+        }
+    }
+
+    @Test
+    void multiViewerNodesRemainIneligibleForWorldBackedEntities() {
+        SceneNodeId id = SceneNodeId.trusted("furniture/shared");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new FurnitureNode(
+                        id,
+                        SceneVisibility.privateTo(java.util.Set.of(PLAYER, SECOND_PLAYER)),
+                        "mahjongpaper:tile_standing",
+                        new SceneTransform(0, 1, 0, 0, 0, 0, 1)));
+    }
+
+    @Test
+    void anEmptyPrivateAudienceIsRejected() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> SceneVisibility.privateTo(java.util.Set.<PlayerId>of()));
     }
 
     @Test
@@ -282,8 +330,8 @@ class SceneGraphTest {
         assertTrue(view.worldBacked());
         assertTrue(view.visibility().isPublic());
         assertFalse(label.worldBacked());
-        assertEquals(Optional.of(PLAYER), label.visibility().privateViewer());
-        assertEquals(Optional.of(PLAYER), camera.visibility().privateViewer());
+        assertEquals(Optional.of(PLAYER), label.visibility().singleViewer());
+        assertEquals(Optional.of(PLAYER), camera.visibility().singleViewer());
         assertEquals(4.5D, camera.transform().y());
         assertEquals(180.0D, camera.transform().yawDegrees());
         assertEquals(90.0D, camera.transform().pitchDegrees());
@@ -353,6 +401,63 @@ class SceneGraphTest {
         assertEquals(List.of(new SceneNodeId("tile/public/102")), diff.removals());
         assertTrue(diff.upserts().stream()
                 .noneMatch(node -> node.id().value().startsWith("tile/public/")));
+    }
+
+    @Test
+    void graphConstructorDoesNotMutateTheCallersMap() {
+        SceneGraph base = mapper().map(projection(TableId.random(), 1, "playing"));
+        Map<SceneNodeId, SceneNode> mutable = new java.util.LinkedHashMap<>(base.nodes());
+        Map<SceneNodeId, SceneNode> before = Map.copyOf(mutable);
+
+        new SceneGraph(base.tableId(), base.revision(), mutable, base.interactionBindings());
+
+        assertEquals(before, mutable);
+    }
+
+    @Test
+    void graphConstructorPublishesOneImmutableCopy() {
+        SceneGraph base = mapper().map(projection(TableId.random(), 1, "playing"));
+        Map<SceneNodeId, SceneNode> mutable = new java.util.LinkedHashMap<>(base.nodes());
+
+        SceneGraph graph = new SceneGraph(base.tableId(), base.revision(), mutable, base.interactionBindings());
+
+        mutable.clear();
+        assertEquals(base.nodes().size(), graph.nodes().size());
+        assertFalse(graph.nodes().isEmpty());
+    }
+
+    @Test
+    void differOwnsTheSameRemovalsAndUpsertsAsTheDefensiveConstructor() {
+        TableId table = TableId.random();
+        SceneGraph before = mapper().map(projection(table, 1, "playing"));
+        SceneGraph after = mapper().map(projection(table, 2, "settlement"));
+
+        // The differ transfers ownership of private ArrayLists; the defensive constructor would
+        // copy the same content. Both must observe identical removal/upsert content.
+        SceneDiff trusted = new SceneGraphDiffer().diff(before, after);
+        SceneDiff defensive = new SceneDiff(
+                trusted.tableId(),
+                trusted.fromRevision(),
+                trusted.toRevision(),
+                trusted.removals(),
+                trusted.upserts(),
+                trusted.interactionBindings());
+
+        assertEquals(trusted.removals(), defensive.removals());
+        assertEquals(trusted.upserts(), defensive.upserts());
+        assertEquals(trusted.interactionBindings(), defensive.interactionBindings());
+        assertEquals(trusted, defensive);
+        assertEquals(trusted.hashCode(), defensive.hashCode());
+    }
+
+    @Test
+    void differRejectsStaleSceneRevisions() {
+        TableId table = TableId.random();
+        SceneGraph graph = mapper().map(projection(table, 5, "playing"));
+        SceneDiff diff = new SceneGraphDiffer().diff(graph, graph);
+
+        assertEquals(5, diff.fromRevision());
+        assertEquals(5, diff.toRevision());
     }
 
     @Test
@@ -619,6 +724,32 @@ class SceneGraphTest {
                                 List.of(privateFace),
                                 Map.of())),
                 Map.of(PLAYER, List.of(action)));
+    }
+
+    /** Four seated viewers plus three public and one private HUD attribute each. */
+    private static TableProjection fourSeatProjection(TableId tableId, long revision) {
+        Map<String, String> publicAttributes =
+                Map.of("round", "east-1", "wall", "70", "dealer", "0");
+        Map<PlayerId, PrivateRuleView> privateViews = new java.util.LinkedHashMap<>();
+        List<PlayerId> seats = List.of(PLAYER, SECOND_PLAYER, THIRD_PLAYER, FOURTH_PLAYER);
+        for (int seat = 0; seat < seats.size(); seat++) {
+            privateViews.put(
+                    seats.get(seat),
+                    new PrivateRuleView(
+                            revision,
+                            seats.get(seat),
+                            new SeatId(seat),
+                            List.of(),
+                            Map.of("score", Integer.toString(25_000 + seat))));
+        }
+        return new TableProjection(
+                tableId,
+                revision,
+                TableLifecycle.ACTIVE,
+                new PublicRuleView(
+                        revision, "playing", List.of(), publicAttributes, table(136)),
+                Map.copyOf(privateViews),
+                Map.of());
     }
 
     private static TableProjection publicProjection(

@@ -1,5 +1,6 @@
 package top.ellan.mahjong.presentation.projection.interaction;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -14,6 +15,7 @@ import top.ellan.mahjong.presentation.node.SceneNodeId;
 import top.ellan.mahjong.presentation.node.SceneTransform;
 import top.ellan.mahjong.presentation.node.SceneVisibility;
 import top.ellan.mahjong.presentation.projection.support.SceneNodeIdentity;
+import top.ellan.mahjong.presentation.projection.support.ViewerZoneCounts;
 import top.ellan.mahjong.presentation.projection.support.ZoneTileCounts;
 import top.ellan.mahjong.presentation.scene.SceneInteractionBinding;
 import top.ellan.mahjong.spi.ActionPlacement;
@@ -41,7 +43,9 @@ public final class InteractionSceneProjector {
             Map<SceneNodeId, SceneNode> nodes,
             List<SceneInteractionBinding> bindings,
             TableProjection projection,
-            ResolvedTableLayout layout) {
+            ResolvedTableLayout layout,
+            ViewerZoneCounts viewerCounts) {
+        Objects.requireNonNull(viewerCounts, "viewerCounts");
         for (Map.Entry<PlayerId, List<AuthorizedAction>> entry
                 : projection.authorizedActions().entrySet()) {
             PlayerId player = entry.getKey();
@@ -56,7 +60,8 @@ public final class InteractionSceneProjector {
                     layout,
                     player,
                     privateView,
-                    entry.getValue());
+                    entry.getValue(),
+                    viewerCounts);
         }
         if (overheadEnabled && projection.lifecycle().acceptsRuleActions()) {
             for (Map.Entry<PlayerId, PrivateRuleView> entry : projection.privateViews().entrySet()) {
@@ -78,20 +83,27 @@ public final class InteractionSceneProjector {
             ResolvedTableLayout layout,
             PlayerId player,
             PrivateRuleView privateView,
-            List<AuthorizedAction> actions) {
-        ZoneTileCounts counts = ZoneTileCounts.from(privateView.tiles());
+            List<AuthorizedAction> actions,
+            ViewerZoneCounts viewerCounts) {
+        ZoneTileCounts counts = viewerCounts.of(player, privateView);
+        String playerKey = SceneNodeIdentity.compact(player);
         int primaryIndex = 0;
         int secondaryIndex = 0;
+        Map<TileInstanceId, RuleViewTile> handTiles = null;
         for (AuthorizedAction action : actions) {
             ActionPlacement placement = action.legalAction().actionPresentation().placement();
             if (placement == ActionPlacement.HAND_TILE) {
+                if (handTiles == null) {
+                    handTiles = handTileIndex(privateView);
+                }
                 addHandAction(
                         nodes,
                         bindings,
                         projection,
                         player,
-                        privateView,
+                        playerKey,
                         counts,
+                        handTiles,
                         action,
                         layout);
                 continue;
@@ -104,6 +116,7 @@ public final class InteractionSceneProjector {
                     bindings,
                     projection,
                     player,
+                    playerKey,
                     privateView.seat(),
                     action,
                     placement,
@@ -120,8 +133,8 @@ public final class InteractionSceneProjector {
             SeatId seat,
             ResolvedTableLayout layout) {
         String playerKey = SceneNodeIdentity.compact(player);
-        SceneNodeId id = new SceneNodeId("interaction/view/" + playerKey + "/river");
-        SceneNodeId labelId = new SceneNodeId("label/view/" + playerKey + "/river");
+        SceneNodeId id = SceneNodeId.trusted("interaction/view/" + playerKey + "/river");
+        SceneNodeId labelId = SceneNodeId.trusted("label/view/" + playerKey + "/river");
         InteractionHandle handle = SceneNodeIdentity.interaction(
                 projection.tableId() + ":view:" + player + ":river");
         SceneTransform transform = layout.viewControl(seat);
@@ -149,22 +162,19 @@ public final class InteractionSceneProjector {
             List<SceneInteractionBinding> bindings,
             TableProjection projection,
             PlayerId player,
-            PrivateRuleView privateView,
+            String playerKey,
             ZoneTileCounts counts,
+            Map<TileInstanceId, RuleViewTile> handTiles,
             AuthorizedAction action,
             ResolvedTableLayout layout) {
         TileInstanceId target =
                 action.legalAction().actionPresentation().targetTile().orElseThrow();
-        RuleViewTile tile = privateView.tiles().stream()
-                .filter(candidate -> candidate.instanceId().equals(target))
-                .findFirst()
-                .orElse(null);
+        RuleViewTile tile = handTiles.get(target);
         if (tile == null || tile.zone() != RuleViewZone.HAND) {
             throw new IllegalArgumentException("hand action target is absent from the private hand");
         }
-        String playerKey = SceneNodeIdentity.compact(player);
         SceneNodeId id =
-                new SceneNodeId("interaction/hand/" + playerKey + '/' + target.value());
+                SceneNodeId.trusted("interaction/hand/" + playerKey + '/' + target.value());
         InteractionHandle handle = SceneNodeIdentity.interaction(
                 projection.tableId() + ":hand:" + player + ':' + target.value());
         InteractionNode node = new InteractionNode(
@@ -180,17 +190,28 @@ public final class InteractionSceneProjector {
         bindings.add(SceneInteractionBinding.handTile(handle, player, action.token(), target));
     }
 
+    /** Single linear pass building the hand index, shared by every hand action of one player. */
+    private static Map<TileInstanceId, RuleViewTile> handTileIndex(PrivateRuleView privateView) {
+        Map<TileInstanceId, RuleViewTile> index = new HashMap<>();
+        for (RuleViewTile tile : privateView.tiles()) {
+            index.put(tile.instanceId(), tile);
+        }
+        return index;
+    }
+
     private void addRowAction(
             Map<SceneNodeId, SceneNode> nodes,
             List<SceneInteractionBinding> bindings,
             TableProjection projection,
             PlayerId player,
+            String playerKey,
             SeatId seat,
             AuthorizedAction action,
             ActionPlacement placement,
             int index,
             ResolvedTableLayout layout) {
-        String playerKey = SceneNodeIdentity.compact(player);
+        // The action key originates from the rule pack, so the id must go through the validating
+        // constructor; only the per-player compact() is hoisted out of the loop.
         String actionKey = action.legalAction().key();
         SceneNodeId id =
                 new SceneNodeId("interaction/action/" + playerKey + '/' + actionKey);

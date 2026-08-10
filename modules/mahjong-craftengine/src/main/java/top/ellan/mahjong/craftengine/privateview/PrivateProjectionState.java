@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import net.momirealms.sparrow.heart.feature.entity.display.FakeItemDisplay;
@@ -23,7 +24,7 @@ import top.ellan.mahjong.spi.TileInstanceId;
 final class PrivateProjectionState {
     private final ConcurrentHashMap<PlayerId, ConcurrentHashMap<NodeKey, DesiredNode>> desired =
             new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<TableNodeKey, PlayerId> viewersByNode =
+    private final ConcurrentHashMap<TableNodeKey, Set<PlayerId>> viewersByNode =
             new ConcurrentHashMap<>();
     private final ConcurrentHashMap<PlayerId, ConcurrentHashMap<NodeKey, ActiveItem>> activeItems =
             new ConcurrentHashMap<>();
@@ -35,52 +36,85 @@ final class PrivateProjectionState {
             new ConcurrentHashMap<>();
     private final AtomicLong generation = new AtomicLong();
 
-    UpsertedNode upsert(TableId tableId, SceneNode node) {
+    /**
+     * Registers one desired node for every viewer allowed to see it and returns one key per viewer.
+     *
+     * <p>Shared public HUD nodes carry several viewers, so the per-viewer indexes and the renderer
+     * keep working unchanged while the projection only has to emit a single node.</p>
+     */
+    List<UpsertedNode> upsert(TableId tableId, SceneNode node) {
         Objects.requireNonNull(tableId, "tableId");
         Objects.requireNonNull(node, "node");
-        PlayerId viewer = node.visibility()
-                .privateViewer()
-                .orElseThrow(() -> new IllegalArgumentException("Private node has no viewer"));
+        Set<PlayerId> viewers = node.visibility().viewers();
+        if (viewers.isEmpty()) {
+            throw new IllegalArgumentException("Private node has no viewer");
+        }
         requireSupported(node);
-        NodeKey key = new NodeKey(tableId, node.id(), viewer);
-        viewersByNode.compute(
-                new TableNodeKey(tableId, node.id()),
-                (ignored, previousViewer) -> {
-                    if (previousViewer != null && !previousViewer.equals(viewer)) {
-                        throw new IllegalArgumentException(
-                                "Private scene node is assigned to more than one viewer");
-                    }
-                    return viewer;
-                });
-        long nextGeneration = generation.incrementAndGet();
-        DesiredNode previous = desired.computeIfAbsent(viewer, ignored -> new ConcurrentHashMap<>())
-                .put(key, new DesiredNode(nextGeneration, node));
-        removeSpecialIndexes(key, previous == null ? null : previous.node());
-        addSpecialIndexes(key, node);
-        return new UpsertedNode(key, nextGeneration);
+        Set<PlayerId> audience = Set.copyOf(viewers);
+        TableNodeKey tableNode = new TableNodeKey(tableId, node.id());
+        Set<PlayerId> previousAudience = viewersByNode.get(tableNode);
+        if (previousAudience != null
+                && previousAudience.size() == 1
+                && audience.size() == 1
+                && !previousAudience.equals(audience)) {
+            // A single-viewer id encodes its own viewer, so reassigning it means the projection
+            // built a colliding id. Stay fail-closed instead of silently moving secret state.
+            throw new IllegalArgumentException(
+                    "Private scene node is assigned to more than one viewer");
+        }
+        viewersByNode.put(tableNode, audience);
+        if (previousAudience != null) {
+            // A shared node that lost viewers must not leave orphaned per-viewer state behind.
+            for (PlayerId stale : previousAudience) {
+                if (!audience.contains(stale)) {
+                    forgetDesired(new NodeKey(tableId, node.id(), stale));
+                }
+            }
+        }
+        List<UpsertedNode> upserted = new ArrayList<>(audience.size());
+        for (PlayerId viewer : audience) {
+            NodeKey key = new NodeKey(tableId, node.id(), viewer);
+            long nextGeneration = generation.incrementAndGet();
+            DesiredNode previous =
+                    desired.computeIfAbsent(viewer, ignored -> new ConcurrentHashMap<>())
+                            .put(key, new DesiredNode(nextGeneration, node));
+            removeSpecialIndexes(key, previous == null ? null : previous.node());
+            addSpecialIndexes(key, node);
+            upserted.add(new UpsertedNode(key, nextGeneration));
+        }
+        return upserted;
     }
 
-    Optional<RemovedNode> remove(TableId tableId, SceneNodeId nodeId) {
+    List<RemovedNode> remove(TableId tableId, SceneNodeId nodeId) {
         Objects.requireNonNull(tableId, "tableId");
         Objects.requireNonNull(nodeId, "nodeId");
-        PlayerId viewer = viewersByNode.remove(new TableNodeKey(tableId, nodeId));
-        if (viewer == null) {
-            return Optional.empty();
+        Set<PlayerId> viewers = viewersByNode.remove(new TableNodeKey(tableId, nodeId));
+        if (viewers == null) {
+            return List.of();
         }
-        ConcurrentHashMap<NodeKey, DesiredNode> nodes = desired.get(viewer);
+        List<RemovedNode> removed = new ArrayList<>(viewers.size());
+        for (PlayerId viewer : viewers) {
+            DesiredNode gone = forgetDesired(new NodeKey(tableId, nodeId, viewer));
+            if (gone != null) {
+                removed.add(new RemovedNode(new NodeKey(tableId, nodeId, viewer), gone.node()));
+            }
+        }
+        return removed;
+    }
+
+    private DesiredNode forgetDesired(NodeKey key) {
+        ConcurrentHashMap<NodeKey, DesiredNode> nodes = desired.get(key.viewer());
         if (nodes == null) {
-            return Optional.empty();
+            return null;
         }
-        NodeKey key = new NodeKey(tableId, nodeId, viewer);
         DesiredNode removed = nodes.remove(key);
-        if (removed == null) {
-            return Optional.empty();
-        }
         if (nodes.isEmpty()) {
-            desired.remove(viewer, nodes);
+            desired.remove(key.viewer(), nodes);
         }
-        removeSpecialIndexes(key, removed.node());
-        return Optional.of(new RemovedNode(key, removed.node()));
+        if (removed != null) {
+            removeSpecialIndexes(key, removed.node());
+        }
+        return removed;
     }
 
     Map<NodeKey, DesiredNode> desiredNodes(PlayerId viewer) {
