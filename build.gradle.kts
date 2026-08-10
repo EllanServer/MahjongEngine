@@ -86,6 +86,13 @@ val architectureCheck =
                         }
                 }
                 if (
+                    module in setOf("mahjong-presentation", "mahjong-craftengine") &&
+                        ".matches(\"" in text
+                ) {
+                    violations +=
+                        "$relative compiles a regex per call; hoist it into a static Pattern"
+                }
+                if (
                     module == "mahjong-application" &&
                         relative.startsWith(
                             "modules/mahjong-application/src/main/java/top/ellan/mahjong/application/",

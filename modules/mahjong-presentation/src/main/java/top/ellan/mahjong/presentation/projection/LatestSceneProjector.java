@@ -115,10 +115,6 @@ public final class LatestSceneProjector implements SceneProjectionPort {
             SceneGraph next = mapper.map(projection);
             SceneDiff diff;
             synchronized (slot) {
-                SceneGraph previous =
-                        slot.applied == null
-                                ? SceneGraph.empty(tableId, -1 + 1)
-                                : slot.applied;
                 if (slot.applied != null && next.revision() < slot.applied.revision()) {
                     return;
                 }
@@ -133,7 +129,7 @@ public final class LatestSceneProjector implements SceneProjectionPort {
                                                 .sorted(java.util.Comparator.comparing(SceneNode::id))
                                                 .toList(),
                                         next.interactionBindings())
-                                : differ.diff(previous, next);
+                                : differ.diff(slot.applied, next);
                 slot.applied = next;
             }
             backend.submit(diff);

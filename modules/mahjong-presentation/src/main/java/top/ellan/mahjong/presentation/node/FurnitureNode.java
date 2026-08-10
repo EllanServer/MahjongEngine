@@ -1,6 +1,7 @@
 package top.ellan.mahjong.presentation.node;
 
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 /** Public CraftEngine furniture node. */
 public record FurnitureNode(
@@ -9,6 +10,9 @@ public record FurnitureNode(
         String assetId,
         String variant,
         SceneTransform transform) implements SceneNode {
+    private static final Pattern ASSET_ID =
+            Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
+    private static final Pattern VARIANT = Pattern.compile("[a-z0-9_.-]+");
     public FurnitureNode(
             SceneNodeId id,
             SceneVisibility visibility,
@@ -26,10 +30,10 @@ public record FurnitureNode(
         if (!visibility.isPublic()) {
             throw new IllegalArgumentException("CraftEngine furniture must contain public information only");
         }
-        if (!assetId.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
+        if (!ASSET_ID.matcher(assetId).matches()) {
             throw new IllegalArgumentException("Invalid CraftEngine asset id: " + assetId);
         }
-        if (!variant.matches("[a-z0-9_.-]+")) {
+        if (!VARIANT.matcher(variant).matches()) {
             throw new IllegalArgumentException("Invalid CraftEngine furniture variant: " + variant);
         }
     }

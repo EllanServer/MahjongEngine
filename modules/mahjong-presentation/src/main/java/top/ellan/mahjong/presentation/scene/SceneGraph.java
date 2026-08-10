@@ -1,6 +1,5 @@
 package top.ellan.mahjong.presentation.scene;
 
-import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +23,9 @@ public record SceneGraph(
             throw new IllegalArgumentException("revision must be non-negative");
         }
         Objects.requireNonNull(nodes, "nodes");
-        Map<SceneNodeId, SceneNode> copied = new LinkedHashMap<>();
+        // Single pass over the caller's map: validate every entry and collect interaction
+        // handles in the same iteration, then publish one immutable copy.
+        java.util.Set<InteractionHandle> handles = new HashSet<>();
         for (Map.Entry<SceneNodeId, SceneNode> entry : nodes.entrySet()) {
             if (!entry.getKey().equals(entry.getValue().id())) {
                 throw new IllegalArgumentException("Scene node key differs from its id");
@@ -33,17 +34,13 @@ public record SceneGraph(
             if (node.worldBacked() && !node.visibility().isPublic()) {
                 throw new IllegalArgumentException("Private information cannot be world-backed");
             }
-            copied.put(entry.getKey(), node);
-        }
-        nodes = Map.copyOf(copied);
-        interactionBindings =
-                List.copyOf(Objects.requireNonNull(interactionBindings, "interactionBindings"));
-        java.util.Set<InteractionHandle> handles = new HashSet<>();
-        for (SceneNode node : nodes.values()) {
             if (node instanceof InteractionNode interaction) {
                 handles.add(interaction.handle());
             }
         }
+        nodes = Map.copyOf(nodes);
+        interactionBindings =
+                List.copyOf(Objects.requireNonNull(interactionBindings, "interactionBindings"));
         java.util.Set<BindingKey> bindingKeys = new HashSet<>();
         for (SceneInteractionBinding binding : interactionBindings) {
             if (!handles.contains(binding.handle())

@@ -29,12 +29,14 @@ public final class SceneGraphDiffer {
             }
         }
         upserts.sort(Comparator.comparing(SceneNode::id));
+        // Ownership transfer: the private lists are stored as-is and never touched again here.
         return new SceneDiff(
                 next.tableId(),
                 previous.revision(),
                 next.revision(),
                 removals,
                 upserts,
-                next.interactionBindings());
+                next.interactionBindings(),
+                true);
     }
 }

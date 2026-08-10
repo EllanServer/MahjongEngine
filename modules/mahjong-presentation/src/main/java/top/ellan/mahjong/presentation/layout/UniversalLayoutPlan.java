@@ -24,6 +24,7 @@ final class UniversalLayoutPlan {
     private final SceneTransform[][] secondaryActions;
     private final SceneTransform[] viewControls;
     private final SceneTransform[] wall;
+    private final SeatAxis[] seatAxes;
 
     UniversalLayoutPlan(
             TableGeometry geometry,
@@ -52,6 +53,11 @@ final class UniversalLayoutPlan {
         this.secondaryActions = secondaryActions;
         this.viewControls = viewControls;
         this.wall = wall;
+        SeatAxis[] axes = new SeatAxis[spec.seatCount()];
+        for (int seat = 0; seat < axes.length; seat++) {
+            axes[seat] = axis(seat);
+        }
+        this.seatAxes = axes;
     }
 
     SceneTransform tile(RuleViewTile tile, int groupSize) {
@@ -78,7 +84,7 @@ final class UniversalLayoutPlan {
         if (tile.zone() != RuleViewZone.HAND) {
             return base;
         }
-        SeatAxis axis = axis(owner(tile));
+        SeatAxis axis = seatAxes[owner(tile)];
         double offset = Math.max(0.0005D, geometry.tileGap() * 0.5D);
         return new SceneTransform(
                 base.x() + axis.outX() * offset,

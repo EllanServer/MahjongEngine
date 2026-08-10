@@ -1,6 +1,7 @@
 package top.ellan.mahjong.presentation.asset;
 
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 /** Restart-scoped CraftEngine asset references; geometry remains in CraftEngine configuration. */
 public record TableSceneAssets(
@@ -17,9 +18,11 @@ public record TableSceneAssets(
         actionInteractionFurniture = requireAsset(actionInteractionFurniture, "actionInteractionFurniture");
     }
 
+    private static final Pattern ASSET = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
+
     private static String requireAsset(String value, String name) {
         String asset = Objects.requireNonNull(value, name);
-        if (!asset.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
+        if (!ASSET.matcher(asset).matches()) {
             throw new IllegalArgumentException("Invalid CraftEngine asset: " + asset);
         }
         return asset;

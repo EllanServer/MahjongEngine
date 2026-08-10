@@ -1,6 +1,7 @@
 package top.ellan.mahjong.presentation.projection.asset;
 
 import java.util.Objects;
+import java.util.regex.Pattern;
 import top.ellan.mahjong.presentation.asset.TableSceneAssets;
 import top.ellan.mahjong.presentation.asset.TileAssetName;
 import top.ellan.mahjong.spi.RuleViewTile;
@@ -8,6 +9,9 @@ import top.ellan.mahjong.spi.RuleViewZone;
 
 /** Maps semantic rule visuals to reusable CraftEngine furniture identifiers. */
 public final class RuleTileFurnitureResolver {
+    private static final Pattern POINT_STICK =
+            Pattern.compile("p(?:100|1000|5000|10000)");
+
     private final TableSceneAssets assets;
 
     public RuleTileFurnitureResolver(TableSceneAssets assets) {
@@ -34,7 +38,7 @@ public final class RuleTileFurnitureResolver {
         String denomination = separator >= 0
                 ? visualId.substring(separator + "stick/".length())
                 : visualId;
-        if (!denomination.matches("p(?:100|1000|5000|10000)")) {
+        if (!POINT_STICK.matcher(denomination).matches()) {
             throw new IllegalArgumentException("Unsupported point-stick visual id: " + visualId);
         }
         return "mahjongpaper:stick_" + denomination;

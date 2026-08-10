@@ -27,6 +27,7 @@ public final class CraftEngineBundleInstaller {
     private static final String BUNDLE_INDEX = BUNDLE_ROOT + "/_bundle_index.txt";
     private static final String BUNDLE_MANIFEST = "_bundle_manifest.sha256";
     private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
+    private static final Pattern BUNDLE_FOLDER = Pattern.compile("[a-z0-9_.-]+");
 
     private final Plugin plugin;
     private final String bundleFolderName;
@@ -34,7 +35,7 @@ public final class CraftEngineBundleInstaller {
     public CraftEngineBundleInstaller(Plugin plugin, String bundleFolderName) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.bundleFolderName = Objects.requireNonNull(bundleFolderName, "bundleFolderName");
-        if (!bundleFolderName.matches("[a-z0-9_.-]+")) {
+        if (!BUNDLE_FOLDER.matcher(bundleFolderName).matches()) {
             throw new IllegalArgumentException("Invalid CraftEngine bundle folder");
         }
     }

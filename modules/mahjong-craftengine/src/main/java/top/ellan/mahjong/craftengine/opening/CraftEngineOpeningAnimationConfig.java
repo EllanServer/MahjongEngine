@@ -2,6 +2,7 @@ package top.ellan.mahjong.craftengine.opening;
 
 import java.time.Duration;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 /** Restart-scoped orchestration values; furniture appearance itself remains in CraftEngine YAML. */
 public record CraftEngineOpeningAnimationConfig(
@@ -9,11 +10,13 @@ public record CraftEngineOpeningAnimationConfig(
         int previewFrames,
         Duration rollDuration,
         Duration revealDuration) {
+    private static final Pattern ASSET_PREFIX = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
+
     public CraftEngineOpeningAnimationConfig {
         diceSlotAssetPrefix = Objects.requireNonNull(
                         diceSlotAssetPrefix, "diceSlotAssetPrefix")
                 .trim();
-        if (!diceSlotAssetPrefix.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
+        if (!ASSET_PREFIX.matcher(diceSlotAssetPrefix).matches()) {
             throw new IllegalArgumentException("Invalid CraftEngine dice-slot asset prefix");
         }
         if (previewFrames < 1 || previewFrames > 6) {

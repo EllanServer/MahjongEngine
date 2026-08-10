@@ -13,6 +13,7 @@ import top.ellan.mahjong.presentation.node.SceneNodeId;
 import top.ellan.mahjong.presentation.node.SceneTransform;
 import top.ellan.mahjong.presentation.node.SceneVisibility;
 import top.ellan.mahjong.presentation.projection.asset.RuleTileFurnitureResolver;
+import top.ellan.mahjong.presentation.projection.support.SceneNodeIdentity;
 import top.ellan.mahjong.presentation.projection.support.ZoneTileCounts;
 import top.ellan.mahjong.spi.RuleViewTile;
 import top.ellan.mahjong.spi.RuleViewZone;
@@ -33,7 +34,7 @@ public final class PublicSceneProjector {
             Map<SceneNodeId, SceneNode> nodes,
             TableProjection projection,
             ResolvedTableLayout layout) {
-        SceneNodeId tableId = new SceneNodeId("furniture/table");
+        SceneNodeId tableId = SceneNodeId.trusted("furniture/table");
         nodes.put(
                 tableId,
                 new FurnitureNode(
@@ -45,7 +46,7 @@ public final class PublicSceneProjector {
         ZoneTileCounts counts = ZoneTileCounts.from(projection.publicView().tiles());
         HashSet<TileInstanceId> revealedHands = null;
         for (RuleViewTile tile : projection.publicView().tiles()) {
-            SceneNodeId id = new SceneNodeId("tile/public/" + tile.instanceId().value());
+            SceneNodeId id = SceneNodeIdentity.publicTile(tile.instanceId().value());
             nodes.put(
                     id,
                     new FurnitureNode(
