@@ -23,6 +23,7 @@ public final class BoundedDeadlineScheduler implements TaskScheduler, AutoClosea
     private final AtomicLong order = new AtomicLong();
     private final Thread timerThread;
     private boolean running = true;
+    private int cancelledCount;
 
     public BoundedDeadlineScheduler(
             int capacity, java.util.concurrent.Executor target, String threadName) {
@@ -60,7 +61,7 @@ public final class BoundedDeadlineScheduler implements TaskScheduler, AutoClosea
             if (!running) {
                 throw new RejectedExecutionException("deadline scheduler is closed");
             }
-            if (deadlines.size() >= capacity) {
+            if (deadlines.size() - cancelledCount >= capacity) {
                 throw new RejectedExecutionException("deadline scheduler capacity exceeded");
             }
             deadlines.add(deadline);
@@ -74,7 +75,7 @@ public final class BoundedDeadlineScheduler implements TaskScheduler, AutoClosea
     public int pendingTasks() {
         lock.lock();
         try {
-            return deadlines.size();
+            return deadlines.size() - cancelledCount;
         } finally {
             lock.unlock();
         }
@@ -86,12 +87,36 @@ public final class BoundedDeadlineScheduler implements TaskScheduler, AutoClosea
         }
         lock.lock();
         try {
-            boolean removed = deadlines.remove(deadline);
+            // Lazy cancel: the timer skips cancelled entries when they reach the head, so a
+            // cancellation is O(1) and never scans the heap. Rebuild once half the capacity is
+            // garbage so producers are never stalled by cancelled entries.
+            cancelledCount++;
             changed.signal();
-            return removed;
+            if (cancelledCount >= Math.max(1, capacity / 2)) {
+                compact();
+            }
+            return true;
         } finally {
             lock.unlock();
         }
+    }
+
+    private void compact() {
+        if (cancelledCount == 0) {
+            return;
+        }
+        PriorityQueue<Deadline> survivors =
+                new PriorityQueue<>(
+                        Comparator.comparingLong(Deadline::dueNanos)
+                                .thenComparingLong(Deadline::order));
+        for (Deadline deadline : deadlines) {
+            if (!deadline.isCancelled()) {
+                survivors.add(deadline);
+            }
+        }
+        deadlines.clear();
+        deadlines.addAll(survivors);
+        cancelledCount = 0;
     }
 
     private void runTimer() {
@@ -111,6 +136,11 @@ public final class BoundedDeadlineScheduler implements TaskScheduler, AutoClosea
                 Deadline head = deadlines.peek();
                 if (head == null) {
                     changed.await();
+                    continue;
+                }
+                if (head.isCancelled()) {
+                    deadlines.remove();
+                    cancelledCount--;
                     continue;
                 }
                 long remaining = head.dueNanos() - System.nanoTime();
@@ -169,6 +199,7 @@ public final class BoundedDeadlineScheduler implements TaskScheduler, AutoClosea
             running = false;
             deadlines.forEach(item -> item.cancelled().set(true));
             deadlines.clear();
+            cancelledCount = 0;
             changed.signalAll();
         } finally {
             lock.unlock();
@@ -203,6 +234,10 @@ public final class BoundedDeadlineScheduler implements TaskScheduler, AutoClosea
 
         private AtomicBoolean cancelled() {
             return cancelled;
+        }
+
+        private boolean isCancelled() {
+            return cancelled.get();
         }
 
         private void backOffFrom(long now) {

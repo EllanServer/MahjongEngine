@@ -68,8 +68,10 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
             if (diff.toRevision() > table.desiredRevision) {
                 table.failed = false;
             }
+            // Keep the previous interaction routes installed until the new bindings are ready;
+            // stale routes carry an old revision token and are rejected by TableActionAdmission,
+            // so no action can slip through during the apply window.
             table.bindingsInstalled = false;
-            interactions.replaceBindings(diff.tableId(), List.of());
             diff.removals().forEach(
                     removal -> {
                         table.desired.remove(removal);

@@ -140,8 +140,7 @@ public final class TableActor
         return stateMachine.latestProjection();
     }
 
-    private void scheduleDrain() {
-        if (!scheduled.compareAndSet(false, true)) {
+    private void scheduleDrain() {        if (!scheduled.compareAndSet(false, true)) {
             return;
         }
         try {
@@ -207,8 +206,7 @@ public final class TableActor
         ActionAdmission admission =
                 stateMachine.admit(envelope.actor(), envelope.token(), ruleInFlight);
         if (!admission.accepted()) {
-            envelope.response().complete(
-                    stateMachine.result(admission.rejectionCode(), admission.reasonCode()));
+            envelope.response().complete(stateMachine.result(admission.rejectionCode(), admission.reasonCode()));
             return;
         }
         submitTransition(
@@ -222,8 +220,7 @@ public final class TableActor
     private void handleAuthorityAction(AuthorityActionEnvelope envelope) {
         ActionAdmission admission = authorityActions.admit(envelope, stateMachine, ruleInFlight);
         if (!admission.accepted()) {
-            envelope.response().complete(
-                    stateMachine.result(admission.rejectionCode(), admission.reasonCode()));
+            envelope.response().complete(stateMachine.result(admission.rejectionCode(), admission.reasonCode()));
             return;
         }
         submitTransition(
@@ -256,15 +253,13 @@ public final class TableActor
             return;
         }
         if (!stateMachine.lifecycle().acceptsRuleActions()) {
-            envelope.response().complete(
-                    stateMachine.result(TableActionCode.TABLE_BLOCKED, "table-not-active"));
+            envelope.response().complete(stateMachine.result(TableActionCode.TABLE_BLOCKED, "table-not-active"));
             return;
         }
         TableAutomationRoster.Update update =
                 automation.update(envelope.playerId(), envelope.enabled());
         if (!update.accepted()) {
-            envelope.response().complete(stateMachine.result(
-                    TableActionCode.REJECTED_BY_RULES, update.reasonCode()));
+            envelope.response().complete(stateMachine.result(TableActionCode.REJECTED_BY_RULES, update.reasonCode()));
             return;
         }
         if (update.changed()) {
@@ -275,12 +270,10 @@ public final class TableActor
                 submitFrameComputation();
             }
         }
-        envelope.response().complete(
-                stateMachine.result(TableActionCode.ACCEPTED_MEMORY, update.reasonCode()));
+        envelope.response().complete(stateMachine.result(TableActionCode.ACCEPTED_MEMORY, update.reasonCode()));
     }
 
-    private void submitFrameComputation() {
-        ruleInFlight = true;
+    private void submitFrameComputation() {        ruleInFlight = true;
         try {
             ruleTasks.frame(
                     stateMachine.ruleState(),
@@ -341,13 +334,12 @@ public final class TableActor
     private void handleRuleCompletion(RuleTaskCompletion completion) {
         ruleInFlight = false;
         if (closed.get()) {
-            completion.envelope().ifPresent(value -> value.response().complete(
-                    stateMachine.result(TableActionCode.TABLE_CLOSED, "closed")));
-            completion.authorityEnvelope().ifPresent(value -> value.response().complete(
-                    stateMachine.result(TableActionCode.TABLE_CLOSED, "closed")));
+            TableActionResult closedResult =
+                    stateMachine.result(TableActionCode.TABLE_CLOSED, "closed");
+            completion.envelope().ifPresent(value -> value.response().complete(closedResult));
+            completion.authorityEnvelope().ifPresent(value -> value.response().complete(closedResult));
             return;
-        }
-        stateMachine.handleRuleCompletion(completion);
+        }        stateMachine.handleRuleCompletion(completion);
         if (automationRefreshPending) {
             automationRefreshPending = false;
             if (stateMachine.lifecycle().acceptsRuleActions()) {
@@ -382,7 +374,15 @@ public final class TableActor
     }
 
     private void publishSnapshot() {
-        publishedSnapshot.set(stateMachine.snapshot(inbox.actionCount(), ruleInFlight));
+        TableActorSnapshot next = stateMachine.snapshot(inbox.actionCount(), ruleInFlight);
+        TableActorSnapshot current = publishedSnapshot.get();
+        // Skip the volatile write when nothing a consumer can observe changed.
+        if (current == null
+                || next.revision() != current.revision()
+                || next.lifecycle() != current.lifecycle()
+                || !Objects.equals(next.failureCode(), current.failureCode())) {
+            publishedSnapshot.set(next);
+        }
     }
 
     @Override

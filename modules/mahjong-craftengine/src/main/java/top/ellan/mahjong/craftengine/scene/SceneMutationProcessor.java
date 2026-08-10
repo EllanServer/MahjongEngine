@@ -1,6 +1,5 @@
 package top.ellan.mahjong.craftengine.scene;
 
-import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,22 +32,33 @@ final class SceneMutationProcessor {
         this.failureSink = failureSink;
     }
 
+    /**
+     * Pops the head of the dirty queue instead of rescanning it from the start on every call.
+     * Entries that already match (and are not forced) are stale leftovers and are dropped;
+     * {@link #apply} re-adds an entry only when its desired changed mid-flight, so every dirty
+     * entry is visited at most once per drain.
+     */
     SceneMutation next(CraftEngineTableState table) {
         synchronized (table) {
-            Iterator<SceneNodeId> iterator = table.dirty.iterator();
-            while (iterator.hasNext()) {
-                SceneNodeId id = iterator.next();
+            while (true) {
+                SceneNodeId id = firstDirty(table);
+                if (id == null) {
+                    return null;
+                }
+                table.dirty.remove(id);
                 SceneNode desired = table.desired.get(id);
                 SceneNode actual = table.actual.get(id);
                 boolean forced = table.forced.contains(id);
                 if (!forced && Objects.equals(desired, actual)) {
-                    iterator.remove();
                     continue;
                 }
                 return new SceneMutation(id, desired, table.applyEpoch);
             }
-            return null;
         }
+    }
+
+    private static SceneNodeId firstDirty(CraftEngineTableState table) {
+        return table.dirty.isEmpty() ? null : table.dirty.iterator().next();
     }
 
     boolean apply(TableId tableId, CraftEngineTableState table, SceneMutation mutation) {

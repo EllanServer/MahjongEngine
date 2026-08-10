@@ -23,4 +23,6 @@ final class CraftEngineTableState {
     boolean closed;
     boolean bindingsInstalled;
     long applyEpoch;
+    long tickStamp;
+    int tickMutations;
 }

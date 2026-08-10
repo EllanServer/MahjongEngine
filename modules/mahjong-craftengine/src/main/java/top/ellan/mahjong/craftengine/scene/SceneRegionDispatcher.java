@@ -1,9 +1,7 @@
 package top.ellan.mahjong.craftengine.scene;
 
 import java.util.ArrayDeque;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -114,45 +112,65 @@ final class SceneRegionDispatcher {
         long deadline = config.regionBudgetNanos() > Long.MAX_VALUE - started
                 ? Long.MAX_VALUE
                 : started + config.regionBudgetNanos();
-        Map<TableId, Integer> perTable = new HashMap<>();
         ArrayDeque<TableId> nextTick = new ArrayDeque<>();
+        long tick;
         synchronized (region) {
+            tick = ++region.tick;
             region.scheduled = false;
             if (!ready.getAsBoolean()) {
                 release(region);
                 return;
             }
-            while (ready.getAsBoolean()
-                    && !region.ready.isEmpty()
-                    && System.nanoTime() < deadline) {
-                TableId tableId = region.ready.removeFirst();
-                CraftEngineTableState table = tables.get(tableId);
+        }
+        while (ready.getAsBoolean() && System.nanoTime() < deadline) {
+            TableId tableId;
+            CraftEngineTableState table;
+            SceneMutation mutation;
+            synchronized (region) {
+                if (region.ready.isEmpty()) {
+                    break;
+                }
+                tableId = region.ready.removeFirst();
+                table = tables.get(tableId);
                 if (table == null) {
                     continue;
                 }
                 synchronized (table) {
                     table.regionQueued = false;
-                }
-                int used = perTable.getOrDefault(tableId, 0);
-                if (used >= config.maxMutationsPerTablePerTick()) {
-                    defer(nextTick, tableId, table);
-                    continue;
-                }
-                SceneMutation mutation = mutations.next(table);
-                if (mutation == null) {
-                    mutations.installBindingsIfReady(tableId, table);
-                    mutations.finishClosedTable(tableId, table);
-                    continue;
-                }
-                boolean succeeded = mutations.apply(tableId, table, mutation);
-                int nextUsed = succeeded ? used + 1 : config.maxMutationsPerTablePerTick();
-                perTable.put(tableId, nextUsed);
-                if (nextUsed >= config.maxMutationsPerTablePerTick()) {
-                    defer(nextTick, tableId, table);
-                } else {
-                    requeue(region, tableId, table);
+                    if (table.tickStamp != tick) {
+                        table.tickStamp = tick;
+                        table.tickMutations = 0;
+                    }
+                    if (table.tickMutations >= config.maxMutationsPerTablePerTick()) {
+                        defer(nextTick, tableId, table);
+                        continue;
+                    }
+                    mutation = mutations.next(table);
+                    if (mutation == null) {
+                        mutations.installBindingsIfReady(tableId, table);
+                        mutations.finishClosedTable(tableId, table);
+                        continue;
+                    }
                 }
             }
+            // The gateway call is the expensive part; never hold the region lock for it so
+            // other tables and submit/markReady stay responsive during the apply window.
+            boolean succeeded = mutations.apply(tableId, table, mutation);
+            synchronized (region) {
+                synchronized (table) {
+                    table.tickMutations =
+                            succeeded
+                                    ? table.tickMutations + 1
+                                    : config.maxMutationsPerTablePerTick();
+                    if (table.tickMutations >= config.maxMutationsPerTablePerTick()) {
+                        defer(nextTick, tableId, table);
+                    } else {
+                        requeue(region, tableId, table);
+                    }
+                }
+            }
+        }
+        synchronized (region) {
             region.ready.addAll(nextTick);
             region.scheduled = false;
             if (ready.getAsBoolean() && !region.ready.isEmpty()) {
@@ -200,5 +218,6 @@ final class SceneRegionDispatcher {
     private static final class RegionState {
         private final ArrayDeque<TableId> ready = new ArrayDeque<>();
         private boolean scheduled;
+        private long tick;
     }
 }

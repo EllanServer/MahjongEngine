@@ -44,10 +44,10 @@ public final class PersistenceOutbox implements AutoCloseable {
     private long lastEnqueuedSequence;
     private boolean writeInFlight;
     private boolean flushScheduled;
+    private boolean lastPaused;
     private boolean closed;
     private String lastFailure;
     private Cancellable flushTask;
-    private Cancellable ageTask;
     private CompletableFuture<Void> drained = CompletableFuture.completedFuture(null);
 
     public PersistenceOutbox(
@@ -139,11 +139,10 @@ public final class PersistenceOutbox implements AutoCloseable {
         }
         if (wasEmpty) {
             drained = new CompletableFuture<>();
-            scheduleAgeCheck();
         }
-        scheduleFlush(pending.size() >= batchSize ? Duration.ZERO : flushDelay);
+        scheduleTick();
         OutboxHealth health = health();
-        listener.accept(health);
+        publishHealth(health);
         return health;
     }
 
@@ -176,10 +175,31 @@ public final class PersistenceOutbox implements AutoCloseable {
     }
 
     public synchronized void flushNow() {
-        scheduleFlush(Duration.ZERO);
+        scheduleTick(Duration.ZERO);
     }
 
-    private synchronized void scheduleFlush(Duration delay) {
+    /**
+     * Smart tick: full batches flush immediately; partial batches wait for the earlier of
+     * {@code flushDelay} or the oldest event approaching {@code maxAge}, so one timer covers
+     * both flushing and the age-based pause signal.
+     */
+    private synchronized void scheduleTick() {
+        if (flushScheduled || writeInFlight || pending.isEmpty()) {
+            return;
+        }
+        Duration delay;
+        if (pending.size() >= batchSize) {
+            delay = Duration.ZERO;
+        } else {
+            Duration remaining = maxAge.minus(oldestAge());
+            delay = remaining.isNegative() || remaining.compareTo(flushDelay) >= 0
+                    ? flushDelay
+                    : remaining;
+        }
+        scheduleTick(delay);
+    }
+
+    private synchronized void scheduleTick(Duration delay) {
         if (flushScheduled || writeInFlight || pending.isEmpty()) {
             return;
         }
@@ -240,7 +260,7 @@ public final class PersistenceOutbox implements AutoCloseable {
         writeInFlight = false;
         if (failure != null) {
             lastFailure = failure.getClass().getSimpleName();
-            scheduleFlush(Duration.ofMillis(250));
+            scheduleTick(Duration.ofMillis(250));
             publishHealth();
             return;
         }
@@ -249,7 +269,7 @@ public final class PersistenceOutbox implements AutoCloseable {
                 || ack.committedSequence() < batchLast
                 || ack.committedSequence() > lastEnqueuedSequence) {
             lastFailure = "invalid-persistence-ack";
-            scheduleFlush(Duration.ofMillis(250));
+            scheduleTick(Duration.ofMillis(250));
             publishHealth();
             return;
         }
@@ -263,29 +283,9 @@ public final class PersistenceOutbox implements AutoCloseable {
             cancelScheduledTasks();
             drained.complete(null);
         } else {
-            scheduleAgeCheck();
-            scheduleFlush(pending.size() >= batchSize ? Duration.ZERO : flushDelay);
+            scheduleTick();
         }
         publishHealth();
-    }
-
-    private synchronized void scheduleAgeCheck() {
-        if (pending.isEmpty()) {
-            return;
-        }
-        if (ageTask != null) {
-            ageTask.cancel();
-        }
-        Duration remaining = maxAge.minus(oldestAge());
-        if (remaining.isNegative()) {
-            remaining = Duration.ZERO;
-        }
-        try {
-            ageTask = scheduler.schedule(this::publishHealth, remaining);
-        } catch (RejectedExecutionException failure) {
-            ageTask = null;
-            lastFailure = "scheduler-capacity";
-        }
     }
 
     private synchronized Duration oldestAge() {
@@ -297,8 +297,18 @@ public final class PersistenceOutbox implements AutoCloseable {
         return age.isNegative() ? Duration.ZERO : age;
     }
 
-    private synchronized void publishHealth() {
-        listener.accept(health());
+    /** Coalesces the per-offer self-wakeup: the actor only needs to react to pause transitions. */
+    private synchronized void publishHealth(OutboxHealth health) {
+        if (health.paused() != lastPaused) {
+            lastPaused = health.paused();
+            listener.accept(health);
+        }
+    }
+
+    private void publishHealth() {
+        synchronized (this) {
+            publishHealth(health());
+        }
     }
 
     private synchronized void cancelScheduledTasks() {
@@ -307,17 +317,13 @@ public final class PersistenceOutbox implements AutoCloseable {
             flushTask = null;
         }
         flushScheduled = false;
-        if (ageTask != null) {
-            ageTask.cancel();
-            ageTask = null;
-        }
     }
 
     @Override
     public synchronized void close() {
         closed = true;
         if (!pending.isEmpty()) {
-            scheduleFlush(Duration.ZERO);
+            scheduleTick(Duration.ZERO);
         } else {
             cancelScheduledTasks();
         }

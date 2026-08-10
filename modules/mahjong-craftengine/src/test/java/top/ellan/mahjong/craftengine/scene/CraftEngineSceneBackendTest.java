@@ -171,7 +171,9 @@ class CraftEngineSceneBackendTest {
                                         new ActionToken(UUID.randomUUID(), player, 2))));
 
         backend.submit(next);
-        assertEquals(0, interactions.routeCount());
+        // Phase 1.5: old routes stay installed during the apply window; their stale revision
+        // tokens are rejected by TableActionAdmission, so no action can slip through early.
+        assertEquals(1, interactions.routeCount());
 
         scheduler.runUntilIdle(REGION, 4);
         assertEquals(1, interactions.routeCount());
