@@ -1,5 +1,6 @@
 package top.ellan.mahjong.plugin.command;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -8,6 +9,8 @@ import java.util.Map;
 import java.util.Objects;
 import io.papermc.paper.command.brigadier.BasicCommand;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.CommandSender;
 import top.ellan.mahjong.plugin.MahjongPaperPlugin;
 import top.ellan.mahjong.plugin.MahjongRuntime;
@@ -67,15 +70,16 @@ public final class MahjongCommand implements BasicCommand {
                                 "mahjongpaper.command.status",
                                 "MahjongPaper 2.0 - %s",
                                 support.runtime().status()));
-                support.reply(
-                        sender,
-                        CommandSupport.message(
-                                "mahjongpaper.command.help",
-                                "/mahjong <create|join|leave|spectate|ready|owner|bot|start|mode|auto|referee|list|state|history|rank|remove|rules>"));
+                sendHelp(sender, 1);
+                return;
+            }
+            String first = arguments[0].toLowerCase(Locale.ROOT);
+            if (first.matches("[0-9]+")) {
+                sendHelp(sender, Integer.parseInt(first));
                 return;
             }
             SubcommandHandler handler =
-                    handlers.get(arguments[0].toLowerCase(Locale.ROOT));
+                    handlers.get(first);
             if (handler == null) {
                 throw CommandSupport.failure(
                         "mahjongpaper.command.unknown_subcommand", "Unknown subcommand.");
@@ -86,6 +90,40 @@ public final class MahjongCommand implements BasicCommand {
         } catch (RuntimeException failure) {
             support.reply(sender, CommandSupport.failed(CommandSupport.safeMessage(failure)));
         }
+    }
+
+    private static final int HELP_PAGE_SIZE = 10;
+
+    /** Paginated, line-by-line help matching the v1.5.0 layout. */
+    private void sendHelp(CommandSender sender, int requestedPage) {
+        List<String> names = handlers.keySet().stream().sorted().toList();
+        int pageCount = Math.max(1, (int) Math.ceil((double) names.size() / HELP_PAGE_SIZE));
+        int page = Math.max(1, Math.min(requestedPage, pageCount));
+        int start = (page - 1) * HELP_PAGE_SIZE;
+        int end = Math.min(start + HELP_PAGE_SIZE, names.size());
+
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.text("===== MahjongPaper Help =====", NamedTextColor.GOLD));
+        lines.add(Component.text("Subcommands", NamedTextColor.AQUA));
+        lines.add(
+                Component.text(
+                        String.format(
+                                "Page %d/%d (%d commands)", page, pageCount, names.size()),
+                        NamedTextColor.GRAY));
+        for (int index = start; index < end; index++) {
+            lines.add(
+                    Component.text("  - /mahjong " + names.get(index), NamedTextColor.DARK_AQUA));
+        }
+        if (pageCount > 1) {
+            lines.add(
+                    Component.text(
+                            String.format(
+                                    "Page %d/%d - run /mahjong <page> to navigate",
+                                    page, pageCount),
+                            NamedTextColor.GRAY));
+        }
+        lines.add(Component.text("==============================", NamedTextColor.GOLD));
+        lines.forEach(sender::sendMessage);
     }
 
     private List<String> onTabComplete(CommandSender sender, String[] arguments) {

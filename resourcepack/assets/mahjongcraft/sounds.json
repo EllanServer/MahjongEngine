@@ -17,6 +17,9 @@
   "reaction_kan": {
     "sounds": ["mahjongcraft:reaction_kan"]
   },
+  "riichi": {
+    "sounds": ["mahjongcraft:riichi"]
+  },
   "round_win": {
     "sounds": ["mahjongcraft:round_win"]
   },
@@ -25,6 +28,60 @@
   },
   "turn_change": {
     "sounds": ["mahjongcraft:turn_change"]
+  },
+  "gb_tile_draw": {
+    "sounds": ["mahjongcraft:gb_tile_draw"]
+  },
+  "gb_tile_discard": {
+    "sounds": ["mahjongcraft:gb_tile_discard"]
+  },
+  "gb_tile_shuffle": {
+    "sounds": ["mahjongcraft:gb_tile_shuffle"]
+  },
+  "gb_turn_change": {
+    "sounds": ["mahjongcraft:gb_turn_change"]
+  },
+  "gb_round_draw": {
+    "sounds": ["mahjongcraft:gb_round_draw"]
+  },
+  "gb_reaction_chi": {
+    "sounds": ["mahjongcraft:gb_reaction_chi"]
+  },
+  "gb_reaction_pon": {
+    "sounds": ["mahjongcraft:gb_reaction_pon"]
+  },
+  "gb_reaction_kan": {
+    "sounds": ["mahjongcraft:gb_reaction_kan"]
+  },
+  "gb_round_win": {
+    "sounds": ["mahjongcraft:gb_round_win"]
+  },
+  "sichuan_tile_draw": {
+    "sounds": ["mahjongcraft:sichuan_tile_draw"]
+  },
+  "sichuan_tile_discard": {
+    "sounds": ["mahjongcraft:sichuan_tile_discard"]
+  },
+  "sichuan_tile_shuffle": {
+    "sounds": ["mahjongcraft:sichuan_tile_shuffle"]
+  },
+  "sichuan_turn_change": {
+    "sounds": ["mahjongcraft:sichuan_turn_change"]
+  },
+  "sichuan_round_draw": {
+    "sounds": ["mahjongcraft:sichuan_round_draw"]
+  },
+  "sichuan_reaction_chi": {
+    "sounds": ["mahjongcraft:sichuan_reaction_chi"]
+  },
+  "sichuan_reaction_pon": {
+    "sounds": ["mahjongcraft:sichuan_reaction_pon"]
+  },
+  "sichuan_reaction_kan": {
+    "sounds": ["mahjongcraft:sichuan_reaction_kan"]
+  },
+  "sichuan_round_win": {
+    "sounds": ["mahjongcraft:sichuan_round_win"]
   },
   "opening_dice": {
     "sounds": [

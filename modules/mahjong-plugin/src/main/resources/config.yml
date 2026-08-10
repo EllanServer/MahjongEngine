@@ -39,10 +39,17 @@ presentation:
       reaction-chi: { key: "mahjongcraft:reaction_chi", volume: 0.8, pitch: 1.1 }
       reaction-pon: { key: "mahjongcraft:reaction_pon", volume: 0.8, pitch: 1.1 }
       reaction-kan: { key: "mahjongcraft:reaction_kan", volume: 0.8, pitch: 1.1 }
-      riichi: { key: "minecraft:block.note_block.bell", volume: 0.8, pitch: 1.25 }
+      riichi: { key: "mahjongcraft:riichi", volume: 0.8, pitch: 1.25 }
       round-win: { key: "mahjongcraft:round_win", volume: 0.9, pitch: 1.0 }
       round-draw: { key: "mahjongcraft:round_draw", volume: 0.9, pitch: 1.0 }
       turn-change: { key: "mahjongcraft:turn_change", volume: 0.5, pitch: 1.6 }
+    # Per-rule sound variants (v1.5.0 style): when a table runs under one of these rule ids the
+    # cue key gets the prefix inserted after the namespace, e.g. mahjongcraft:tile_shuffle becomes
+    # mahjongcraft:gb_tile_shuffle (guobiao/MCR) or mahjongcraft:sichuan_tile_shuffle (Sichuan).
+    # An empty value disables the variant for that rule id; unknown rules keep the base key.
+    variant-prefixes:
+      mcr: "gb_"
+      sichuan: "sichuan_"
   # Dynamic placement dimensions shared by all rule packs. Static furniture and hitboxes stay in CE YAML.
   geometry:
     tile-width: 0.1125

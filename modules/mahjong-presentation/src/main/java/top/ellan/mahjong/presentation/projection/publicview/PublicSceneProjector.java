@@ -41,7 +41,7 @@ public final class PublicSceneProjector {
                         tableId,
                         SceneVisibility.publicToAll(),
                         assets.tableFurniture(),
-                        new SceneTransform(0, 0, 0, 0, 0, 0, 1)));
+                        new SceneTransform(0, 0.375, 0, 0, 0, 0, 1)));
 
         ZoneTileCounts counts = ZoneTileCounts.from(projection.publicView().tiles());
         HashSet<TileInstanceId> revealedHands = null;

@@ -14,10 +14,12 @@ import top.ellan.mahjong.spi.RulePresentationCueType;
 public final class PaperTableSoundGateway implements TablePresentationCuePort {
     private final PaperSoundDispatcher dispatcher;
     private final Map<RulePresentationCueType, PaperSoundProfile> profiles;
+    private final Map<String, String> variantPrefixes;
 
     public PaperTableSoundGateway(
             PaperSoundDispatcher dispatcher,
-            Map<RulePresentationCueType, PaperSoundProfile> profiles) {
+            Map<RulePresentationCueType, PaperSoundProfile> profiles,
+            Map<String, String> variantPrefixes) {
         this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
         EnumMap<RulePresentationCueType, PaperSoundProfile> copy =
                 new EnumMap<>(RulePresentationCueType.class);
@@ -26,6 +28,7 @@ public final class PaperTableSoundGateway implements TablePresentationCuePort {
             throw new IllegalArgumentException("a sound profile is required for every cue type");
         }
         this.profiles = Map.copyOf(copy);
+        this.variantPrefixes = Map.copyOf(Objects.requireNonNull(variantPrefixes, "variantPrefixes"));
     }
 
     @Override
@@ -43,8 +46,36 @@ public final class PaperTableSoundGateway implements TablePresentationCuePort {
             if (cue.target().isPresent() && !cue.target().orElseThrow().equals(playerId)) {
                 continue;
             }
-            applicable.add(profiles.get(cue.type()));
+            applicable.add(variant(batch, cue.type(), profiles.get(cue.type())));
         }
         return applicable;
+    }
+
+    /**
+     * Applies the per-rule sound variant (v1.5.0 {@code variantSound}) unless the profile is
+     * missing, the batch carries no rule, or the cue is the riichi call which always uses its
+     * dedicated sound.
+     */
+    private PaperSoundProfile variant(
+            TableCueBatch batch, RulePresentationCueType type, PaperSoundProfile profile) {
+        if (profile == null
+                || type == RulePresentationCueType.RIICHI
+                || batch.ruleId() == null) {
+            return profile;
+        }
+        String prefix = variantPrefixes.get(batch.ruleId().value());
+        if (prefix == null || prefix.isEmpty()) {
+            return profile;
+        }
+        return new PaperSoundProfile(
+                variantKey(profile.key(), prefix), profile.volume(), profile.pitch());
+    }
+
+    private static String variantKey(String key, String prefix) {
+        int separator = key.indexOf(':');
+        if (separator < 0) {
+            return key;
+        }
+        return key.substring(0, separator + 1) + prefix + key.substring(separator + 1);
     }
 }

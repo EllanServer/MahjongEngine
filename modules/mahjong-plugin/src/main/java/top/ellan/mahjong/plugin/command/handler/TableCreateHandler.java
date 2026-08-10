@@ -48,7 +48,7 @@ public final class TableCreateHandler implements SubcommandHandler {
                 new Location(
                         java.util.Objects.requireNonNull(source.getWorld(), "player world"),
                         Math.floor(source.getX()) + 0.5D,
-                        Math.floor(source.getY()),
+                        Math.floor(source.getY()) + 0.5D,
                         Math.floor(source.getZ()) + 0.5D,
                         source.getYaw(),
                         0.0F);

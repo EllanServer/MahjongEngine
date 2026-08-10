@@ -3,9 +3,11 @@ package top.ellan.mahjong.plugin.config;
 import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 import top.ellan.mahjong.spi.RulePresentationCueType;
@@ -115,6 +117,7 @@ public record PluginConfiguration(
         }
         return new SoundSettings(
                 cues,
+                loadVariantPrefixes(config),
                 readSound(
                         config,
                         "presentation.sound.opening.dice",
@@ -123,6 +126,34 @@ public record PluginConfiguration(
                         config,
                         "presentation.sound.opening.wall-open",
                         new SoundProfile("mahjongcraft:opening_wall_break", 0.8F, 1.0F)));
+    }
+
+    /**
+     * Loads the per-rule sound key prefixes (v1.5.0 style variant sounds).
+     *
+     * <p>When a table runs under a rule whose id is listed here, every cue sound key
+     * ({@code mahjongcraft:tile_shuffle}) gets the configured prefix inserted after the
+     * namespace ({@code mahjongcraft:gb_tile_shuffle} for the guobiao/MCR family,
+     * {@code mahjongcraft:sichuan_tile_shuffle} for Sichuan). Rule ids not listed, or
+     * entries mapped to an empty value, keep the base key.
+     */
+    private static Map<String, String> loadVariantPrefixes(FileConfiguration config) {
+        Map<String, String> prefixes = new HashMap<>();
+        prefixes.put("mcr", "gb_");
+        prefixes.put("sichuan", "sichuan_");
+        ConfigurationSection section =
+                config.getConfigurationSection("presentation.sound.variant-prefixes");
+        if (section != null) {
+            for (String ruleId : section.getKeys(false)) {
+                String value = section.getString(ruleId);
+                if (value == null || value.isBlank()) {
+                    prefixes.remove(ruleId);
+                } else {
+                    prefixes.put(ruleId, requireToken(value, "sound variant prefix"));
+                }
+            }
+        }
+        return Map.copyOf(prefixes);
     }
 
     private static SoundProfile readSound(
@@ -135,7 +166,7 @@ public record PluginConfiguration(
 
     private static SoundProfile defaultCue(RulePresentationCueType type) {
         String key = type == RulePresentationCueType.RIICHI
-                ? "minecraft:block.note_block.bell"
+                ? "mahjongcraft:riichi"
                 : "mahjongcraft:" + type.name().toLowerCase(Locale.ROOT);
         return switch (type) {
             case TILE_SHUFFLE -> new SoundProfile(key, 0.9F, 1.2F);
@@ -232,6 +263,7 @@ public record PluginConfiguration(
 
     public record SoundSettings(
             Map<RulePresentationCueType, SoundProfile> cues,
+            Map<String, String> variantPrefixes,
             SoundProfile openingDice,
             SoundProfile openingWall) {
         public SoundSettings {
@@ -239,6 +271,7 @@ public record PluginConfiguration(
             if (!cues.keySet().equals(EnumSet.allOf(RulePresentationCueType.class))) {
                 throw new IllegalArgumentException("sound cues must cover every cue type");
             }
+            variantPrefixes = Map.copyOf(Objects.requireNonNull(variantPrefixes, "variantPrefixes"));
             Objects.requireNonNull(openingDice, "openingDice");
             Objects.requireNonNull(openingWall, "openingWall");
         }

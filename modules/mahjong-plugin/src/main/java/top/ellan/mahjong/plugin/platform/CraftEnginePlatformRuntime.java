@@ -96,7 +96,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
         PaperSoundDispatcher sounds = new PaperSoundDispatcher(plugin);
         PluginConfiguration.SoundSettings soundSettings = configuration.soundSettings();
         presentationCues = new PaperTableSoundGateway(
-                sounds, cueProfiles(soundSettings.cues()));
+                sounds, cueProfiles(soundSettings.cues()), soundSettings.variantPrefixes());
         sceneBackend =
                 new CraftEngineSceneBackend(
                         mutations,
