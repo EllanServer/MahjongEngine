@@ -30,7 +30,6 @@ final class OpeningDiceFrameFactory {
     List<FurnitureNode> frame(
             RuleOpeningPresentation opening,
             int activeRoll,
-            int previewFrame,
             boolean revealActiveRoll) {
         if (activeRoll < 0 || activeRoll >= opening.rolls().size()) {
             throw new IllegalArgumentException("active roll is outside the opening");
@@ -44,23 +43,17 @@ final class OpeningDiceFrameFactory {
             boolean revealed = rollIndex < activeRoll || revealActiveRoll;
             for (int dieIndex = 0; dieIndex < roll.points().size(); dieIndex++) {
                 int finalPoint = roll.points().get(dieIndex);
-                int point = revealed
-                        ? finalPoint
-                        : previewPoint(finalPoint, flatIndex, previewFrame);
                 nodes.add(new FurnitureNode(
                         IDS.get(flatIndex),
                         SceneVisibility.publicToAll(),
                         config.asset(flatIndex),
-                        config.variant(doubleLayout, point),
+                        revealed
+                                ? config.variant(doubleLayout, finalPoint)
+                                : config.rollingVariant(doubleLayout),
                         new SceneTransform(0, 0, 0, 0, 0, 0, 1)));
                 flatIndex++;
             }
         }
         return List.copyOf(nodes);
-    }
-
-    private static int previewPoint(int finalPoint, int dieIndex, int previewFrame) {
-        int candidate = 1 + Math.floorMod(finalPoint + dieIndex + previewFrame * 2, 6);
-        return candidate == finalPoint ? 1 + candidate % 6 : candidate;
     }
 }

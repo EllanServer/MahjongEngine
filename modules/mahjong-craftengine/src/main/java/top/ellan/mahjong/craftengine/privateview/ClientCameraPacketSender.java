@@ -115,7 +115,7 @@ final class ClientCameraPacketSender {
         }
     }
 
-    private static Field findConnection(Class<?> playerClass, Class<?> connectionClass) {
+    static Field findConnection(Class<?> playerClass, Class<?> connectionClass) {
         Field named = null;
         for (Class<?> type = playerClass; type != null; type = type.getSuperclass()) {
             for (Field field : type.getDeclaredFields()) {
@@ -138,7 +138,7 @@ final class ClientCameraPacketSender {
         return named;
     }
 
-    private static Method findSender(Class<?> connectionClass, Class<?> packetClass) {
+    static Method findSender(Class<?> connectionClass, Class<?> packetClass) {
         Method fallback = null;
         for (Class<?> type = connectionClass; type != null; type = type.getSuperclass()) {
             for (Method method : type.getDeclaredMethods()) {

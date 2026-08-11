@@ -427,6 +427,14 @@ class SceneGraphTest {
     }
 
     @Test
+    void mapperOwnedGraphContainersRemainImmutableToConsumers() {
+        SceneGraph graph = mapper().map(projection(TableId.random(), 1, "playing"));
+
+        assertThrows(UnsupportedOperationException.class, graph.nodes()::clear);
+        assertThrows(UnsupportedOperationException.class, graph.interactionBindings()::clear);
+    }
+
+    @Test
     void differOwnsTheSameRemovalsAndUpsertsAsTheDefensiveConstructor() {
         TableId table = TableId.random();
         SceneGraph before = mapper().map(projection(table, 1, "playing"));
@@ -510,6 +518,37 @@ class SceneGraphTest {
         assertEquals(firstTransform.x(), seventhTransform.x(), 0.000_001D);
         assertNotEquals(firstTransform.z(), seventhTransform.z());
         assertEquals(firstTransform.y(), seventhTransform.y());
+    }
+
+    @Test
+    void everyPrivateHandSlotPreservesTheFormerOutwardOffset() {
+        ResolvedTableLayout layout = new UniversalTableLayout(GEOMETRY).resolve(table(136));
+        double offset = Math.max(0.0005D, GEOMETRY.tileGap() * 0.5D);
+
+        for (int seat = 0; seat < 4; seat++) {
+            double angle = Math.PI * 2.0D * seat / 4.0D;
+            for (int size = 1; size <= GEOMETRY.maxHandTiles(); size++) {
+                for (int index = 0; index < size; index++) {
+                    RuleViewTile tile = handTile(index + 1L, seat, index);
+                    SceneTransform publicTransform = layout.tile(tile, size);
+                    SceneTransform privateTransform = layout.privateTile(tile, size);
+
+                    assertEquals(
+                            publicTransform.x() + Math.sin(angle) * offset,
+                            privateTransform.x(),
+                            0.000_000_001D);
+                    assertEquals(
+                            publicTransform.z() + Math.cos(angle) * offset,
+                            privateTransform.z(),
+                            0.000_000_001D);
+                    assertEquals(publicTransform.y(), privateTransform.y());
+                    assertEquals(publicTransform.yawDegrees(), privateTransform.yawDegrees());
+                    assertEquals(publicTransform.pitchDegrees(), privateTransform.pitchDegrees());
+                    assertEquals(publicTransform.rollDegrees(), privateTransform.rollDegrees());
+                    assertEquals(publicTransform.scale(), privateTransform.scale());
+                }
+            }
+        }
     }
 
     @Test
@@ -780,6 +819,17 @@ class SceneGraphTest {
                 new TileVisualId("riichi:tile/m1"),
                 Optional.empty(),
                 RuleViewZone.WALL,
+                layoutIndex,
+                false,
+                RuleTilePresentation.natural(layoutIndex));
+    }
+
+    private static RuleViewTile handTile(long id, int seat, int layoutIndex) {
+        return new RuleViewTile(
+                new TileInstanceId(id),
+                new TileVisualId("riichi:tile/m1"),
+                Optional.of(new SeatId(seat)),
+                RuleViewZone.HAND,
                 layoutIndex,
                 false,
                 RuleTilePresentation.natural(layoutIndex));

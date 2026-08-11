@@ -21,4 +21,20 @@ final class OverheadCameraPathTest {
         assertEquals(360.0F, midpoint.getYaw(), 0.000_001F);
         assertEquals(50.0F, midpoint.getPitch(), 0.000_001F);
     }
+
+    @Test
+    void clientInterpolationPreservesTheConfiguredArrivalTick() {
+        assertEquals(10, OverheadCameraPath.clientInterpolationTicks(16));
+        assertEquals(6, OverheadCameraPath.serverKeyframeCount(16, true));
+        assertEquals(16, OverheadCameraPath.serverKeyframeCount(16, false));
+        assertEquals(16, OverheadCameraPath.targetArrivalTick(16, true));
+        assertEquals(16, OverheadCameraPath.targetArrivalTick(16, false));
+
+        assertEquals(4, OverheadCameraPath.clientInterpolationTicks(5));
+        assertEquals(1, OverheadCameraPath.serverKeyframeCount(5, true));
+        assertEquals(5, OverheadCameraPath.targetArrivalTick(5, true));
+        assertEquals(0, OverheadCameraPath.clientInterpolationTicks(1));
+        assertEquals(1, OverheadCameraPath.serverKeyframeCount(1, true));
+        assertEquals(1, OverheadCameraPath.targetArrivalTick(1, true));
+    }
 }

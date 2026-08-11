@@ -14,8 +14,8 @@ import top.ellan.mahjong.craftengine.scene.CraftEngineSceneBackend;
 import top.ellan.mahjong.domain.table.TableId;
 
 /**
- * Schedules only a few declarative CE variant changes per physical roll. There is no per-tick
- * scan, entity loop, custom model renderer, or blocking wait.
+ * Schedules only roll boundaries and authoritative reveals. The rolling model is driven entirely
+ * by the client resource pack, so the server never computes or transmits preview frames.
  */
 public final class CraftEngineOpeningPresenter
         implements TableOpeningPresentationPort, AutoCloseable {
@@ -78,7 +78,7 @@ public final class CraftEngineOpeningPresenter
             replaced.cancel();
         }
         try {
-            show(batch, animation, 0, 0, false);
+            show(batch, animation, 0, false);
             signalRoll(batch, 0);
             Duration perRoll = config.rollDuration().plus(config.revealDuration());
             for (int roll = 0; roll < batch.opening().rolls().size(); roll++) {
@@ -86,16 +86,11 @@ public final class CraftEngineOpeningPresenter
                 if (roll > 0) {
                     scheduleRollStart(batch, animation, base, roll);
                 }
-                for (int preview = 1; preview < config.previewFrames(); preview++) {
-                    Duration offset = scaled(config.rollDuration(), preview, config.previewFrames());
-                    schedule(batch, animation, base.plus(offset), roll, preview, false);
-                }
                 schedule(
                         batch,
                         animation,
                         base.plus(config.rollDuration()),
                         roll,
-                        config.previewFrames(),
                         true);
             }
             animation.add(scheduler.schedule(
@@ -124,10 +119,9 @@ public final class CraftEngineOpeningPresenter
             Animation animation,
             Duration delay,
             int roll,
-            int preview,
             boolean revealed) {
         animation.add(scheduler.schedule(
-                () -> show(batch, animation, roll, preview, revealed), delay));
+                () -> show(batch, animation, roll, revealed), delay));
     }
 
     private void scheduleRollStart(
@@ -137,7 +131,7 @@ public final class CraftEngineOpeningPresenter
                     if (active.get(batch.tableId()) != animation) {
                         return;
                     }
-                    show(batch, animation, roll, 0, false);
+                    show(batch, animation, roll, false);
                     signalRoll(batch, roll);
                 },
                 delay));
@@ -147,7 +141,6 @@ public final class CraftEngineOpeningPresenter
             TableOpeningBatch batch,
             Animation animation,
             int roll,
-            int preview,
             boolean revealed) {
         if (active.get(batch.tableId()) != animation) {
             return;
@@ -156,7 +149,7 @@ public final class CraftEngineOpeningPresenter
                 batch.tableId(),
                 animation.generation,
                 frames.managedIds(),
-                frames.frame(batch.opening(), roll, preview, revealed));
+                frames.frame(batch.opening(), roll, revealed));
     }
 
     private void finish(TableOpeningBatch batch, Animation animation) {
@@ -195,10 +188,6 @@ public final class CraftEngineOpeningPresenter
         }
     }
 
-    private static Duration scaled(Duration duration, int numerator, int denominator) {
-        return Duration.ofNanos(duration.toNanos() / denominator * numerator);
-    }
-
     @Override
     public void close() {
         active.forEach((ignored, animation) -> animation.cancel());
@@ -207,7 +196,7 @@ public final class CraftEngineOpeningPresenter
 
     private static final class Animation {
         private final long generation;
-        private final ArrayList<Cancellable> tasks = new ArrayList<>(9);
+        private final ArrayList<Cancellable> tasks = new ArrayList<>(5);
         private boolean cancelled;
 
         private Animation(long generation) {

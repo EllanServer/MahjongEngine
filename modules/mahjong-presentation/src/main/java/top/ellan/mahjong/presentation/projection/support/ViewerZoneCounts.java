@@ -15,12 +15,17 @@ import top.ellan.mahjong.spi.PrivateRuleView;
  * is what keeps a hand action anchored to the same slot as the tile it acts on.</p>
  */
 public final class ViewerZoneCounts {
-    private final Map<PlayerId, ZoneTileCounts> byViewer = new HashMap<>();
+    private final Map<PlayerId, ZoneTileCounts> byViewer = HashMap.newHashMap(4);
 
     public ZoneTileCounts of(PlayerId viewer, PrivateRuleView privateView) {
         Objects.requireNonNull(viewer, "viewer");
         Objects.requireNonNull(privateView, "privateView");
-        return byViewer.computeIfAbsent(
-                viewer, ignored -> ZoneTileCounts.from(privateView.tiles()));
+        ZoneTileCounts cached = byViewer.get(viewer);
+        if (cached != null) {
+            return cached;
+        }
+        ZoneTileCounts counts = ZoneTileCounts.from(privateView.tiles());
+        byViewer.put(viewer, counts);
+        return counts;
     }
 }

@@ -1,5 +1,6 @@
 package top.ellan.mahjong.presentation.projection.privateview;
 
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -82,7 +83,7 @@ public final class PrivateSceneProjector {
             if (publiclyRevealedHands.contains(tile.instanceId())) {
                 continue;
             }
-            SceneNodeId id = SceneNodeIdentity.privateTile(viewer, tile.instanceId().value());
+            SceneNodeId id = SceneNodeIdentity.privateTile(viewerKey, tile.instanceId().value());
             nodes.put(
                     id,
                     new PrivateItemNode(
@@ -115,21 +116,21 @@ public final class PrivateSceneProjector {
         if (attributes.size() > 64) {
             throw new IllegalArgumentException("rule view exposes too many HUD attributes");
         }
-        attributes.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> {
-                    SceneNodeId id = SceneNodeIdentity.hud(viewerKey, namespace, entry.getKey());
-                    String contentKey = namespace + ':' + entry.getKey();
-                    if (nodes.putIfAbsent(
+        String[] keys = attributes.keySet().toArray(String[]::new);
+        Arrays.sort(keys);
+        for (String key : keys) {
+            SceneNodeId id = SceneNodeIdentity.hud(viewerKey, namespace, key);
+            String contentKey = namespace + ':' + key;
+            if (nodes.putIfAbsent(
+                            id,
+                            new HudNode(
                                     id,
-                                    new HudNode(
-                                            id,
-                                            visibility,
-                                            contentKey,
-                                            entry.getValue()))
-                            != null) {
-                        throw new IllegalStateException("HUD attribute id collision");
-                    }
-                });
+                                    visibility,
+                                    contentKey,
+                                    attributes.get(key)))
+                    != null) {
+                throw new IllegalStateException("HUD attribute id collision");
+            }
+        }
     }
 }

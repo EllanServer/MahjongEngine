@@ -4,6 +4,8 @@ import org.bukkit.Location;
 
 /** Smooth two-endpoint camera path with exact endpoints and no per-frame allocation beyond Location. */
 final class OverheadCameraPath {
+    private static final int CLIENT_INTERPOLATION_TICKS = 10;
+
     private OverheadCameraPath() {}
 
     static Location frame(Location start, Location target, int frame, int frameCount) {
@@ -26,6 +28,27 @@ final class OverheadCameraPath {
         result.setYaw((float) smooth(start.getYaw(), targetYaw, progress));
         result.setPitch((float) smooth(start.getPitch(), target.getPitch(), progress));
         return result;
+    }
+
+    static int clientInterpolationTicks(int transitionTicks) {
+        int ticks = Math.max(1, transitionTicks);
+        return Math.min(CLIENT_INTERPOLATION_TICKS, ticks - 1);
+    }
+
+    static int serverKeyframeCount(
+            int transitionTicks, boolean clientInterpolationConfigured) {
+        int ticks = Math.max(1, transitionTicks);
+        return clientInterpolationConfigured
+                ? ticks - clientInterpolationTicks(ticks)
+                : ticks;
+    }
+
+    static int targetArrivalTick(
+            int transitionTicks, boolean clientInterpolationConfigured) {
+        int clientTicks = clientInterpolationConfigured
+                ? clientInterpolationTicks(transitionTicks)
+                : 0;
+        return serverKeyframeCount(transitionTicks, clientInterpolationConfigured) + clientTicks;
     }
 
     private static double smooth(double start, double end, double progress) {

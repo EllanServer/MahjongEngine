@@ -1,0 +1,7 @@
+{
+  "parent": "mahjongcraft:item/dice_base",
+  "textures": {
+    "0": "mahjongcraft:item/dice/dice_rolling",
+    "particle": "mahjongcraft:item/dice/dice_rolling"
+  }
+}

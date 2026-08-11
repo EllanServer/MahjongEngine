@@ -138,7 +138,6 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                 sceneBackend,
                 new CraftEngineOpeningAnimationConfig(
                         configuration.craftEngineAssets().openingDieSlotPrefix(),
-                        opening.previewFrames(),
                         Duration.ofMillis(Math.multiplyExact(opening.rollTicks(), 50L)),
                         Duration.ofMillis(Math.multiplyExact(opening.revealTicks(), 50L))),
                 new PaperOpeningSoundGateway(

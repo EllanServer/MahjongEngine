@@ -26,6 +26,7 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
     private final SparrowDisplayGateway displays;
     private final CameraProjectionCallbacks callbacks;
     private final ClientCameraPacketSender cameraPackets;
+    private final ClientDisplayInterpolationPacketSender interpolationPackets;
     private final int transitionTicks;
     private final ConcurrentHashMap<PlayerId, PendingCamera> pending =
             new ConcurrentHashMap<>();
@@ -50,6 +51,8 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
         this.transitionTicks = transitionTicks;
         cameraPackets = new ClientCameraPacketSender(plugin.getLogger());
         cameraPackets.prewarm();
+        interpolationPackets =
+                new ClientDisplayInterpolationPacketSender(plugin.getLogger());
     }
 
     @Override
@@ -180,7 +183,12 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
             display = displays.createItem(start);
             display.item(new ItemStack(Material.AIR));
             display.spawn(player);
-            next = new ActiveCamera(tableId, display, start, target, transitionTicks);
+            int clientTicks = OverheadCameraPath.clientInterpolationTicks(transitionTicks);
+            boolean clientInterpolation =
+                    interpolationPackets.configure(player, display.entityID(), clientTicks);
+            int serverKeyframes = OverheadCameraPath.serverKeyframeCount(
+                    transitionTicks, clientInterpolation);
+            next = new ActiveCamera(tableId, display, start, target, serverKeyframes);
             ActiveCamera raced = active.putIfAbsent(playerId, next);
             if (raced != null) {
                 displays.destroyItem(player, display);

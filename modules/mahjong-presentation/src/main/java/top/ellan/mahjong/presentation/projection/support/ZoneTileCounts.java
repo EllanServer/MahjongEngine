@@ -3,7 +3,6 @@ package top.ellan.mahjong.presentation.projection.support;
 import java.util.List;
 import top.ellan.mahjong.spi.RuleViewTile;
 import top.ellan.mahjong.spi.RuleViewZone;
-import top.ellan.mahjong.spi.SeatId;
 
 /** Primitive per-zone counts used by layout projection without maps or hot-path allocation. */
 public final class ZoneTileCounts {
@@ -31,6 +30,6 @@ public final class ZoneTileCounts {
         if (tile.zone() == RuleViewZone.WIN_CLAIM || tile.zone() == RuleViewZone.AUXILIARY) {
             return OWNERLESS;
         }
-        return tile.owner().map(SeatId::value).orElse(OWNERLESS);
+        return tile.owner().isPresent() ? tile.owner().get().value() : OWNERLESS;
     }
 }

@@ -1,7 +1,9 @@
 package top.ellan.mahjong.build
 
+import java.awt.image.BufferedImage
 import java.io.File
 import java.security.MessageDigest
+import javax.imageio.ImageIO
 
 /** Packages checked-in CraftEngine configuration and resource-pack files into the plugin JAR. */
 object CraftEngineBundleGenerator {
@@ -39,6 +41,7 @@ object CraftEngineBundleGenerator {
 
         configurationDir.copyRecursively(outputConfiguration, overwrite = true)
         resourcepackDir.resolve("assets").copyRecursively(outputAssets, overwrite = true)
+        writeClientDiceAnimation(resourcepackDir, outputAssets)
         attributionFile.copyTo(outputRoot.resolve("ATTRIBUTION.md"), overwrite = true)
         outputRoot.resolve("pack.yml").writeText(
             """
@@ -104,6 +107,9 @@ object CraftEngineBundleGenerator {
         }
         val expectedFaces = (1..6).toSet()
         listOf("single", "double").forEach { layout ->
+            require(Regex("(?m)^\\s+${layout}_rolling:\\s*$").find(configuration) != null) {
+                "CraftEngine opening dice $layout rolling variant is missing"
+            }
             val faces =
                 Regex("(?m)^\\s+${layout}_face_([1-6]):\\s*$")
                     .findAll(configuration)
@@ -115,6 +121,12 @@ object CraftEngineBundleGenerator {
         }
         require("mahjongpaper:opening_die_slot_\${slot}" in configuration) {
             "CraftEngine opening dice slot factory is missing"
+        }
+        require("mahjongpaper:dice_rolling_model" in configuration) {
+            "CraftEngine client-side rolling dice model is missing"
+        }
+        require("item_model: mahjongcraft:dice/rolling" in configuration) {
+            "CraftEngine rolling dice must use the client-animated resource-pack model"
         }
         require("dice_face_" !in configuration) {
             "Opening dice must use CE variants, not one furniture asset per face"
@@ -129,6 +141,55 @@ object CraftEngineBundleGenerator {
         require(modelFaces == expectedFaces) {
             "CraftEngine opening dice models must contain faces 1 through 6"
         }
+        require(resourcepackDir.resolve("assets/mahjongcraft/items/dice/rolling.json").isFile) {
+            "CraftEngine rolling dice item definition is missing"
+        }
+        require(resourcepackDir.resolve("assets/mahjongcraft/models/item/dice/dice_rolling.json").isFile) {
+            "CraftEngine rolling dice model is missing"
+        }
+    }
+
+    /**
+     * Builds a vanilla animated texture from the six checked-in dice faces. One texture frame is
+     * shown per client tick, matching the 20 Hz face cadence used by the 1.5 presentation without
+     * requiring the server to select and transmit a model every tick.
+     */
+    private fun writeClientDiceAnimation(resourcepackDir: File, outputAssets: File) {
+        val sourceDir = resourcepackDir.resolve("assets/mahjongcraft/textures/item/dice")
+        val frames =
+            (1..6).map { point ->
+                val source = sourceDir.resolve("dice_$point.png")
+                require(source.isFile) { "Opening dice texture is missing: ${source.name}" }
+                requireNotNull(ImageIO.read(source)) {
+                    "Opening dice texture is not a readable image: ${source.name}"
+                }
+            }
+        val width = frames.first().width
+        val height = frames.first().height
+        require(width == height && frames.all { it.width == width && it.height == height }) {
+            "Opening dice textures must be equally sized square frames"
+        }
+
+        val animation = BufferedImage(width, height * frames.size, BufferedImage.TYPE_INT_ARGB)
+        val graphics = animation.createGraphics()
+        try {
+            frames.forEachIndexed { index, frame ->
+                graphics.drawImage(frame, 0, index * height, null)
+            }
+        } finally {
+            graphics.dispose()
+        }
+
+        val targetDir = outputAssets.resolve("mahjongcraft/textures/item/dice")
+        targetDir.mkdirs()
+        val texture = targetDir.resolve("dice_rolling.png")
+        require(ImageIO.write(animation, "png", texture)) {
+            "No PNG writer is available for the rolling dice texture"
+        }
+        targetDir.resolve("dice_rolling.png.mcmeta").writeText(
+            """{"animation":{"frametime":1,"interpolate":false}}""" + "\n",
+            Charsets.UTF_8,
+        )
     }
 
     private fun verifyLocales(resourcepackDir: File) {

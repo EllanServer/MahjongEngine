@@ -92,7 +92,6 @@ public record PluginConfiguration(
                         config.getDouble("presentation.overhead.height", 4.5D),
                         config.getInt("presentation.overhead.transition-ticks", 16)),
                 new OpeningSettings(
-                        config.getInt("presentation.opening.preview-frames", 3),
                         config.getInt("presentation.opening.roll-ticks", 20),
                         config.getInt("presentation.opening.reveal-ticks", 12)));
     }
@@ -164,14 +163,8 @@ public record PluginConfiguration(
         }
     }
 
-    public record OpeningSettings(
-            int previewFrames,
-            int rollTicks,
-            int revealTicks) {
+    public record OpeningSettings(int rollTicks, int revealTicks) {
         public OpeningSettings {
-            if (previewFrames < 1 || previewFrames > 6) {
-                throw new IllegalArgumentException("previewFrames must be between 1 and 6");
-            }
             if (rollTicks < 1 || rollTicks > 200 || revealTicks < 1 || revealTicks > 200) {
                 throw new IllegalArgumentException("opening timings must be between 1 and 200 ticks");
             }

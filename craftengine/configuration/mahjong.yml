@@ -264,6 +264,17 @@ items:
       item_name: "<!i><gray>Mahjong Seat Chair</gray>"
     item_model: mahjongcraft:seat_chair
 
+  # The resource pack advances the rolling texture once per client tick, matching the 1.5 dice
+  # cadence. Java selects this item only at roll start and an authoritative static face at reveal.
+  mahjongpaper:dice_rolling_model:
+    material: paper
+    settings:
+      tags:
+        - mahjongpaper:opening_dice_model
+    data:
+      item_name: "<!i><white>Rolling Dice</white>"
+    item_model: mahjongcraft:dice/rolling
+
 config_factory#point_sticks:
   instances:
     - {point: p100, model: "mahjongcraft:stick_p100", label: "100 Point Stick"}
@@ -338,6 +349,10 @@ config_factory#opening_dice_slots:
                 entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
                 elements:
                   - {type: item_display, item: mahjongpaper:dice_1_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              single_rolling:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_rolling_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
               single_face_1:
                 entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
                 elements:
@@ -362,6 +377,10 @@ config_factory#opening_dice_slots:
                 entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
                 elements:
                   - {type: item_display, item: mahjongpaper:dice_6_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              double_rolling:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_rolling_model, display_transform: none, billboard: fixed, translation: "${double_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
               double_face_1:
                 entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
                 elements:

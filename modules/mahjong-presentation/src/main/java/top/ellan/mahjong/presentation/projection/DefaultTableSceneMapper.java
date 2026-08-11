@@ -1,9 +1,7 @@
 package top.ellan.mahjong.presentation.projection;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.HashMap;
 import java.util.Objects;
 import java.util.Set;
 import top.ellan.mahjong.application.projection.TableProjection;
@@ -27,6 +25,7 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
     private final PublicSceneProjector publicScene;
     private final PrivateSceneProjector privateScene;
     private final InteractionSceneProjector interactionScene;
+    private final boolean overheadEnabled;
 
     public DefaultTableSceneMapper(TableLayout layout, TableSceneAssets assets) {
         this(layout, assets, 4.5D, true);
@@ -48,13 +47,16 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
         publicScene = new PublicSceneProjector(assets, furniture);
         privateScene = new PrivateSceneProjector(overheadHeight, overheadEnabled);
         interactionScene = new InteractionSceneProjector(assets, overheadEnabled);
+        this.overheadEnabled = overheadEnabled;
     }
 
     @Override
     public SceneGraph map(TableProjection projection) {
         Objects.requireNonNull(projection, "projection");
-        Map<SceneNodeId, SceneNode> nodes = new LinkedHashMap<>();
-        List<SceneInteractionBinding> bindings = new ArrayList<>();
+        HashMap<SceneNodeId, SceneNode> nodes =
+                HashMap.newHashMap(expectedNodeCount(projection));
+        ArrayList<SceneInteractionBinding> bindings =
+                new ArrayList<>(expectedBindingCount(projection));
         ResolvedTableLayout resolvedLayout =
                 layout.resolve(projection.publicView().tablePresentation());
         Set<TileInstanceId> publiclyRevealedHands =
@@ -65,6 +67,44 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
         privateScene.project(
                 nodes, projection, resolvedLayout, publiclyRevealedHands, viewerCounts);
         interactionScene.project(nodes, bindings, projection, resolvedLayout, viewerCounts);
-        return new SceneGraph(projection.tableId(), projection.revision(), nodes, bindings);
+        return SceneGraph.takeOwnership(
+                projection.tableId(), projection.revision(), nodes, bindings);
+    }
+
+    private int expectedNodeCount(TableProjection projection) {
+        int nodes = 1 + projection.publicView().tiles().size();
+        if (!projection.privateViews().isEmpty()) {
+            nodes += 1 + projection.publicView().attributes().size();
+        }
+        boolean activeOverhead = overheadEnabled && projection.lifecycle().acceptsRuleActions();
+        for (var privateView : projection.privateViews().values()) {
+            nodes += privateView.tiles().size() + privateView.attributes().size();
+            if (activeOverhead) {
+                nodes++;
+            }
+        }
+        for (var actions : projection.authorizedActions().values()) {
+            for (var action : actions) {
+                nodes += action.legalAction().actionPresentation().placement()
+                                == top.ellan.mahjong.spi.ActionPlacement.HAND_TILE
+                        ? 1
+                        : 2;
+            }
+        }
+        if (activeOverhead) {
+            nodes += projection.privateViews().size() * 2;
+        }
+        return nodes;
+    }
+
+    private int expectedBindingCount(TableProjection projection) {
+        int bindings = 0;
+        for (var actions : projection.authorizedActions().values()) {
+            bindings += actions.size();
+        }
+        if (overheadEnabled && projection.lifecycle().acceptsRuleActions()) {
+            bindings += projection.privateViews().size();
+        }
+        return bindings;
     }
 }

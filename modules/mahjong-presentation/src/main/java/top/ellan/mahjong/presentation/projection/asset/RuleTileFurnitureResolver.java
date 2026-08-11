@@ -1,18 +1,21 @@
 package top.ellan.mahjong.presentation.projection.asset;
 
+import java.util.Map;
 import java.util.Objects;
-import java.util.regex.Pattern;
+import java.util.concurrent.ConcurrentHashMap;
 import top.ellan.mahjong.presentation.asset.TableSceneAssets;
 import top.ellan.mahjong.presentation.asset.TileAssetName;
 import top.ellan.mahjong.spi.RuleViewTile;
 import top.ellan.mahjong.spi.RuleViewZone;
+import top.ellan.mahjong.spi.TileVisualId;
 
 /** Maps semantic rule visuals to reusable CraftEngine furniture identifiers. */
 public final class RuleTileFurnitureResolver {
-    private static final Pattern POINT_STICK =
-            Pattern.compile("p(?:100|1000|5000|10000)");
+    private static final int FACE_CACHE_CAPACITY = 128;
 
     private final TableSceneAssets assets;
+    private final Map<TileVisualId, String> standingFaces = new ConcurrentHashMap<>();
+    private final Map<TileVisualId, String> flatFaces = new ConcurrentHashMap<>();
 
     public RuleTileFurnitureResolver(TableSceneAssets assets) {
         this.assets = Objects.requireNonNull(assets, "assets");
@@ -27,10 +30,23 @@ public final class RuleTileFurnitureResolver {
                     ? assets.standingBackFurniture()
                     : assets.flatBackFurniture();
         }
-        String pose = tile.zone() == RuleViewZone.HAND
-                ? "tile_standing"
-                : "tile_flat_face_up";
-        return "mahjongpaper:" + pose + '_' + TileAssetName.from(tile.visualId());
+        return tile.zone() == RuleViewZone.HAND
+                ? faceAsset(tile.visualId(), standingFaces, "tile_standing")
+                : faceAsset(tile.visualId(), flatFaces, "tile_flat_face_up");
+    }
+
+    private static String faceAsset(
+            TileVisualId visualId, Map<TileVisualId, String> cache, String pose) {
+        String cached = cache.get(visualId);
+        if (cached != null) {
+            return cached;
+        }
+        String resolved = "mahjongpaper:" + pose + '_' + TileAssetName.from(visualId);
+        if (cache.size() >= FACE_CACHE_CAPACITY) {
+            return resolved;
+        }
+        String raced = cache.putIfAbsent(visualId, resolved);
+        return raced == null ? resolved : raced;
     }
 
     private static String pointStick(String visualId) {
@@ -38,9 +54,13 @@ public final class RuleTileFurnitureResolver {
         String denomination = separator >= 0
                 ? visualId.substring(separator + "stick/".length())
                 : visualId;
-        if (!POINT_STICK.matcher(denomination).matches()) {
-            throw new IllegalArgumentException("Unsupported point-stick visual id: " + visualId);
-        }
-        return "mahjongpaper:stick_" + denomination;
+        return switch (denomination) {
+            case "p100" -> "mahjongpaper:stick_p100";
+            case "p1000" -> "mahjongpaper:stick_p1000";
+            case "p5000" -> "mahjongpaper:stick_p5000";
+            case "p10000" -> "mahjongpaper:stick_p10000";
+            default -> throw new IllegalArgumentException(
+                    "Unsupported point-stick visual id: " + visualId);
+        };
     }
 }

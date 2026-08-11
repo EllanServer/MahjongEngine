@@ -16,7 +16,8 @@ final class UniversalLayoutCompiler {
         return new UniversalLayoutPlan(
                 geometry,
                 spec,
-                precomputeHands(),
+                precomputeHands(0.0D),
+                precomputeHands(privateHandOffset()),
                 precomputeDiscards(),
                 precomputeMelds(),
                 precomputeFlowers(),
@@ -29,7 +30,7 @@ final class UniversalLayoutCompiler {
                 precomputeWall());
     }
 
-    private SceneTransform[][][] precomputeHands() {
+    private SceneTransform[][][] precomputeHands(double outwardOffset) {
         int max = geometry.maxHandTiles();
         SceneTransform[][][] result = new SceneTransform[spec.seatCount()][max + 1][max];
         for (int seat = 0; seat < spec.seatCount(); seat++) {
@@ -42,14 +43,20 @@ final class UniversalLayoutCompiler {
                             : 0.0D;
                     double tangent = index * tileStep() - start + drawGap;
                     result[seat][size][index] = transform(
-                            axis.outX() * geometry.handRadius() + axis.tangentX() * tangent,
+                            axis.outX() * (geometry.handRadius() + outwardOffset)
+                                    + axis.tangentX() * tangent,
                             uprightY(),
-                            axis.outZ() * geometry.handRadius() + axis.tangentZ() * tangent,
+                            axis.outZ() * (geometry.handRadius() + outwardOffset)
+                                    + axis.tangentZ() * tangent,
                             seat);
                 }
             }
         }
         return result;
+    }
+
+    private double privateHandOffset() {
+        return Math.max(0.0005D, geometry.tileGap() * 0.5D);
     }
 
     private SceneTransform[][] precomputeDiscards() {

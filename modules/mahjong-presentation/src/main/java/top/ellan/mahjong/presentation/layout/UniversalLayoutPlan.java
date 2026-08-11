@@ -14,6 +14,7 @@ final class UniversalLayoutPlan {
     private final TableGeometry geometry;
     private final UniversalLayoutSpec spec;
     private final SceneTransform[][][] hands;
+    private final SceneTransform[][][] privateHands;
     private final SceneTransform[][] discards;
     private final SceneTransform[][] melds;
     private final SceneTransform[][] flowers;
@@ -24,12 +25,12 @@ final class UniversalLayoutPlan {
     private final SceneTransform[][] secondaryActions;
     private final SceneTransform[] viewControls;
     private final SceneTransform[] wall;
-    private final SeatAxis[] seatAxes;
 
     UniversalLayoutPlan(
             TableGeometry geometry,
             UniversalLayoutSpec spec,
             SceneTransform[][][] hands,
+            SceneTransform[][][] privateHands,
             SceneTransform[][] discards,
             SceneTransform[][] melds,
             SceneTransform[][] flowers,
@@ -43,6 +44,7 @@ final class UniversalLayoutPlan {
         this.geometry = geometry;
         this.spec = spec;
         this.hands = hands;
+        this.privateHands = privateHands;
         this.discards = discards;
         this.melds = melds;
         this.flowers = flowers;
@@ -53,11 +55,6 @@ final class UniversalLayoutPlan {
         this.secondaryActions = secondaryActions;
         this.viewControls = viewControls;
         this.wall = wall;
-        SeatAxis[] axes = new SeatAxis[spec.seatCount()];
-        for (int seat = 0; seat < axes.length; seat++) {
-            axes[seat] = axis(seat);
-        }
-        this.seatAxes = axes;
     }
 
     SceneTransform tile(RuleViewTile tile, int groupSize) {
@@ -80,20 +77,10 @@ final class UniversalLayoutPlan {
     }
 
     SceneTransform privateTile(RuleViewTile tile, int groupSize) {
-        SceneTransform base = tile(tile, groupSize);
         if (tile.zone() != RuleViewZone.HAND) {
-            return base;
+            return tile(tile, groupSize);
         }
-        SeatAxis axis = seatAxes[owner(tile)];
-        double offset = Math.max(0.0005D, geometry.tileGap() * 0.5D);
-        return new SceneTransform(
-                base.x() + axis.outX() * offset,
-                base.y(),
-                base.z() + axis.outZ() * offset,
-                base.yawDegrees(),
-                base.pitchDegrees(),
-                base.rollDegrees(),
-                base.scale());
+        return decorate(hand(privateHands, tile, groupSize), tile.presentation());
     }
 
     SceneTransform action(SeatId seat, ActionPlacement placement, int index) {
@@ -138,6 +125,11 @@ final class UniversalLayoutPlan {
     }
 
     private SceneTransform hand(RuleViewTile tile, int groupSize) {
+        return hand(hands, tile, groupSize);
+    }
+
+    private SceneTransform hand(
+            SceneTransform[][][] transforms, RuleViewTile tile, int groupSize) {
         int seat = owner(tile);
         int index = tile.presentation().layoutIndex();
         if (groupSize < 1
@@ -146,7 +138,7 @@ final class UniversalLayoutPlan {
                 || index >= groupSize) {
             throw new IllegalArgumentException("Hand layout exceeds the physical capacity");
         }
-        return hands[seat][groupSize][index];
+        return transforms[seat][groupSize][index];
     }
 
     private SceneTransform seatValue(
@@ -197,14 +189,8 @@ final class UniversalLayoutPlan {
         return value;
     }
 
-    private SeatAxis axis(int seat) {
-        double angle = Math.PI * 2.0D * seat / spec.seatCount();
-        return new SeatAxis(Math.sin(angle), Math.cos(angle));
-    }
-
     private double stackRaise() {
         return geometry.tileDepth() + geometry.tileGap();
     }
 
-    private record SeatAxis(double outX, double outZ) {}
 }

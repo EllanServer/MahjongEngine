@@ -7,7 +7,6 @@ import java.util.regex.Pattern;
 /** Restart-scoped orchestration values; furniture appearance itself remains in CraftEngine YAML. */
 public record CraftEngineOpeningAnimationConfig(
         String diceSlotAssetPrefix,
-        int previewFrames,
         Duration rollDuration,
         Duration revealDuration) {
     private static final Pattern ASSET_PREFIX = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
@@ -18,9 +17,6 @@ public record CraftEngineOpeningAnimationConfig(
                 .trim();
         if (!ASSET_PREFIX.matcher(diceSlotAssetPrefix).matches()) {
             throw new IllegalArgumentException("Invalid CraftEngine dice-slot asset prefix");
-        }
-        if (previewFrames < 1 || previewFrames > 6) {
-            throw new IllegalArgumentException("previewFrames must be between one and six");
         }
         Objects.requireNonNull(rollDuration, "rollDuration");
         Objects.requireNonNull(revealDuration, "revealDuration");
@@ -46,5 +42,9 @@ public record CraftEngineOpeningAnimationConfig(
             throw new IllegalArgumentException("dice point must be between one and six");
         }
         return (doubleLayout ? "double" : "single") + "_face_" + point;
+    }
+
+    String rollingVariant(boolean doubleLayout) {
+        return (doubleLayout ? "double" : "single") + "_rolling";
     }
 }

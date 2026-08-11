@@ -192,7 +192,8 @@ public final class InteractionSceneProjector {
 
     /** Single linear pass building the hand index, shared by every hand action of one player. */
     private static Map<TileInstanceId, RuleViewTile> handTileIndex(PrivateRuleView privateView) {
-        Map<TileInstanceId, RuleViewTile> index = new HashMap<>();
+        Map<TileInstanceId, RuleViewTile> index =
+                HashMap.newHashMap(privateView.tiles().size());
         for (RuleViewTile tile : privateView.tiles()) {
             index.put(tile.instanceId(), tile);
         }

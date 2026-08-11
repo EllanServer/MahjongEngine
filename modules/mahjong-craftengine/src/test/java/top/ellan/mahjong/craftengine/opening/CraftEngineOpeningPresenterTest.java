@@ -25,7 +25,7 @@ import top.ellan.mahjong.spi.SeatId;
 
 class CraftEngineOpeningPresenterTest {
     @Test
-    void twoPhysicalRollsUseBoundedCeVariantChangesAndFinishByRemovingTheOverlay() {
+    void clientOwnsRollingFramesWhileServerSchedulesOnlyBoundariesAndReveals() {
         ManualScheduler scheduler = new ManualScheduler();
         ArrayList<OverlayCall> calls = new ArrayList<>();
         ArrayList<String> effects = new ArrayList<>();
@@ -35,7 +35,6 @@ class CraftEngineOpeningPresenterTest {
                         new OverlayCall(table, generation, managed, desired)),
                 new CraftEngineOpeningAnimationConfig(
                         "mahjongpaper:opening_die_slot_",
-                        3,
                         Duration.ofSeconds(1),
                         Duration.ofMillis(600)),
                 new TableOpeningEffectPort() {
@@ -68,13 +67,24 @@ class CraftEngineOpeningPresenterTest {
         assertEquals(List.of("roll-0"), effects);
         assertEquals(2, calls.getFirst().desired().size());
         assertTrue(calls.getFirst().desired().stream()
-                .allMatch(node -> node.variant().matches("single_face_[1-6]")));
+                .allMatch(node -> node.variant().equals("single_rolling")));
+        assertEquals(
+                List.of(
+                        Duration.ofSeconds(1),
+                        Duration.ofMillis(1600),
+                        Duration.ofMillis(2600),
+                        Duration.ofMillis(3200)),
+                scheduler.delays());
 
         scheduler.runAll();
 
-        assertEquals(9, calls.size());
-        assertEquals(4, calls.get(7).desired().size());
-        assertTrue(calls.get(7).desired().stream()
+        assertEquals(5, calls.size());
+        assertTrue(calls.get(1).desired().stream()
+                .allMatch(node -> node.variant().matches("single_face_[1-6]")));
+        assertEquals(List.of("double_face_2", "double_face_5", "double_rolling", "double_rolling"),
+                calls.get(2).desired().stream().map(FurnitureNode::variant).toList());
+        assertEquals(4, calls.get(3).desired().size());
+        assertTrue(calls.get(3).desired().stream()
                 .allMatch(node -> node.assetId().matches(
                                 "mahjongpaper:opening_die_slot_[0-3]")
                         && node.variant().matches("double_face_[1-6]")
@@ -120,6 +130,10 @@ class CraftEngineOpeningPresenterTest {
                     value.task.run();
                 }
             }
+        }
+
+        List<Duration> delays() {
+            return scheduled.stream().map(Scheduled::delay).toList();
         }
 
         private static final class Scheduled {

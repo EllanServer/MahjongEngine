@@ -15,7 +15,7 @@ craftengine:
     flat-back: "mahjongpaper:tile_flat_face_down_back"
     hand-hitbox: "mahjongpaper:hand_tile_hitbox"
     action-hitbox: "mahjongpaper:action_button_hitbox"
-    # Four fixed slot assets expose CE-owned single_face_1..6 and double_face_1..6 variants.
+    # Four fixed slot assets expose CE-owned rolling and face variants for both layouts.
     opening-die-slot-prefix: "mahjongpaper:opening_die_slot_"
 presentation:
   overhead:
@@ -23,8 +23,7 @@ presentation:
     height: 4.5
     transition-ticks: 16
   opening:
-    # Java schedules bounded phase changes; CE owns every visual asset and culling rule.
-    preview-frames: 3
+    # Java schedules only roll/reveal boundaries; the client resource model animates rolling.
     roll-ticks: 20
     reveal-ticks: 12
   # Sounds and other rule-specific presentation resources are supplied by each rule resource ZIP.
