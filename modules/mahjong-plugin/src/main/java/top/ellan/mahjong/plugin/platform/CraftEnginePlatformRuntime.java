@@ -1,11 +1,14 @@
 package top.ellan.mahjong.plugin.platform;
 
+import static top.ellan.mahjong.plugin.platform.CraftEnginePlatformMappings.ruleBundleFolder;
+import static top.ellan.mahjong.plugin.platform.CraftEnginePlatformMappings.sceneAssets;
+import static top.ellan.mahjong.plugin.platform.CraftEnginePlatformMappings.soundBinding;
+import static top.ellan.mahjong.plugin.platform.CraftEnginePlatformMappings.tableGeometry;
+
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -44,10 +47,8 @@ import top.ellan.mahjong.platform.paper.concurrent.BoundedPlatformExecutors;
 import top.ellan.mahjong.platform.paper.feedback.PaperOpeningSoundGateway;
 import top.ellan.mahjong.platform.paper.feedback.PaperRuleSoundCatalog;
 import top.ellan.mahjong.platform.paper.feedback.PaperSoundDispatcher;
-import top.ellan.mahjong.platform.paper.feedback.PaperSoundProfile;
 import top.ellan.mahjong.platform.paper.feedback.PaperTableSoundGateway;
 import top.ellan.mahjong.platform.paper.feedback.RuleSoundBinding;
-import top.ellan.mahjong.platform.paper.feedback.RuleSoundProfiles;
 import top.ellan.mahjong.platform.paper.region.PaperRegionScheduler;
 import top.ellan.mahjong.platform.paper.anchor.PaperTableAnchorRegistry;
 import top.ellan.mahjong.platform.paper.anchor.PaperTableAnchorService;
@@ -58,14 +59,9 @@ import top.ellan.mahjong.plugin.runtime.FailureSupport;
 import top.ellan.mahjong.presentation.projection.DefaultTableSceneMapper;
 import top.ellan.mahjong.presentation.projection.LatestSceneProjector;
 import top.ellan.mahjong.presentation.scene.SceneGraphDiffer;
-import top.ellan.mahjong.presentation.layout.TableGeometry;
-import top.ellan.mahjong.presentation.asset.TableSceneAssets;
 import top.ellan.mahjong.presentation.layout.UniversalTableLayout;
 import top.ellan.mahjong.runtime.resources.InspectedRuleResourcePack;
-import top.ellan.mahjong.runtime.resources.RuleSoundCatalog;
-import top.ellan.mahjong.runtime.resources.RuleSoundProfile;
 import top.ellan.mahjong.spi.RulePackRef;
-import top.ellan.mahjong.spi.RulePresentationCueType;
 
 /** Owns the Paper/CraftEngine presentation boundary and its restart-scoped resources. */
 public final class CraftEnginePlatformRuntime implements AutoCloseable {
@@ -419,75 +415,6 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
         }
         CraftEngineVersion.requireSupported(dependency.getPluginMeta().getVersion());
         return dependency;
-    }
-
-    private static TableSceneAssets sceneAssets(
-            PluginConfiguration.CraftEngineAssets configured) {
-        return new TableSceneAssets(
-                configured.table(),
-                configured.seat(),
-                configured.standingBack(),
-                configured.flatBack(),
-                configured.handHitbox(),
-                configured.actionHitbox(),
-                TableSceneAssets.actionInteractionVariants(
-                        configured.actionHitboxPrefix()));
-    }
-
-    private static TableGeometry tableGeometry(
-            PluginConfiguration.LayoutGeometry configured) {
-        return new TableGeometry(
-                configured.tileWidth(),
-                configured.tileHeight(),
-                configured.tileDepth(),
-                configured.tileGap(),
-                configured.surfaceHeight(),
-                configured.handRadius(),
-                configured.wallRadius(),
-                configured.tableHalfLength(),
-                configured.emphasisRaise(),
-                configured.actionColumnSpacing(),
-                configured.actionRowSpacing(),
-                configured.secondaryActionOffset(),
-                configured.maxHandTiles(),
-                configured.maxDiscards(),
-                configured.maxMeldTiles(),
-                configured.maxPointSticks(),
-                configured.maxAuxiliaryTiles(),
-                configured.maxActions());
-    }
-
-    private static RuleSoundProfiles soundProfiles(RuleSoundCatalog configured) {
-        EnumMap<RulePresentationCueType, PaperSoundProfile> profiles =
-                new EnumMap<>(RulePresentationCueType.class);
-        configured.cues().forEach(
-                (type, profile) -> profiles.put(type, soundProfile(profile)));
-        return new RuleSoundProfiles(
-                Map.copyOf(profiles),
-                soundProfile(configured.openingDice()),
-                soundProfile(configured.openingWall()));
-    }
-
-    private static PaperSoundProfile soundProfile(RuleSoundProfile configured) {
-        return new PaperSoundProfile(configured.key(), configured.volume(), configured.pitch());
-    }
-
-    private static RuleSoundBinding soundBinding(InspectedRuleResourcePack resource) {
-        return new RuleSoundBinding(
-                resource.ruleId(),
-                resource.version(),
-                resource.jarSha256(),
-                soundProfiles(resource.sounds()));
-    }
-
-    private static String ruleBundleFolder(InspectedRuleResourcePack resource) {
-        String version = resource.version().replaceAll("[^0-9A-Za-z._-]", "_");
-        return "mahjongpaper-rule-"
-                + resource.ruleId().value()
-                + '-'
-                + version
-                + '-'
-                + resource.jarSha256().substring(0, 12);
     }
 
     @Override

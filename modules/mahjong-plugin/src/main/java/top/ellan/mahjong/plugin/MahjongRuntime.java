@@ -170,15 +170,10 @@ public final class MahjongRuntime implements AutoCloseable {
     }
 
     public LocalizedMessageCatalog messages() { return messages; }
-
     public LiveTableDirectory liveTables() { return liveTables; }
-
     public LobbyTableDirectory lobbyTables() { return lobbyRuntime.directory(); }
-
     public LobbyUseCases lobbyUseCases() { return lobbyRuntime.useCases(); }
-
     public MahjongDialogService dialogs() { return dialogs; }
-
     /** Active provider descriptors are the sole source of rule-setting dialog fields. */
     public List<RulePackDescriptor> ruleDescriptors() { return requireServices().rules().activeDescriptors(); }
 
