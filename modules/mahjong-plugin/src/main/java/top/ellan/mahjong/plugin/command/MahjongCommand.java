@@ -24,6 +24,7 @@ import top.ellan.mahjong.plugin.command.handler.MatchRefereeHandler;
 import top.ellan.mahjong.plugin.command.handler.PlayerRecordHandler;
 import top.ellan.mahjong.plugin.command.handler.RulePackAdminHandler;
 import top.ellan.mahjong.plugin.command.handler.TableCreateHandler;
+import top.ellan.mahjong.plugin.command.handler.TableDialogHandler;
 import top.ellan.mahjong.plugin.command.handler.TableQueryHandler;
 import top.ellan.mahjong.plugin.command.handler.TableRemoveHandler;
 
@@ -105,6 +106,17 @@ public final class MahjongCommand implements BasicCommand {
                             "Show lobby or match state; defaults to your current table.",
                             false),
                     help(
+                            "table",
+                            "/mahjong table [table-id]",
+                            "Open the native table-control dialog; clicking the physical table does the same.",
+                            false,
+                            "gui"),
+                    help(
+                            "settlement",
+                            "/mahjong settlement [table-id]",
+                            "Reopen the latest hand or match settlement details.",
+                            false),
+                    help(
                             "history",
                             "/mahjong history [page]",
                             "Show your in-progress and completed match history by page.",
@@ -142,6 +154,7 @@ public final class MahjongCommand implements BasicCommand {
         register(routes, new LobbyActionHandler(support));
         register(routes, new MatchAutomationHandler(support));
         register(routes, new MatchRefereeHandler(support));
+        register(routes, new TableDialogHandler(support));
         register(routes, new TableQueryHandler(support));
         register(routes, new PlayerRecordHandler(support));
         register(routes, new TableRemoveHandler(support));

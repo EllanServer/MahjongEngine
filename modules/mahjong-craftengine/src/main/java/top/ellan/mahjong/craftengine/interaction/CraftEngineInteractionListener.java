@@ -23,6 +23,7 @@ import top.ellan.mahjong.application.table.TableActionCode;
 import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.application.lobby.port.SeatInteractionAdmission;
 import top.ellan.mahjong.application.lobby.port.SeatInteractionPort;
+import top.ellan.mahjong.craftengine.port.TableDialogPort;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.SeatId;
@@ -34,6 +35,7 @@ public final class CraftEngineInteractionListener implements Listener {
     private final InteractionFeedback feedback;
     private final SeatInteractionPort seats;
     private final PlayerPresencePort playerPresence;
+    private final TableDialogPort tableDialogs;
     private final CraftEngineSeatResolver seatResolver;
     private final NamespacedKey managedKey;
     private final NamespacedKey tableKey;
@@ -46,6 +48,7 @@ public final class CraftEngineInteractionListener implements Listener {
             InteractionFeedback feedback,
             SeatInteractionPort seats,
             PlayerPresencePort playerPresence,
+            TableDialogPort tableDialogs,
             NamespacedKey managedKey,
             NamespacedKey tableKey,
             NamespacedKey nodeKey,
@@ -55,6 +58,7 @@ public final class CraftEngineInteractionListener implements Listener {
         this.feedback = Objects.requireNonNull(feedback, "feedback");
         this.seats = Objects.requireNonNull(seats, "seats");
         this.playerPresence = Objects.requireNonNull(playerPresence, "playerPresence");
+        this.tableDialogs = Objects.requireNonNull(tableDialogs, "tableDialogs");
         seatResolver = new CraftEngineSeatResolver();
         this.managedKey = Objects.requireNonNull(managedKey, "managedKey");
         this.tableKey = Objects.requireNonNull(tableKey, "tableKey");
@@ -141,13 +145,9 @@ public final class CraftEngineInteractionListener implements Listener {
 
     private void routeSeat(FurnitureInteractEvent event, Entity entity) {
         String node = entity.getPersistentDataContainer().get(nodeKey, PersistentDataType.STRING);
-        SeatId seatId = seatResolver.resolve(node, event.hitBox()).orElse(null);
-        if (seatId == null && !"furniture/table".equals(node)) {
-            return;
-        }
         String encodedTable =
                 entity.getPersistentDataContainer().get(tableKey, PersistentDataType.STRING);
-        if (encodedTable == null || seatId == null) {
+        if (encodedTable == null) {
             event.setCancelled(true);
             return;
         }
@@ -157,6 +157,15 @@ public final class CraftEngineInteractionListener implements Listener {
         } catch (IllegalArgumentException invalidTable) {
             event.setCancelled(true);
             feedback.accept(event.player(), null, invalidTable);
+            return;
+        }
+        if ("furniture/table".equals(node)) {
+            event.setCancelled(true);
+            tableDialogs.open(event.player(), tableId);
+            return;
+        }
+        SeatId seatId = seatResolver.resolve(node, event.hitBox()).orElse(null);
+        if (seatId == null) {
             return;
         }
         Player player = event.player();

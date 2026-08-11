@@ -38,6 +38,7 @@ import top.ellan.mahjong.craftengine.bundle.CraftEngineVersion;
 import top.ellan.mahjong.craftengine.scene.DirectCraftEngineMutationGateway;
 import top.ellan.mahjong.craftengine.privateview.SparrowPrivateProjectionGateway;
 import top.ellan.mahjong.craftengine.port.PlayerTextResolver;
+import top.ellan.mahjong.craftengine.port.TableDialogPort;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.platform.paper.concurrent.BoundedPlatformExecutors;
 import top.ellan.mahjong.platform.paper.feedback.PaperOpeningSoundGateway;
@@ -157,13 +158,15 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
 
     /** Registers platform listeners and starts the immutable CE bundle installation once. */
     public void start(
-            SeatInteractionPort seatInteractions, PlayerPresencePort playerPresence) {
+            SeatInteractionPort seatInteractions,
+            PlayerPresencePort playerPresence, TableDialogPort tableDialogs) {
         Objects.requireNonNull(seatInteractions, "seatInteractions");
         Objects.requireNonNull(playerPresence, "playerPresence");
+        Objects.requireNonNull(tableDialogs, "tableDialogs");
         if (!started.compareAndSet(false, true)) {
             throw new IllegalStateException("CraftEngine platform runtime already started");
         }
-        registerListeners(seatInteractions, playerPresence);
+        registerListeners(seatInteractions, playerPresence, tableDialogs);
         installBundle();
     }
 
@@ -253,7 +256,9 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
     }
 
     private void registerListeners(
-            SeatInteractionPort seatInteractions, PlayerPresencePort playerPresence) {
+            SeatInteractionPort seatInteractions,
+            PlayerPresencePort playerPresence,
+            TableDialogPort tableDialogs) {
         plugin.getServer()
                 .getPluginManager()
                 .registerEvents(
@@ -274,6 +279,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                                 },
                                 seatInteractions,
                                 playerPresence,
+                                tableDialogs,
                                 mutations.managedKey(),
                                 mutations.tableKey(),
                                 mutations.nodeKey(),

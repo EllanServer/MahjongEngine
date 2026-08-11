@@ -44,6 +44,8 @@ import top.ellan.mahjong.plugin.match.RulePackMatchCoordinator;
 import top.ellan.mahjong.plugin.match.StartedRulePackMatch;
 import top.ellan.mahjong.plugin.history.PlayerRecordService;
 import top.ellan.mahjong.plugin.i18n.LocalizedMessageCatalog;
+import top.ellan.mahjong.plugin.dialog.MahjongDialogService;
+import top.ellan.mahjong.plugin.dialog.CompositeSceneProjectionPort;
 import top.ellan.mahjong.plugin.platform.CraftEnginePlatformRuntime;
 import top.ellan.mahjong.plugin.recovery.MatchRecoveryService;
 import top.ellan.mahjong.plugin.runtime.ActorDrain;
@@ -55,6 +57,7 @@ import top.ellan.mahjong.runtime.admin.RulePackVerification;
 import top.ellan.mahjong.spi.RuleId;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.RuleAction;
+import top.ellan.mahjong.spi.RulePackDescriptor;
 import top.ellan.mahjong.application.table.TableActionResult;
 
 /** Restart-scoped 2.0 composition root. All concrete setup lives in classified bootstraps. */
@@ -73,6 +76,7 @@ public final class MahjongRuntime implements AutoCloseable {
     private final MatchRefereeService referees = new MatchRefereeService(liveTables);
     private final PlayerRecordService playerRecords;
     private final LocalizedMessageCatalog messages;
+    private final MahjongDialogService dialogs;
     private final CraftEnginePlatformRuntime platform;
     private final LobbyRuntimeCoordinator lobbyRuntime;
     private final MatchRecoveryService recovery;
@@ -86,6 +90,7 @@ public final class MahjongRuntime implements AutoCloseable {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.configuration = Objects.requireNonNull(configuration, "configuration");
         messages = LocalizedMessageCatalog.load(plugin.getClass().getClassLoader());
+        dialogs = new MahjongDialogService(plugin, this, messages);
         int processors = Math.max(1, Runtime.getRuntime().availableProcessors());
         executors = new BoundedPlatformExecutors(processors);
         playerRecords = new PlayerRecordService(
@@ -110,7 +115,7 @@ public final class MahjongRuntime implements AutoCloseable {
                         executors.actor(),
                         executors.io(),
                         actors,
-                        platform.sceneProjector(),
+                        new CompositeSceneProjectionPort(platform.sceneProjector(), dialogs),
                         platform.sceneProjector(),
                         platform.sceneBackend(),
                         platform.anchorService(),
@@ -125,7 +130,7 @@ public final class MahjongRuntime implements AutoCloseable {
                         executors.io(),
                         clock,
                         plugin.getLogger());
-        platform.start(lobbyRuntime.seatInteractions(), automation);
+        platform.start(lobbyRuntime.seatInteractions(), automation, dialogs);
     }
 
     public void start() {
@@ -164,21 +169,18 @@ public final class MahjongRuntime implements AutoCloseable {
         return state.get() + ": " + detail.get() + suffix;
     }
 
-    public LocalizedMessageCatalog messages() {
-        return messages;
-    }
+    public LocalizedMessageCatalog messages() { return messages; }
 
-    public LiveTableDirectory liveTables() {
-        return liveTables;
-    }
+    public LiveTableDirectory liveTables() { return liveTables; }
 
-    public LobbyTableDirectory lobbyTables() {
-        return lobbyRuntime.directory();
-    }
+    public LobbyTableDirectory lobbyTables() { return lobbyRuntime.directory(); }
 
-    public LobbyUseCases lobbyUseCases() {
-        return lobbyRuntime.useCases();
-    }
+    public LobbyUseCases lobbyUseCases() { return lobbyRuntime.useCases(); }
+
+    public MahjongDialogService dialogs() { return dialogs; }
+
+    /** Active provider descriptors are the sole source of rule-setting dialog fields. */
+    public List<RulePackDescriptor> ruleDescriptors() { return requireServices().rules().activeDescriptors(); }
 
     public CompletionStage<top.ellan.mahjong.application.table.TableActionResult> setAutomation(
             top.ellan.mahjong.spi.PlayerId playerId, boolean enabled) {
@@ -233,7 +235,12 @@ public final class MahjongRuntime implements AutoCloseable {
         RuntimeServices current = requireServices();
         Optional<CompletionStage<Void>> lobbyRemoval = lobbyRuntime.remove(tableId);
         if (lobbyRemoval.isPresent()) {
-            return lobbyRemoval.orElseThrow();
+            return lobbyRemoval.orElseThrow()
+                    .whenComplete((ignored, failure) -> {
+                        if (failure == null) {
+                            dialogs.forget(tableId);
+                        }
+                    });
         }
         StartedRulePackMatch match =
                 liveTables
@@ -245,6 +252,7 @@ public final class MahjongRuntime implements AutoCloseable {
                 .whenComplete(
                         (ignored, failure) -> {
                             platform.removeTable(tableId);
+                            dialogs.forget(tableId);
                             MatchPersistenceCleanup.releaseRulePackLease(
                                     current.rules(), match, tableId);
                         })
@@ -372,7 +380,7 @@ public final class MahjongRuntime implements AutoCloseable {
                         database.matches().orElseThrow(),
                         database.events().orElseThrow(),
                         rules.runtime().orElseThrow(),
-                        platform.sceneProjector(),
+                        new CompositeSceneProjectionPort(platform.sceneProjector(), dialogs),
                         platform.presentationCues(),
                         platform.openingPresentations(),
                         clock));
@@ -468,6 +476,7 @@ public final class MahjongRuntime implements AutoCloseable {
         state.set(State.STOPPING);
         lobbyRuntime.close();
         ActorDrain.awaitAll(actors, SHUTDOWN_TIMEOUT, plugin.getLogger());
+        dialogs.close();
         platform.close();
         deadlines.close();
         ruleExecutor.close();
