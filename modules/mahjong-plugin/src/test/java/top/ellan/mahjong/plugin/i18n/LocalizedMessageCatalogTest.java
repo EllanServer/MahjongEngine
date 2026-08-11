@@ -48,4 +48,27 @@ class LocalizedMessageCatalogTest {
                         "Failed: %s",
                         List.of("boom")));
     }
+
+    @Test
+    void localizesCommandPurposeAndPagedHelpChrome() {
+        assertEquals(
+                "在当前位置使用所选规则包创建一张可复用牌桌。",
+                messages.resolve(
+                        Locale.SIMPLIFIED_CHINESE,
+                        "mahjongpaper.command.help.description.create",
+                        "missing"));
+        assertEquals(
+                "第 1/2 页，共 17 条命令",
+                messages.format(
+                        Locale.SIMPLIFIED_CHINESE,
+                        "mahjongpaper.command.help.page_status",
+                        "Page %s/%s - %s commands available",
+                        List.of("1", "2", "17")));
+        assertEquals(
+                "各コマンドの用途を説明するページ形式のヘルプを表示します。",
+                messages.resolve(
+                        Locale.JAPANESE,
+                        "mahjongpaper.command.help.description.help",
+                        "missing"));
+    }
 }

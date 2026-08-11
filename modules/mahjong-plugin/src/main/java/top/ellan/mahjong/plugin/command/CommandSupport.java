@@ -47,21 +47,31 @@ public final class CommandSupport {
     public void reply(CommandSender sender, CommandMessage message) {
         Objects.requireNonNull(sender, "sender");
         Objects.requireNonNull(message, "message");
-        Component rendered = sender instanceof Player player
-                ? Component.text(
-                        runtime.messages()
-                                .format(
-                                        player.locale(),
-                                        message.translationKey(),
-                                        message.consolePattern(),
-                                        message.arguments()))
-                : Component.text(message.consoleText());
+        Component rendered = Component.text(text(sender, message));
         Runnable send = () -> sender.sendMessage(rendered);
         if (sender instanceof Player player) {
             player.getScheduler().run(plugin, ignored -> send.run(), null);
         } else {
             Bukkit.getGlobalRegionScheduler().execute(plugin, send);
         }
+    }
+
+    /** Resolves player-facing text on the server so command UI never depends on client assets. */
+    public String text(
+            CommandSender sender, String key, String fallback, Object... arguments) {
+        return text(sender, message(key, fallback, arguments));
+    }
+
+    private String text(CommandSender sender, CommandMessage message) {
+        if (sender instanceof Player player) {
+            return runtime.messages()
+                    .format(
+                            player.locale(),
+                            message.translationKey(),
+                            message.consolePattern(),
+                            message.arguments());
+        }
+        return message.consoleText();
     }
 
     public <T> void complete(
