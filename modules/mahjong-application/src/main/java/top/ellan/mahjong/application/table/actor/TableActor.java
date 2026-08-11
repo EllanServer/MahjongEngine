@@ -132,7 +132,6 @@ public final class TableActor
         return externalIngress.setAutomated(playerId, enabled);
     }
     public boolean isAutomated(PlayerId playerId) { return automation.isAutomated(Objects.requireNonNull(playerId, "playerId")); }
-
     public TableActorSnapshot snapshot() {
         return publishedSnapshot.get();
     }
