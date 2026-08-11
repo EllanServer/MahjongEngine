@@ -1,212 +1,299 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-import dev.detekt.gradle.Detekt
-import top.ellan.mahjong.build.MahjongBuildConfiguration
-import top.ellan.mahjong.build.MahjongBuildInputs
-import top.ellan.mahjong.build.MahjongTaskRegistration
-
 plugins {
-    java
-    jacoco
-    kotlin("jvm") version "2.4.10"
-    kotlin("plugin.serialization") version "2.4.10"
+    base
     id("com.gradleup.shadow") version "9.6.1" apply false
-    id("io.papermc.paperweight.userdev") version "2.0.0-SNAPSHOT"
-    id("com.diffplug.spotless") version "8.8.0"
-    id("dev.detekt") version "2.0.0-alpha.5"
 }
 
 group = "top.ellan"
-version = "1.5.0"
-val minimumPaperDevBundleVersion = "1.20.1-R0.1-SNAPSHOT"
-val paperDevBundleVersion =
-    providers
-        .gradleProperty("mahjongPaperDevBundle")
-        .orElse(minimumPaperDevBundleVersion)
-        .get()
-val paperApiVersion = "1.20"
-val minimumJavaVersion = 17
-val javaTargetVersion =
-    providers
-        .gradleProperty("mahjongJavaTarget")
-        .map(String::toInt)
-        .orElse(minimumJavaVersion)
-        .get()
-require(javaTargetVersion >= minimumJavaVersion) {
-    "mahjongJavaTarget must be Java $minimumJavaVersion or newer (was $javaTargetVersion)"
-}
-val toolchainJavaVersion =
-    providers
-        .gradleProperty("mahjongJavaToolchain")
-        .map(String::toInt)
-        .orElse(if (Runtime.version().feature() >= javaTargetVersion) Runtime.version().feature() else javaTargetVersion)
-val kotlinRuntimeVersion = "2.4.10"
-val kotlinSerializationVersion = "1.11.0"
-val mahjongUtilsVersion = "0.7.7"
-val mariadbVersion = "3.5.9"
-val mysqlVersion = "9.7.0"
-val h2Version = "2.4.240"
-val hikariVersion = "7.1.0"
-val caffeineVersion = "3.2.4"
-val antiGriefLibVersion = "1.0.14"
-val sparrowHeartVersion = "0.72"
-val sparrowReflectionVersion = "0.33"
-val sparrowYamlVersion = "1.0.7"
-val asmVersion = "9.10.1"
-val adventureVersion = "4.14.0"
-val junitVersion = "6.1.2"
-val testcontainersVersion = "1.21.4"
-val generatedResourcesDir = layout.buildDirectory.dir("generated/resources/mahjong")
-val generatedNativeResourcesDir = layout.buildDirectory.dir("generated/resources/native")
-val relocatedRuntime = configurations.create("relocatedRuntime")
-val mockitoAgent = configurations.create("mockitoAgent")
-MahjongBuildConfiguration.configureRepositories(project)
+version = "2.0.0-SNAPSHOT"
 
-val codegenTasks =
-    MahjongTaskRegistration.registerCodegenTasks(
-        project,
-        generatedResourcesDir,
-        project.version.toString(),
-    )
-val nativeTasks =
-    MahjongTaskRegistration.registerNativeTasks(
-        project,
-        generatedNativeResourcesDir,
-    )
-MahjongTaskRegistration.registerPerformanceTasks(project, minimumPaperDevBundleVersion)
-pluginManager.apply("com.gradleup.shadow")
+subprojects {
+    group = rootProject.group
+    version = rootProject.version
+    pluginManager.apply("java-library")
 
-dependencies {
-    paperweight.paperDevBundle(paperDevBundleVersion)
-    compileOnly("net.momirealms:craft-engine-core:26.7")
-    compileOnly("net.momirealms:craft-engine-bukkit:26.7")
-    compileOnly(platform("net.kyori:adventure-bom:$adventureVersion"))
-    compileOnly("net.kyori:adventure-api")
-    compileOnly("net.kyori:adventure-text-minimessage")
-    compileOnly("net.kyori:adventure-text-serializer-plain")
-    implementation("io.github.ssttkkl:mahjong-utils-jvm:$mahjongUtilsVersion")
-    implementation("org.mariadb.jdbc:mariadb-java-client:$mariadbVersion")
-    implementation("com.mysql:mysql-connector-j:$mysqlVersion")
-    implementation("com.h2database:h2:$h2Version")
-    implementation("com.zaxxer:HikariCP:$hikariVersion")
-    implementation("com.github.ben-manes.caffeine:caffeine:$caffeineVersion")
-    implementation("net.momirealms:antigrieflib:$antiGriefLibVersion")
-    implementation("net.momirealms:sparrow-heart:$sparrowHeartVersion")
-    implementation("net.momirealms:sparrow-reflection:$sparrowReflectionVersion")
-    implementation("net.momirealms:sparrow-yaml:$sparrowYamlVersion")
-    implementation("org.ow2.asm:asm:$asmVersion")
-    relocatedRuntime("net.momirealms:sparrow-reflection:$sparrowReflectionVersion")
-    relocatedRuntime("org.ow2.asm:asm:$asmVersion")
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:$kotlinRuntimeVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$kotlinSerializationVersion")
-    testImplementation(kotlin("test"))
-    testImplementation("org.junit.jupiter:junit-jupiter:$junitVersion")
-    testImplementation("org.mockito:mockito-core:5.23.0")
-    mockitoAgent("org.mockito:mockito-core:5.23.0") { isTransitive = false }
-    testImplementation("org.testcontainers:testcontainers:$testcontainersVersion")
-    testImplementation("org.testcontainers:junit-jupiter:$testcontainersVersion")
-    testImplementation("org.testcontainers:mariadb:$testcontainersVersion")
-    testImplementation("net.kyori:adventure-api")
-    testImplementation("net.kyori:adventure-text-minimessage")
-    testImplementation("net.kyori:adventure-text-serializer-plain")
-    testRuntimeOnly("net.momirealms:craft-engine-core:26.7")
-    testRuntimeOnly("net.momirealms:craft-engine-bukkit:26.7")
+    repositories {
+        mavenCentral()
+        maven("https://repo.papermc.io/repository/maven-public/")
+        maven("https://repo.momirealms.net/releases/")
+    }
+
+    extensions.configure<JavaPluginExtension> {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+        toolchain.languageVersion.set(JavaLanguageVersion.of(21))
+        withSourcesJar()
+    }
+
+    dependencies {
+        add("testImplementation", "org.junit.jupiter:junit-jupiter:6.1.2")
+        add("testRuntimeOnly", "org.junit.platform:junit-platform-launcher")
+    }
+
+    tasks.withType<JavaCompile>().configureEach {
+        options.encoding = "UTF-8"
+        options.release.set(21)
+        options.compilerArgs.addAll(listOf("-Xlint:all", "-Werror"))
+    }
+
+    tasks.withType<Test>().configureEach {
+        useJUnitPlatform()
+    }
 }
 
-java {
-    sourceCompatibility = JavaVersion.toVersion(javaTargetVersion)
-    targetCompatibility = JavaVersion.toVersion(javaTargetVersion)
-    toolchain.languageVersion.set(toolchainJavaVersion.map(JavaLanguageVersion::of))
-    withSourcesJar()
-}
-
-kotlin {
-    jvmToolchain(toolchainJavaVersion.get())
-}
-
-paperweight {
-    javaLauncher =
-        javaToolchains.launcherFor {
-            languageVersion.set(toolchainJavaVersion.map(JavaLanguageVersion::of))
+val architectureCheck =
+    tasks.register("architectureCheck") {
+        group = "verification"
+        description = "Rejects legacy imports, platform leakage and unbounded concurrency primitives."
+        val production = fileTree("modules") { include("*/src/main/java/**/*.java") }
+        inputs.files(production)
+        doLast {
+            val violations = mutableListOf<String>()
+            val coreModules =
+                setOf(
+                    "mahjong-rule-spi",
+                    "mahjong-domain",
+                    "mahjong-application",
+                    "mahjong-rule-runtime",
+                    "mahjong-presentation",
+                )
+            production.files.sorted().forEach { source ->
+                val relative = source.relativeTo(projectDir).invariantSeparatorsPath
+                val module = relative.substringAfter("modules/").substringBefore('/')
+                val text = source.readText(Charsets.UTF_8)
+                if ("top.ellan.mahjong.rules." in text || "mahjong-utils" in text) {
+                    violations += "$relative imports a concrete or legacy rule implementation"
+                }
+                if (
+                    listOf(
+                            "LinkedBlockingQueue",
+                            "ConcurrentLinkedQueue",
+                            "newCachedThreadPool",
+                            "newFixedThreadPool",
+                            "scheduleAtFixedRate",
+                        ).any(text::contains)
+                ) {
+                    violations += "$relative uses a forbidden concurrency primitive"
+                }
+                if (module in coreModules) {
+                    listOf(
+                            "org.bukkit.",
+                            "net.momirealms.craftengine.",
+                            "java.sql.",
+                            "com.zaxxer.hikari.",
+                        ).filter(text::contains)
+                        .forEach { forbidden ->
+                            violations += "$relative leaks $forbidden into a core module"
+                        }
+                }
+                if (
+                    module in setOf("mahjong-presentation", "mahjong-craftengine") &&
+                        ".matches(\"" in text
+                ) {
+                    violations +=
+                        "$relative compiles a regex per call; hoist it into a static Pattern"
+                }
+                if (
+                    module == "mahjong-application" &&
+                        relative.startsWith(
+                            "modules/mahjong-application/src/main/java/top/ellan/mahjong/application/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-application/src/main/java/top/ellan/mahjong/application/",
+                            ).contains('/').not()
+                ) {
+                    violations +=
+                        "$relative is unclassified; application types must live in a responsibility package"
+                }
+                if (
+                    module == "mahjong-craftengine" &&
+                        relative.startsWith(
+                            "modules/mahjong-craftengine/src/main/java/top/ellan/mahjong/craftengine/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-craftengine/src/main/java/top/ellan/mahjong/craftengine/",
+                            ).contains('/').not()
+                ) {
+                    violations +=
+                        "$relative is unclassified; CraftEngine types must live in bundle/interaction/opening/port/scene/privateview"
+                }
+                if (
+                    module == "mahjong-craftengine" &&
+                        text.lineSequence().count() > 350
+                ) {
+                    violations +=
+                        "$relative exceeds the 350-line CraftEngine responsibility limit"
+                }
+                if (
+                    module == "mahjong-persistence-sql" &&
+                        relative.startsWith(
+                            "modules/mahjong-persistence-sql/src/main/java/top/ellan/mahjong/persistence/sql/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-persistence-sql/src/main/java/top/ellan/mahjong/persistence/sql/",
+                            ).contains('/').not()
+                ) {
+                    violations +=
+                        "$relative is unclassified; SQL types must live in connection/schema/event/match/lobby/anchor/recovery/common"
+                }
+                if (
+                    module == "mahjong-persistence-sql" &&
+                        text.lineSequence().count() > 550
+                ) {
+                    violations +=
+                        "$relative exceeds the 550-line SQL responsibility limit"
+                }
+                if (
+                    module == "mahjong-presentation" &&
+                        relative.startsWith(
+                            "modules/mahjong-presentation/src/main/java/top/ellan/mahjong/presentation/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-presentation/src/main/java/top/ellan/mahjong/presentation/",
+                            ).contains('/').not()
+                ) {
+                    violations +=
+                        "$relative is unclassified; presentation types must live in asset/layout/node/port/projection/scene"
+                }
+                if (
+                    module == "mahjong-presentation" &&
+                        text.lineSequence().count() > 300
+                ) {
+                    violations +=
+                        "$relative exceeds the 300-line presentation responsibility limit"
+                }
+                if (
+                    module == "mahjong-plugin" &&
+                        relative.startsWith(
+                            "modules/mahjong-plugin/src/main/java/top/ellan/mahjong/plugin/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-plugin/src/main/java/top/ellan/mahjong/plugin/",
+                            ).contains('/').not() &&
+                        source.name !in setOf("MahjongPaperPlugin.java", "MahjongRuntime.java")
+                ) {
+                    violations +=
+                        "$relative is unclassified; only the plugin entry point and composition root may live in the plugin root package"
+                }
+                if (
+                    module == "mahjong-plugin" &&
+                        text.lineSequence().count() > 500
+                ) {
+                    violations +=
+                        "$relative exceeds the 500-line plugin responsibility limit"
+                }
+                if (
+                    module == "mahjong-rule-runtime" &&
+                        relative.startsWith(
+                            "modules/mahjong-rule-runtime/src/main/java/top/ellan/mahjong/runtime/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-rule-runtime/src/main/java/top/ellan/mahjong/runtime/",
+                            ).contains('/').not()
+                ) {
+                    violations +=
+                        "$relative is unclassified; rule runtime types must live in activation/admin/catalog/common/install/lifecycle/loading/registry/security/storage"
+                }
+                if (
+                    module == "mahjong-rule-runtime" &&
+                        text.lineSequence().count() > 350
+                ) {
+                    violations +=
+                        "$relative exceeds the 350-line rule-runtime responsibility limit"
+                }
+                if (
+                    module == "mahjong-domain" &&
+                        relative.startsWith(
+                            "modules/mahjong-domain/src/main/java/top/ellan/mahjong/domain/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-domain/src/main/java/top/ellan/mahjong/domain/",
+                            ).contains('/').not()
+                ) {
+                    violations +=
+                        "$relative is unclassified; domain types must live in lobby/match/table"
+                }
+                if (
+                    module == "mahjong-domain" &&
+                        text.lineSequence().count() > 300
+                ) {
+                    violations +=
+                        "$relative exceeds the 300-line domain responsibility limit"
+                }
+                if (
+                    module == "mahjong-platform-paper" &&
+                        "top.ellan.mahjong.craftengine." in text
+                ) {
+                    violations +=
+                        "$relative depends on a CraftEngine implementation; Paper must expose narrow platform ports instead"
+                }
+                if (
+                    module == "mahjong-platform-paper" &&
+                        relative.startsWith(
+                            "modules/mahjong-platform-paper/src/main/java/top/ellan/mahjong/platform/paper/",
+                        ) &&
+                        relative
+                            .removePrefix(
+                                "modules/mahjong-platform-paper/src/main/java/top/ellan/mahjong/platform/paper/",
+                            ).contains('/').not()
+                ) {
+                    violations +=
+                        "$relative is unclassified; Paper adapters must live in anchor/concurrent/feedback/region"
+                }
+                if (
+                    module == "mahjong-platform-paper" &&
+                        text.lineSequence().count() > 200
+                ) {
+                    violations +=
+                        "$relative exceeds the 200-line Paper adapter responsibility limit"
+                }
+                if (
+                    module == "mahjong-application" &&
+                        text.lineSequence().count() > 400
+                ) {
+                    violations +=
+                        "$relative exceeds the 400-line application responsibility limit"
+                }
+                if (relative.endsWith("/plugin/MahjongRuntime.java")) {
+                    if (text.lineSequence().count() > 500) {
+                        violations +=
+                            "$relative exceeds the 500-line composition-root limit"
+                    }
+                    listOf(
+                            "com.zaxxer.hikari.",
+                            "java.net.http.",
+                            "net.momirealms.craftengine.",
+                            "top.ellan.mahjong.persistence.sql.Jdbc",
+                        ).filter(text::contains)
+                        .forEach { forbidden ->
+                            violations +=
+                                "$relative owns concrete bootstrap logic for $forbidden"
+                        }
+                }
+            }
+            listOf("src", "native", "perf").forEach { removedRoot ->
+                if (file(removedRoot).exists()) {
+                    violations +=
+                        "removed 1.x root '$removedRoot' exists; all code must live in 2.0 modules"
+                }
+            }
+            if (violations.isNotEmpty()) {
+                throw GradleException(violations.joinToString("\n"))
+            }
         }
-    reobfArtifactConfiguration = io.papermc.paperweight.userdev.ReobfArtifactConfiguration.MOJANG_PRODUCTION
+    }
+
+tasks.named("assemble") {
+    dependsOn(":mahjong-plugin:shadowJar")
 }
 
-tasks {
-    jar {
-        // Keep the normal jar development-only; releases use the unclassified relocated Shadow jar.
-        archiveClassifier.set("dev")
-    }
-
-    named<ShadowJar>("shadowJar") {
-        configurations = listOf(relocatedRuntime)
-        duplicatesStrategy = DuplicatesStrategy.INCLUDE
-        archiveClassifier.set("")
-        relocate(
-            "net.momirealms.sparrow.reflection",
-            "top.ellan.mahjong.libs.sparrow.reflection",
-        )
-        relocate("org.objectweb.asm", "top.ellan.mahjong.libs.asm")
-    }
-
-    assemble {
-        dependsOn(named("shadowJar"))
-    }
-
-    withType<Detekt>().configureEach {
-        jvmTarget.set(javaTargetVersion.toString())
-    }
-
-    withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>().configureEach {
-        compilerOptions {
-            jvmTarget.set(
-                org.jetbrains.kotlin.gradle.dsl.JvmTarget
-                    .fromTarget(javaTargetVersion.toString()),
-            )
-            freeCompilerArgs.add("-Xwarning-level=DEPRECATION:error")
-        }
-    }
-}
-
-MahjongBuildConfiguration.configureLifecycle(
-    project,
-    MahjongBuildInputs(
-        generatedResourcesDir,
-        generatedNativeResourcesDir,
-        codegenTasks + nativeTasks,
-        mockitoAgent,
-        javaTargetVersion,
-        mapOf(
-            "version" to project.version,
-            "paperApiVersion" to paperApiVersion,
-            "mahjongUtilsVersion" to mahjongUtilsVersion,
-            "mariadbVersion" to mariadbVersion,
-            "h2Version" to h2Version,
-            "hikariVersion" to hikariVersion,
-            "kotlinRuntimeVersion" to kotlinRuntimeVersion,
-            "kotlinSerializationVersion" to kotlinSerializationVersion,
-        ),
-    ),
-)
-
-spotless {
-    MahjongTaskRegistration.configureGitRatchet(project, "origin/dev") { ratchetFrom(it) }
-    kotlin {
-        target("src/main/kotlin/**/*.kt", "src/test/kotlin/**/*.kt", "buildSrc/**/*.kt")
-        ktlint()
-    }
-    kotlinGradle {
-        target("*.gradle.kts", "buildSrc/**/*.gradle.kts")
-        ktlint()
-    }
-    java {
-        target("src/main/java/**/*.java", "src/test/java/**/*.java", "src/perfTest/java/**/*.java")
-        trimTrailingWhitespace()
-        endWithNewline()
-    }
-}
-
-detekt {
-    buildUponDefaultConfig = true
-    config.setFrom(files("$rootDir/config/detekt.yml"))
-    ignoreFailures = true
+tasks.named("check") {
+    dependsOn(architectureCheck)
+    dependsOn(subprojects.map { "${it.path}:check" })
 }

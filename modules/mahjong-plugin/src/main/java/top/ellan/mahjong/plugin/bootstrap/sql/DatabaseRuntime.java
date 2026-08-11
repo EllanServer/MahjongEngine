@@ -1,0 +1,48 @@
+package top.ellan.mahjong.plugin.bootstrap.sql;
+
+import com.zaxxer.hikari.HikariDataSource;
+import java.util.Objects;
+import java.util.Optional;
+import top.ellan.mahjong.application.lobby.port.LobbyRepositoryPort;
+import top.ellan.mahjong.application.history.PlayerRecordQueryPort;
+import top.ellan.mahjong.persistence.sql.event.JdbcEventStore;
+import top.ellan.mahjong.persistence.sql.match.JdbcMatchRepository;
+import top.ellan.mahjong.persistence.sql.anchor.JdbcTableAnchorRepository;
+
+/** Restart-scoped SQL resources exposed to the plugin composition layer. */
+public record DatabaseRuntime(
+        Optional<HikariDataSource> dataSource,
+        Optional<JdbcMatchRepository> matches,
+        Optional<JdbcTableAnchorRepository> anchors,
+        Optional<LobbyRepositoryPort> lobbies,
+        Optional<JdbcEventStore> events,
+        Optional<PlayerRecordQueryPort> playerRecords)
+        implements AutoCloseable {
+    public DatabaseRuntime {
+        Objects.requireNonNull(dataSource, "dataSource");
+        Objects.requireNonNull(matches, "matches");
+        Objects.requireNonNull(anchors, "anchors");
+        Objects.requireNonNull(lobbies, "lobbies");
+        Objects.requireNonNull(events, "events");
+        Objects.requireNonNull(playerRecords, "playerRecords");
+    }
+
+    public static DatabaseRuntime unavailable() {
+        return new DatabaseRuntime(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty());
+    }
+
+    public boolean supportsMatches() {
+        return matches.isPresent() && anchors.isPresent() && events.isPresent();
+    }
+
+    @Override
+    public void close() {
+        dataSource.ifPresent(HikariDataSource::close);
+    }
+}

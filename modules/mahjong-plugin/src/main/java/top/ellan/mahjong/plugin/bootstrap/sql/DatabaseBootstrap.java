@@ -1,0 +1,103 @@
+package top.ellan.mahjong.plugin.bootstrap.sql;
+
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+import java.sql.SQLException;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.Executor;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import top.ellan.mahjong.persistence.sql.event.JdbcEventStore;
+import top.ellan.mahjong.persistence.sql.match.JdbcMatchRepository;
+import top.ellan.mahjong.persistence.sql.anchor.JdbcTableAnchorRepository;
+import top.ellan.mahjong.persistence.sql.lobby.JdbcTableLobbyRepository;
+import top.ellan.mahjong.persistence.sql.history.JdbcPlayerRecordQuery;
+import top.ellan.mahjong.persistence.sql.connection.SqlConnectionFactory;
+import top.ellan.mahjong.persistence.sql.schema.SqlSchemaMigrator;
+import top.ellan.mahjong.plugin.config.PluginConfiguration;
+
+/** Opens, migrates and probes SQL without leaking JDBC setup into the composition root. */
+public final class DatabaseBootstrap {
+    private final PluginConfiguration.Database configuration;
+    private final Executor ioExecutor;
+    private final Logger logger;
+
+    public DatabaseBootstrap(
+            PluginConfiguration.Database configuration,
+            Executor ioExecutor,
+            Logger logger) {
+        this.configuration = Objects.requireNonNull(configuration, "configuration");
+        this.ioExecutor = Objects.requireNonNull(ioExecutor, "ioExecutor");
+        this.logger = Objects.requireNonNull(logger, "logger");
+    }
+
+    public DatabaseRuntime initialize() {
+        HikariDataSource dataSource = null;
+        try {
+            dataSource = new HikariDataSource(hikariConfiguration());
+            SqlConnectionFactory connections = dataSource::getConnection;
+            new SqlSchemaMigrator(connections).migrate();
+            JdbcEventStore events = new JdbcEventStore(connections, ioExecutor);
+            if (!events.probe()) {
+                throw new SQLException("Database probe failed");
+            }
+            return new DatabaseRuntime(
+                    Optional.of(dataSource),
+                    Optional.of(new JdbcMatchRepository(connections)),
+                    Optional.of(new JdbcTableAnchorRepository(connections)),
+                    Optional.of(new JdbcTableLobbyRepository(connections)),
+                    Optional.of(events),
+                    Optional.of(new JdbcPlayerRecordQuery(connections)));
+        } catch (RuntimeException | SQLException failure) {
+            if (dataSource != null) {
+                dataSource.close();
+            }
+            logger.log(
+                    Level.SEVERE,
+                    "Database unavailable; matches cannot start or advance",
+                    failure);
+            return DatabaseRuntime.unavailable();
+        }
+    }
+
+    private HikariConfig hikariConfiguration() {
+        HikariConfig hikari = new HikariConfig();
+        hikari.setPoolName("MahjongPaper-SQL");
+        String jdbcUrl = configuration.jdbcUrl();
+        hikari.setJdbcUrl(jdbcUrl);
+        // DriverManager#getDriver scans ServiceLoader providers with the caller's context
+        // class loader, which cannot see drivers shaded inside the plugin JAR. Resolving the
+        // driver class explicitly through Hikari's own loader keeps JDBC working under the
+        // server's plugin class loader.
+        hikari.setDriverClassName(driverClassName(jdbcUrl));
+        hikari.setUsername(configuration.username());
+        hikari.setPassword(configuration.password());
+        hikari.setMaximumPoolSize(configuration.maximumPoolSize());
+        hikari.setMinimumIdle(0);
+        hikari.setConnectionTimeout(2_000L);
+        hikari.setValidationTimeout(1_000L);
+        hikari.setInitializationFailTimeout(-1L);
+        // Every outbox flush re-prepares the same handful of statements. The driver defaults cache
+        // 25 statements and skip anything longer than 256 characters, which excludes most of the
+        // event-store SQL; server-side prepares stay off because the pool is short-lived by design.
+        hikari.addDataSourceProperty("cachePrepStmts", "true");
+        hikari.addDataSourceProperty("prepStmtCacheSize", "500");
+        hikari.addDataSourceProperty("prepStmtCacheSqlLimit", "1024");
+        hikari.addDataSourceProperty("useServerPrepStmts", "false");
+        return hikari;
+    }
+
+    static String driverClassName(String jdbcUrl) {
+        if (jdbcUrl.startsWith("jdbc:h2:")) {
+            return "org.h2.Driver";
+        }
+        if (jdbcUrl.startsWith("jdbc:mariadb:")) {
+            return "org.mariadb.jdbc.Driver";
+        }
+        if (jdbcUrl.startsWith("jdbc:mysql:")) {
+            return "com.mysql.cj.jdbc.Driver";
+        }
+        throw new IllegalArgumentException("Unsupported JDBC URL scheme: " + jdbcUrl);
+    }
+}

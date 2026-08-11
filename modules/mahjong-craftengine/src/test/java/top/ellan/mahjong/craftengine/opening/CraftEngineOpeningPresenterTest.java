@@ -1,0 +1,154 @@
+package top.ellan.mahjong.craftengine.opening;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import top.ellan.mahjong.application.concurrent.Cancellable;
+import top.ellan.mahjong.application.concurrent.TaskScheduler;
+import top.ellan.mahjong.application.opening.TableOpeningBatch;
+import top.ellan.mahjong.application.opening.TableOpeningEffectPort;
+import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.presentation.node.FurnitureNode;
+import top.ellan.mahjong.presentation.node.SceneNodeId;
+import top.ellan.mahjong.spi.PlayerId;
+import top.ellan.mahjong.spi.RuleDiceRoll;
+import top.ellan.mahjong.spi.RuleId;
+import top.ellan.mahjong.spi.RuleOpeningPresentation;
+import top.ellan.mahjong.spi.RulePackRef;
+import top.ellan.mahjong.spi.SeatId;
+
+class CraftEngineOpeningPresenterTest {
+    @Test
+    void clientOwnsRollingFramesWhileServerSchedulesOnlyBoundariesAndReveals() {
+        ManualScheduler scheduler = new ManualScheduler();
+        ArrayList<OverlayCall> calls = new ArrayList<>();
+        ArrayList<String> effects = new ArrayList<>();
+        CraftEngineOpeningPresenter presenter = new CraftEngineOpeningPresenter(
+                scheduler,
+                (table, generation, managed, desired) -> calls.add(
+                        new OverlayCall(table, generation, managed, desired)),
+                new CraftEngineOpeningAnimationConfig(
+                        "mahjongpaper:opening_die_slot_",
+                        Duration.ofSeconds(1),
+                        Duration.ofMillis(600)),
+                new TableOpeningEffectPort() {
+                    @Override
+                    public void rollStarted(TableOpeningBatch batch, int rollIndex) {
+                        effects.add("roll-" + rollIndex);
+                    }
+
+                    @Override
+                    public void wallOpened(TableOpeningBatch batch) {
+                        effects.add("wall-open");
+                    }
+                });
+        TableId table = TableId.random();
+        RuleOpeningPresentation opening = new RuleOpeningPresentation(
+                3,
+                List.of(
+                        new RuleDiceRoll(List.of(2, 5)),
+                        new RuleDiceRoll(List.of(3, 4))),
+                new SeatId(2),
+                14);
+
+        presenter.present(new TableOpeningBatch(
+                table,
+                new RulePackRef(new RuleId("mcr"), "2.0.2", "0".repeat(64), 1),
+                0,
+                List.of(new PlayerId(UUID.randomUUID())),
+                opening));
+        assertEquals(1, calls.size());
+        assertEquals(List.of("roll-0"), effects);
+        assertEquals(2, calls.getFirst().desired().size());
+        assertTrue(calls.getFirst().desired().stream()
+                .allMatch(node -> node.variant().equals("single_rolling")));
+        assertEquals(
+                List.of(
+                        Duration.ofSeconds(1),
+                        Duration.ofMillis(1600),
+                        Duration.ofMillis(2600),
+                        Duration.ofMillis(3200)),
+                scheduler.delays());
+
+        scheduler.runAll();
+
+        assertEquals(5, calls.size());
+        assertTrue(calls.get(1).desired().stream()
+                .allMatch(node -> node.variant().matches("single_face_[1-6]")));
+        assertEquals(List.of("double_face_2", "double_face_5", "double_rolling", "double_rolling"),
+                calls.get(2).desired().stream().map(FurnitureNode::variant).toList());
+        assertEquals(4, calls.get(3).desired().size());
+        assertTrue(calls.get(3).desired().stream()
+                .allMatch(node -> node.assetId().matches(
+                                "mahjongpaper:opening_die_slot_[0-3]")
+                        && node.variant().matches("double_face_[1-6]")
+                        && node.transform().equals(
+                                new top.ellan.mahjong.presentation.node.SceneTransform(
+                                        0, 0, 0, 0, 0, 0, 1))));
+        assertTrue(calls.getLast().desired().isEmpty());
+        assertEquals(4, calls.getLast().managed().size());
+        assertEquals(List.of("roll-0", "roll-1", "wall-open"), effects);
+    }
+
+    private record OverlayCall(
+            TableId table,
+            long generation,
+            List<SceneNodeId> managed,
+            List<FurnitureNode> desired) {
+        private OverlayCall {
+            managed = List.copyOf(managed);
+            desired = List.copyOf(desired);
+        }
+    }
+
+    private static final class ManualScheduler implements TaskScheduler {
+        private final ArrayList<Scheduled> scheduled = new ArrayList<>();
+
+        @Override
+        public Cancellable schedule(Runnable task, Duration delay) {
+            Scheduled value = new Scheduled(task, delay);
+            scheduled.add(value);
+            return () -> {
+                if (value.cancelled) {
+                    return false;
+                }
+                value.cancelled = true;
+                return true;
+            };
+        }
+
+        void runAll() {
+            scheduled.sort(Comparator.comparing(Scheduled::delay));
+            for (Scheduled value : List.copyOf(scheduled)) {
+                if (!value.cancelled) {
+                    value.task.run();
+                }
+            }
+        }
+
+        List<Duration> delays() {
+            return scheduled.stream().map(Scheduled::delay).toList();
+        }
+
+        private static final class Scheduled {
+            private final Runnable task;
+            private final Duration delay;
+            private boolean cancelled;
+
+            private Scheduled(Runnable task, Duration delay) {
+                this.task = task;
+                this.delay = delay;
+            }
+
+            private Duration delay() {
+                return delay;
+            }
+        }
+    }
+}

@@ -1,0 +1,491 @@
+# CraftEngine 26.7+ owns static assets, furniture geometry, hitboxes, seats and culling.
+# Java selects stable IDs and applies scene diffs; it does not recreate these definitions.
+
+templates:
+  mahjongpaper:tile_item:
+    material: paper
+    settings:
+      tags:
+        - mahjongpaper:mahjong_tile
+    data:
+      item_name: "<!i><white>${label}</white>"
+    item_model: "mahjongcraft:mahjong_tile/${tile}"
+
+  mahjongpaper:tile_furniture:
+    material: paper
+    settings:
+      tags:
+        - mahjongpaper:mahjong_tile_furniture
+    data:
+      item_name: "<!i><white>${label}</white>"
+    item_model: "${model}"
+    behavior:
+      type: furniture_item
+      rules:
+        ground:
+          rotation: four
+          alignment: center
+      furniture:
+        settings:
+          item: "${__NAMESPACE__}:${__ID__}"
+        variants:
+          ground:
+            entity_culling:
+              aabb_expansion: 0.25
+              view_distance: 48
+              ray_tracing: true
+            elements:
+              - type: item_display
+                item: "${visual_item}"
+                display_transform: head
+                billboard: fixed
+                position: 0,0,0
+                translation: 0,0,0
+                rotation: "${rotation}"
+                shadow_radius: 0
+                shadow_strength: 0
+
+  mahjongpaper:stick_furniture:
+    material: paper
+    settings:
+      tags:
+        - mahjongpaper:stick_furniture
+    data:
+      item_name: "<!i><white>${label}</white>"
+    item_model: "${model}"
+    behavior:
+      type: furniture_item
+      rules:
+        ground:
+          rotation: four
+          alignment: center
+      furniture:
+        settings:
+          item: "${__NAMESPACE__}:${__ID__}"
+        variants:
+          ground:
+            entity_culling:
+              aabb_expansion: 0.25
+              view_distance: 48
+              ray_tracing: true
+            elements:
+              - type: item_display
+                item: "mahjongpaper:${point}"
+                display_transform: none
+                billboard: fixed
+                position: 0,0,0
+                translation: 0,0,0
+                rotation: "${rotation}"
+                shadow_radius: 0
+                shadow_strength: 0
+
+items:
+  mahjongpaper:table_visual_model:
+    material: paper
+    settings:
+      tags:
+        - mahjongpaper:table_visual
+    data:
+      item_name: "<!i><gray>Mahjong Table Visual</gray>"
+    item_model: mahjongcraft:table_visual
+
+  mahjongpaper:table_visual:
+    material: paper
+    settings:
+      tags:
+        - mahjongpaper:table_visual
+    data:
+      item_name: "<!i><gray>Mahjong Table</gray>"
+    item_model: mahjongcraft:table_visual
+    behavior:
+      type: furniture_item
+      rules:
+        ground:
+          rotation: four
+          alignment: center
+      furniture:
+        settings:
+          item: mahjongpaper:table_visual
+          sounds:
+            break: minecraft:block.wood.break
+            place: minecraft:block.wood.place
+            hit: minecraft:block.wood.hit
+        variants:
+          ground:
+            entity_culling:
+              aabb_expansion: 0.25
+              view_distance: 48
+              ray_tracing: true
+            elements:
+              - type: item_display
+                item: mahjongpaper:table_visual_model
+                display_transform: none
+                billboard: fixed
+                position: 0,0,0
+                translation: 0,0,0
+                shadow_radius: 0
+                shadow_strength: 0
+              # Static table geometry belongs to CraftEngine, not Java scene code.
+              - type: item_display
+                item: mahjongpaper:seat_chair_model
+                display_transform: none
+                billboard: fixed
+                translation: 0,0,2.25
+                rotation: "0,180,0"
+                shadow_radius: 0
+                shadow_strength: 0
+              - type: item_display
+                item: mahjongpaper:seat_chair_model
+                display_transform: none
+                billboard: fixed
+                translation: 2.25,0,0
+                rotation: "0,270,0"
+                shadow_radius: 0
+                shadow_strength: 0
+              - type: item_display
+                item: mahjongpaper:seat_chair_model
+                display_transform: none
+                billboard: fixed
+                translation: 0,0,-2.25
+                rotation: "0,0,0"
+                shadow_radius: 0
+                shadow_strength: 0
+              - type: item_display
+                item: mahjongpaper:seat_chair_model
+                display_transform: none
+                billboard: fixed
+                translation: -2.25,0,0
+                rotation: "0,90,0"
+                shadow_radius: 0
+                shadow_strength: 0
+            hitboxes:
+              - {position: "-1,-1.5,-1", type: shulker, direction: up, scale: 1, peek: 0, blocks_building: true, interactive: false, interaction_entity: false}
+              - {position: "-1,-1.5,0", type: shulker, direction: up, scale: 1, peek: 0, blocks_building: true, interactive: false, interaction_entity: false}
+              - {position: "-1,-1.5,1", type: shulker, direction: up, scale: 1, peek: 0, blocks_building: true, interactive: false, interaction_entity: false}
+              - {position: "0,-1.5,-1", type: shulker, direction: up, scale: 1, peek: 0, blocks_building: true, interactive: false, interaction_entity: false}
+              - {position: "0,-1.5,0", type: shulker, direction: up, scale: 1, peek: 0, blocks_building: true, interactive: false, interaction_entity: false}
+              - {position: "0,-1.5,1", type: shulker, direction: up, scale: 1, peek: 0, blocks_building: true, interactive: false, interaction_entity: false}
+              - {position: "1,-1.5,-1", type: shulker, direction: up, scale: 1, peek: 0, blocks_building: true, interactive: false, interaction_entity: false}
+              - {position: "1,-1.5,0", type: shulker, direction: up, scale: 1, peek: 0, blocks_building: true, interactive: false, interaction_entity: false}
+              - {position: "1,-1.5,1", type: shulker, direction: up, scale: 1, peek: 0, blocks_building: true, interactive: false, interaction_entity: false}
+              - {position: "0,0,2.25", type: interaction, width: 0.8, height: 1, blocks_building: false, interactive: true, invisible: true, seats: ["0,0,2.25 180"]}
+              - {position: "2.25,0,0", type: interaction, width: 0.8, height: 1, blocks_building: false, interactive: true, invisible: true, seats: ["2.25,0,0 90"]}
+              - {position: "0,0,-2.25", type: interaction, width: 0.8, height: 1, blocks_building: false, interactive: true, invisible: true, seats: ["0,0,-2.25 0"]}
+              - {position: "-2.25,0,0", type: interaction, width: 0.8, height: 1, blocks_building: false, interactive: true, invisible: true, seats: ["-2.25,0,0 270"]}
+
+  mahjongpaper:hand_tile_hitbox:
+    material: paper
+    settings:
+      tags:
+        - mahjongpaper:hand_tile_hitbox
+    data:
+      item_name: "<!i><gray>Mahjong Action Hitbox</gray>"
+    item_model: mahjongcraft:mahjong_tile/back
+    behavior:
+      type: furniture_item
+      rules:
+        ground:
+          rotation: four
+          alignment: center
+      furniture:
+        settings:
+          item: mahjongpaper:hand_tile_hitbox
+        variants:
+          ground:
+            entity_culling:
+              aabb_expansion: 0.25
+              view_distance: 48
+              ray_tracing: true
+            elements:
+              - type: item_display
+                item: mahjongpaper:back
+                display_transform: none
+                billboard: fixed
+                position: 0,0,0
+                translation: 0,-16,0
+                shadow_radius: 0
+                shadow_strength: 0
+            hitboxes:
+              - type: interaction
+                position: 0,0,0
+                width: 0.1125
+                height: 0.15
+                blocks_building: false
+                interactive: true
+                invisible: true
+
+  mahjongpaper:action_button_hitbox:
+    material: paper
+    settings:
+      tags:
+        - mahjongpaper:action_button_hitbox
+    data:
+      item_name: "<!i><gray>Mahjong Action Button</gray>"
+    item_model: mahjongcraft:mahjong_tile/back
+    behavior:
+      type: furniture_item
+      rules:
+        ground:
+          rotation: four
+          alignment: center
+      furniture:
+        settings:
+          item: mahjongpaper:action_button_hitbox
+        variants:
+          ground:
+            entity_culling:
+              aabb_expansion: 0.25
+              view_distance: 48
+              ray_tracing: true
+            elements:
+              - type: item_display
+                item: mahjongpaper:back
+                display_transform: none
+                billboard: fixed
+                position: 0,0,0
+                translation: 0,-16,0
+                shadow_radius: 0
+                shadow_strength: 0
+            hitboxes:
+              - type: interaction
+                position: 0,0,0
+                width: 0.48
+                height: 0.2
+                blocks_building: false
+                interactive: true
+                invisible: true
+
+  mahjongpaper:seat_chair_model:
+    material: paper
+    settings:
+      tags:
+        - mahjongpaper:seat_visual
+    data:
+      item_name: "<!i><gray>Mahjong Seat Chair</gray>"
+    item_model: mahjongcraft:seat_chair
+
+  # The resource pack advances the rolling texture once per client tick, matching the 1.5 dice
+  # cadence. Java selects this item only at roll start and an authoritative static face at reveal.
+  mahjongpaper:dice_rolling_model:
+    material: paper
+    settings:
+      tags:
+        - mahjongpaper:opening_dice_model
+    data:
+      item_name: "<!i><white>Rolling Dice</white>"
+    item_model: mahjongcraft:dice/rolling
+
+config_factory#point_sticks:
+  instances:
+    - {point: p100, model: "mahjongcraft:stick_p100", label: "100 Point Stick"}
+    - {point: p1000, model: "mahjongcraft:stick_p1000", label: "1000 Point Stick"}
+    - {point: p5000, model: "mahjongcraft:stick_p5000", label: "5000 Point Stick"}
+    - {point: p10000, model: "mahjongcraft:stick_p10000", label: "10000 Point Stick"}
+  blueprint:
+    items:
+      mahjongpaper:${point}:
+        material: paper
+        settings:
+          tags:
+            - mahjongpaper:stick_visual
+        data:
+          item_name: "<!i><white>${label}</white>"
+        item_model: "${model}"
+      mahjongpaper:stick_${point}:
+        template: mahjongpaper:stick_furniture
+        arguments:
+          point: "${point}"
+          model: "${model}"
+          label: "${label}"
+          rotation: "0,0,0"
+config_factory#opening_dice_models:
+  instances:
+    - point: 1
+    - point: 2
+    - point: 3
+    - point: 4
+    - point: 5
+    - point: 6
+  blueprint:
+    items:
+      mahjongpaper:dice_${point}_model:
+        material: paper
+        settings:
+          tags:
+            - mahjongpaper:opening_dice_model
+        data:
+          item_name: "<!i><white>Dice ${point}</white>"
+        item_model: "mahjongcraft:dice/${point}"
+
+# Every die is a stable CE furniture instance. The two layout families preserve the old centered
+# first roll and expand to four dice for MCR's second roll without Java-owned geometry or respawns.
+config_factory#opening_dice_slots:
+  instances:
+    - {slot: 0, single_translation: "-0.11,0.62,0", double_translation: "-0.33,0.62,0", rotation: "0,-8,0"}
+    - {slot: 1, single_translation: "0.11,0.62,0", double_translation: "-0.11,0.62,0", rotation: "0,8,0"}
+    - {slot: 2, single_translation: "0.11,0.62,0", double_translation: "0.11,0.62,0", rotation: "0,-8,0"}
+    - {slot: 3, single_translation: "0.33,0.62,0", double_translation: "0.33,0.62,0", rotation: "0,8,0"}
+  blueprint:
+    items:
+      mahjongpaper:opening_die_slot_${slot}:
+        material: paper
+        settings:
+          tags:
+            - mahjongpaper:opening_dice
+        data:
+          item_name: "<!i><white>Opening Die Slot ${slot}</white>"
+        item_model: mahjongcraft:dice/1
+        behavior:
+          type: furniture_item
+          rules:
+            ground:
+              rotation: four
+              alignment: center
+          furniture:
+            settings:
+              item: mahjongpaper:opening_die_slot_${slot}
+            variants:
+              ground:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_1_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              single_rolling:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_rolling_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              single_face_1:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_1_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              single_face_2:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_2_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              single_face_3:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_3_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              single_face_4:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_4_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              single_face_5:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_5_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              single_face_6:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_6_model, display_transform: none, billboard: fixed, translation: "${single_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              double_rolling:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_rolling_model, display_transform: none, billboard: fixed, translation: "${double_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              double_face_1:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_1_model, display_transform: none, billboard: fixed, translation: "${double_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              double_face_2:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_2_model, display_transform: none, billboard: fixed, translation: "${double_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              double_face_3:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_3_model, display_transform: none, billboard: fixed, translation: "${double_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              double_face_4:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_4_model, display_transform: none, billboard: fixed, translation: "${double_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              double_face_5:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_5_model, display_transform: none, billboard: fixed, translation: "${double_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+              double_face_6:
+                entity_culling: {aabb_expansion: 0.1, view_distance: 32, ray_tracing: true}
+                elements:
+                  - {type: item_display, item: mahjongpaper:dice_6_model, display_transform: none, billboard: fixed, translation: "${double_translation}", rotation: "${rotation}", shadow_radius: 0, shadow_strength: 0}
+config_factory#tiles:
+  instances:
+    - tile: autumn
+    - tile: back
+    - tile: bamboo
+    - tile: chrysanthemum
+    - tile: east
+    - tile: green_dragon
+    - tile: m1
+    - tile: m2
+    - tile: m3
+    - tile: m4
+    - tile: m5
+    - tile: m5_red
+    - tile: m6
+    - tile: m7
+    - tile: m8
+    - tile: m9
+    - tile: north
+    - tile: orchid
+    - tile: p1
+    - tile: p2
+    - tile: p3
+    - tile: p4
+    - tile: p5
+    - tile: p5_red
+    - tile: p6
+    - tile: p7
+    - tile: p8
+    - tile: p9
+    - tile: plum
+    - tile: red_dragon
+    - tile: s1
+    - tile: s2
+    - tile: s3
+    - tile: s4
+    - tile: s5
+    - tile: s5_red
+    - tile: s6
+    - tile: s7
+    - tile: s8
+    - tile: s9
+    - tile: south
+    - tile: spring
+    - tile: summer
+    - tile: unknown
+    - tile: west
+    - tile: white_dragon
+    - tile: winter
+  blueprint:
+    items:
+      mahjongpaper:${tile}:
+        template: mahjongpaper:tile_item
+        arguments:
+          tile: "${tile}"
+          label: "${tile^}"
+      mahjongpaper:tile_standing_${tile}:
+        template: mahjongpaper:tile_furniture
+        arguments:
+          label: "${tile^} Standing"
+          model: "mahjongcraft:mahjong_tile/${tile}"
+          visual_item: "mahjongpaper:${tile}"
+          rotation: "0,0,0"
+      mahjongpaper:tile_standing_face_down_${tile}:
+        template: mahjongpaper:tile_furniture
+        arguments:
+          label: "${tile^} Standing Face Down"
+          model: mahjongcraft:mahjong_tile/back
+          visual_item: mahjongpaper:back
+          rotation: "0,180,0"
+      mahjongpaper:tile_flat_face_up_${tile}:
+        template: mahjongpaper:tile_furniture
+        arguments:
+          label: "${tile^} Flat Face Up"
+          model: "mahjongcraft:mahjong_tile/${tile}"
+          visual_item: "mahjongpaper:${tile}"
+          rotation: "-90,0,0"
+      mahjongpaper:tile_flat_face_down_${tile}:
+        template: mahjongpaper:tile_furniture
+        arguments:
+          label: "${tile^} Flat Face Down"
+          model: mahjongcraft:mahjong_tile/back
+          visual_item: mahjongpaper:back
+          rotation: "90,0,0"

@@ -1,0 +1,100 @@
+name: Rule SDK
+
+on:
+  push:
+    branches:
+      - "2.0"
+    tags:
+      - "rule-spi-v*"
+    paths:
+      - ".github/workflows/rule-sdk.yml"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "modules/mahjong-rule-spi/**"
+      - "modules/mahjong-rule-tck/**"
+  pull_request:
+    branches:
+      - main
+      - "2.0"
+    paths:
+      - ".github/workflows/rule-sdk.yml"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "modules/mahjong-rule-spi/**"
+      - "modules/mahjong-rule-tck/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rule-sdk-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v6
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+      - name: Build and install the SDK into an isolated Maven repository
+        run: >-
+          ./gradlew
+          :mahjong-rule-spi:clean
+          :mahjong-rule-tck:clean
+          :mahjong-rule-spi:check
+          :mahjong-rule-tck:check
+          :mahjong-rule-spi:publishAllPublicationsToTestRepository
+          :mahjong-rule-tck:publishAllPublicationsToTestRepository
+          --no-daemon
+      - name: Upload candidate SDK
+        uses: actions/upload-artifact@v7
+        with:
+          name: mahjong-rule-sdk-1.5.0
+          path: |
+            modules/mahjong-rule-spi/build/libs/*.jar
+            modules/mahjong-rule-tck/build/libs/*.jar
+            build/rule-sdk-repository/**
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/rule-spi-v')
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Require the immutable 1.5.0 release tag
+        shell: bash
+        run: test "$GITHUB_REF_NAME" = "rule-spi-v1.5.0"
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+      - name: Publish SPI and TCK to GitHub Packages
+        run: >-
+          ./gradlew
+          :mahjong-rule-spi:publishMavenJavaPublicationToGitHubPackagesRepository
+          :mahjong-rule-tck:publishMavenJavaPublicationToGitHubPackagesRepository
+          --no-daemon
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

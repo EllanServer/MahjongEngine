@@ -11,20 +11,14 @@ Thanks for helping improve MahjongPaper.
 ## Local Setup
 
 1. Fork and clone the repository.
-2. Use JDK 21+ for the default build. The released jar is built with Java 21 bytecode and `api-version: 1.20`, so the server runtime must use Java 21 or newer while one jar continues to cover Paper/Folia 1.20.1 through 26.2.
+2. Use JDK 25 for the default build. The server-facing modules and released plugin target Paper/Folia 26.2 and Java 25; the portable core, rule SPI, TCK, and external rule packs remain Java 21.
 3. Build the project:
 
 ```powershell
 .\gradlew.bat build
 ```
 
-To validate source/API compatibility against Paper 26.2:
-
-```powershell
-.\gradlew.bat test "-PmahjongPaperDevBundle=26.2-rc-2.build.9-alpha" -PmahjongJavaToolchain=25 -PmahjongJavaTarget=25
-```
-
-This command is only a high-version source/API compatibility check. Release artifacts use the Java 21 default target so the distributed jar remains compatible with the whole supported server range.
+The default build is the Paper 26.2 compatibility check and produces the same classfile targets used by the release workflow.
 
 ## Development Workflow
 

@@ -1,0 +1,74 @@
+package top.ellan.mahjong.presentation.scene;
+
+import java.util.Objects;
+import top.ellan.mahjong.application.interaction.InteractionHandle;
+import top.ellan.mahjong.application.interaction.InteractionPurpose;
+import top.ellan.mahjong.spi.ActionToken;
+import top.ellan.mahjong.spi.PlayerId;
+import top.ellan.mahjong.spi.TileInstanceId;
+
+/** Per-viewer authority behind a public interaction node. */
+public record SceneInteractionBinding(
+        InteractionHandle handle,
+        PlayerId playerId,
+        long revision,
+        InteractionPurpose purpose,
+        ActionToken actionToken,
+        TileInstanceId targetTile) {
+    public SceneInteractionBinding(
+            InteractionHandle handle, PlayerId playerId, ActionToken actionToken) {
+        this(
+                handle,
+                playerId,
+                Objects.requireNonNull(actionToken, "actionToken").revision(),
+                InteractionPurpose.RULE_ACTION,
+                actionToken,
+                null);
+    }
+
+    public SceneInteractionBinding {
+        Objects.requireNonNull(handle, "handle");
+        Objects.requireNonNull(playerId, "playerId");
+        Objects.requireNonNull(purpose, "purpose");
+        if (revision < 0) {
+            throw new IllegalArgumentException("Interaction revision must be non-negative");
+        }
+        if (purpose == InteractionPurpose.OVERHEAD_VIEW) {
+            if (actionToken != null || targetTile != null) {
+                throw new IllegalArgumentException("Overhead view bindings cannot carry rule data");
+            }
+        } else if (actionToken == null
+                || actionToken.revision() != revision
+                || !playerId.equals(actionToken.actor())) {
+            throw new IllegalArgumentException("Interaction binding actor mismatch");
+        }
+        if ((purpose == InteractionPurpose.HAND_TILE_ACTION) != (targetTile != null)) {
+            throw new IllegalArgumentException("Only hand-tile bindings require a target tile");
+        }
+    }
+
+    public static SceneInteractionBinding handTile(
+            InteractionHandle handle,
+            PlayerId playerId,
+            ActionToken token,
+            TileInstanceId targetTile) {
+        return new SceneInteractionBinding(
+                handle,
+                playerId,
+                token.revision(),
+                InteractionPurpose.HAND_TILE_ACTION,
+                token,
+                Objects.requireNonNull(targetTile, "targetTile"));
+    }
+
+    public static SceneInteractionBinding overhead(
+            InteractionHandle handle, PlayerId playerId, long revision) {
+        return new SceneInteractionBinding(
+                handle,
+                playerId,
+                revision,
+                InteractionPurpose.OVERHEAD_VIEW,
+                null,
+                null);
+    }
+}
