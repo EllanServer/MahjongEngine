@@ -211,6 +211,7 @@ class TableActorTest {
                     .toCompletableFuture()
                     .get(2, TimeUnit.SECONDS);
             assertEquals(TableActionCode.ACCEPTED_MEMORY, enabled.code());
+            assertTrue(actor.isAutomated(PLAYER));
             assertEquals(0, projections.poll(2, TimeUnit.SECONDS).revision());
             deadlines.awaitScheduled();
             assertEquals(1, deadlines.pendingCount());

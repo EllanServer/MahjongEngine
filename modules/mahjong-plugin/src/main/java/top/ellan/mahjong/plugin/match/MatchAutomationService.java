@@ -32,6 +32,11 @@ public final class MatchAutomationService implements PlayerPresencePort {
         return match.actor().setAutomated(playerId, enabled);
     }
 
+    public boolean isAutomated(PlayerId playerId) {
+        return tables.findByPlayer(Objects.requireNonNull(playerId, "playerId"))
+                .map(match -> match.actor().isAutomated(playerId)).orElse(false);
+    }
+
     @Override
     public void connected(PlayerId playerId) {
         setIfActive(playerId, false);

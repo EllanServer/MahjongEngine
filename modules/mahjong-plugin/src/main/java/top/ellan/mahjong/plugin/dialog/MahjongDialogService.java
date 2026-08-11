@@ -203,12 +203,13 @@ public final class MahjongDialogService
         boolean seatedHuman = match.participants().stream().anyMatch(participant ->
                 participant.playerId().equals(id(player)) && participant.role() == ParticipantRole.PLAYER);
         if (seatedHuman) {
-            actions.add(button(player, "mahjongpaper.dialog.button.automation_on", "Enable trustee",
-                    NamedTextColor.YELLOW, callback(ignored -> matchAction(player,
-                            runtime.setAutomation(id(player), true), match.tableId()))));
-            actions.add(button(player, "mahjongpaper.dialog.button.automation_off", "Disable trustee",
-                    NamedTextColor.AQUA, callback(ignored -> matchAction(player,
-                            runtime.setAutomation(id(player), false), match.tableId()))));
+            boolean automated = runtime.automationEnabled(id(player));
+            actions.add(button(player, automated ? "mahjongpaper.dialog.button.automation_off"
+                            : "mahjongpaper.dialog.button.automation_on",
+                    automated ? "Disable trustee" : "Enable trustee",
+                    automated ? NamedTextColor.AQUA : NamedTextColor.YELLOW,
+                    callback(ignored -> matchAction(player,
+                            runtime.setAutomation(id(player), !automated), match.tableId()))));
         }
         nextHandAction(projection, id(player)).ifPresent(action -> actions.add(button(player,
                 "mahjongpaper.action.start_next_hand", "Next hand", NamedTextColor.GREEN,

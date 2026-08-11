@@ -13,6 +13,7 @@ final class TableAutomationRoster {
     private final List<TableParticipant> seated;
     private final Set<PlayerId> fixedBots;
     private final Set<PlayerId> trustees = new HashSet<>();
+    private volatile Set<PlayerId> publishedTrustees = Set.of();
 
     TableAutomationRoster(List<TableParticipant> participants) {
         Objects.requireNonNull(participants, "participants");
@@ -37,6 +38,9 @@ final class TableAutomationRoster {
             return new Update(false, false, "seated-human-required");
         }
         boolean changed = enabled ? trustees.add(playerId) : trustees.remove(playerId);
+        if (changed) {
+            publishedTrustees = Set.copyOf(trustees);
+        }
         return new Update(
                 true,
                 changed,
@@ -52,6 +56,10 @@ final class TableAutomationRoster {
                 .map(TableParticipant::playerId)
                 .filter(player -> fixedBots.contains(player) || trustees.contains(player))
                 .toList();
+    }
+
+    boolean isAutomated(PlayerId playerId) {
+        return fixedBots.contains(playerId) || publishedTrustees.contains(playerId);
     }
 
     record Update(boolean accepted, boolean changed, String reasonCode) {}

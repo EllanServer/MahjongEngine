@@ -182,6 +182,10 @@ public final class MahjongRuntime implements AutoCloseable {
         return automation.setAutomated(playerId, enabled);
     }
 
+    public boolean automationEnabled(PlayerId playerId) {
+        return automation.isAutomated(playerId);
+    }
+
     public CompletionStage<TableActionResult> submitReferee(
             TableId tableId, PlayerId authority, RuleAction action) {
         requireServices();
