@@ -101,6 +101,7 @@ class TableActorTest {
             TableActor actor = new TableActor(
                     dispatcher,
                     rules,
+                    rules,
                     new CounterProvider(),
                     outbox,
                     neverRuns,
@@ -154,6 +155,7 @@ class TableActorTest {
             ArrayBlockingQueue<TableProjection> projections = new ArrayBlockingQueue<>(4);
             TableActor actor = new TableActor(
                     dispatcher,
+                    rules,
                     rules,
                     new CounterProvider(1, true),
                     outbox,
@@ -244,6 +246,7 @@ class TableActorTest {
             TableActor actor = new TableActor(
                     dispatcher,
                     rules,
+                    rules,
                     new CounterProvider(),
                     outbox,
                     deadlines,
@@ -297,6 +300,7 @@ class TableActorTest {
                     new TableActor(
                             dispatcher,
                             rules,
+                            rules,
                             new CounterProvider(),
                             outbox,
                             deadlines,
@@ -346,6 +350,7 @@ class TableActorTest {
             ArrayBlockingQueue<TableCueBatch> cues = new ArrayBlockingQueue<>(2);
             TableActor actor = new TableActor(
                     dispatcher,
+                    rules,
                     rules,
                     new CounterProvider(),
                     outbox,
@@ -399,6 +404,7 @@ class TableActorTest {
                     new TableActor(
                             ignored -> {},
                             rules,
+                            rules,
                             new CounterProvider(),
                             outbox,
                             neverRuns,
@@ -450,6 +456,7 @@ class TableActorTest {
             TableActor actor =
                     new TableActor(
                             dispatcher,
+                            rules,
                             rules,
                             new CounterProvider(2),
                             outbox,
@@ -503,6 +510,7 @@ class TableActorTest {
             ArrayBlockingQueue<TableProjection> projections = new ArrayBlockingQueue<>(4);
             TableActor actor = new TableActor(
                     dispatcher,
+                    rules,
                     rules,
                     new CounterProvider(2),
                     outbox,

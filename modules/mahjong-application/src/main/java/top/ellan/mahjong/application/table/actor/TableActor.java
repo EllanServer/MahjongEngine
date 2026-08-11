@@ -8,7 +8,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.application.automation.TableAutomationEndpoint;
@@ -46,45 +45,10 @@ public final class TableActor
     private final TableExternalIngressController externalIngress;
     private final AtomicBoolean scheduled = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
-    private final AtomicReference<TableActorSnapshot> publishedSnapshot = new AtomicReference<>();
+    private final TableActorSnapshotPublisher snapshots = new TableActorSnapshotPublisher();
     private final CompletableFuture<Void> shutdownComplete = new CompletableFuture<>();
     private boolean ruleInFlight;
     private boolean automationRefreshPending;
-
-    public TableActor(
-            Executor dispatcher,
-            FairRuleExecutor ruleExecutor,
-            RulePackProvider provider,
-            PersistenceOutbox outbox,
-            TaskScheduler deadlineScheduler,
-            SceneProjectionPort projector,
-            TablePresentationCuePort cuePort,
-            TableOpeningPresentationPort openingPort,
-            boolean presentInitialOpening,
-            ActionTokenIssuer tokenIssuer,
-            Clock clock,
-            TableActorConfig config,
-            TableAggregate aggregate,
-            RuleState initialRuleState,
-            long lastEventSequence) {
-        this(
-                dispatcher,
-                ruleExecutor,
-                ruleExecutor,
-                provider,
-                outbox,
-                deadlineScheduler,
-                projector,
-                cuePort,
-                openingPort,
-                presentInitialOpening,
-                tokenIssuer,
-                clock,
-                config,
-                aggregate,
-                initialRuleState,
-                lastEventSequence);
-    }
 
     public TableActor(
             Executor dispatcher,
@@ -113,9 +77,9 @@ public final class TableActor
         }
         inbox = new TableActorInbox(config.mailboxCapacity());
         authorityActions = new TableAuthorityActionController(
-                inbox, closed::get, this::publishedResult, this::scheduleDrain);
+                inbox, closed::get, snapshots::result, this::scheduleDrain);
         externalIngress = new TableExternalIngressController(
-                inbox, closed::get, this::publishedResult, this::scheduleDrain);
+                inbox, closed::get, snapshots::result, this::scheduleDrain);
         TableScheduledActionController scheduledActions = new TableScheduledActionController(
                 Objects.requireNonNull(deadlineScheduler, "deadlineScheduler"),
                 inbox,
@@ -141,7 +105,7 @@ public final class TableActor
                 config,
                 stateMachine.matchBinding().rulePack().ruleId());
         outbox.setListener(this::signalOutbox);
-        publishSnapshot();
+        snapshots.publish(stateMachine, inbox.actionCount(), ruleInFlight);
     }
 
     /** Starts initial view and action generation on the fair rule pool. */
@@ -170,7 +134,7 @@ public final class TableActor
     }
     public boolean isAutomated(PlayerId playerId) { return automation.isAutomated(Objects.requireNonNull(playerId, "playerId")); }
     public TableActorSnapshot snapshot() {
-        return publishedSnapshot.get();
+        return snapshots.current();
     }
 
     public Optional<TableProjection> latestProjection() {
@@ -228,7 +192,7 @@ public final class TableActor
             }
         } finally {
             scheduled.set(false);
-            publishSnapshot();
+            snapshots.publish(stateMachine, inbox.actionCount(), ruleInFlight);
             if (inbox.hasPendingWork()) {
                 scheduleDrain();
             }
@@ -399,27 +363,7 @@ public final class TableActor
     }
 
     private void failQueuedActions(TableActionCode code, String reason) {
-        TableQueuedResponseDrainer.complete(inbox, code, reason, this::publishedResult);
-    }
-
-    private TableActionResult publishedResult(TableActionCode code, String reason) {
-        TableActorSnapshot snapshot = publishedSnapshot.get();
-        return new TableActionResult(
-                code,
-                snapshot == null ? 0 : snapshot.revision(),
-                reason == null ? "" : reason);
-    }
-
-    private void publishSnapshot() {
-        TableActorSnapshot next = stateMachine.snapshot(inbox.actionCount(), ruleInFlight);
-        TableActorSnapshot current = publishedSnapshot.get();
-        // Skip the volatile write when nothing a consumer can observe changed.
-        if (current == null
-                || next.revision() != current.revision()
-                || next.lifecycle() != current.lifecycle()
-                || !Objects.equals(next.failureCode(), current.failureCode())) {
-            publishedSnapshot.set(next);
-        }
+        TableQueuedResponseDrainer.complete(inbox, code, reason, snapshots::result);
     }
 
     @Override

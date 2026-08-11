@@ -17,7 +17,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import org.bukkit.Location;
 import top.ellan.mahjong.application.concurrent.BoundedDeadlineScheduler;
-import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
 import top.ellan.mahjong.application.history.PlayerMatchHistoryEntry;
 import top.ellan.mahjong.application.history.PlayerRankingPage;
 import top.ellan.mahjong.application.table.TableActorRegistry;
@@ -51,6 +50,7 @@ import top.ellan.mahjong.plugin.recovery.MatchRecoveryService;
 import top.ellan.mahjong.plugin.runtime.ActorDrain;
 import top.ellan.mahjong.plugin.runtime.FailureSupport;
 import top.ellan.mahjong.plugin.runtime.RuntimeServices;
+import top.ellan.mahjong.plugin.runtime.RuleExecutionPools;
 import top.ellan.mahjong.plugin.table.LiveTableDirectory;
 import top.ellan.mahjong.runtime.admin.RulePackInventory;
 import top.ellan.mahjong.runtime.admin.RulePackVerification;
@@ -68,8 +68,7 @@ public final class MahjongRuntime implements AutoCloseable {
     private final PluginConfiguration configuration;
     private final Clock clock = Clock.systemUTC();
     private final BoundedPlatformExecutors executors;
-    private final FairRuleExecutor ruleExecutor;
-    private final FairRuleExecutor automationExecutor;
+    private final RuleExecutionPools ruleExecutors;
     private final BoundedDeadlineScheduler deadlines;
     private final TableActorRegistry actors = new TableActorRegistry();
     private final LiveTableDirectory liveTables = new LiveTableDirectory();
@@ -98,11 +97,7 @@ public final class MahjongRuntime implements AutoCloseable {
                 executors.io(),
                 () -> Optional.ofNullable(services.get())
                         .flatMap(current -> current.database().playerRecords()));
-        int ruleWorkers = Math.max(2, Math.min(Math.max(1, processors / 2), 8));
-        int automationWorkers = Math.max(1, Math.min(Math.max(1, processors / 4), 2));
-        ruleExecutor = new FairRuleExecutor(ruleWorkers, 1_024, "mahjong-rule");
-        automationExecutor =
-                new FairRuleExecutor(automationWorkers, 1_024, "mahjong-automation");
+        ruleExecutors = new RuleExecutionPools(processors);
         deadlines =
                 new BoundedDeadlineScheduler(8_192, executors.actor(), "mahjong-deadline");
         platform =
@@ -300,7 +295,7 @@ public final class MahjongRuntime implements AutoCloseable {
 
     private RulePackOperations ruleAdmin() {
         return new RulePackOperations(
-                requireServices().rules(), ruleExecutor, platform::activateRuleResource);
+                requireServices().rules(), ruleExecutors.rules(), platform::activateRuleResource);
     }
 
     public CompletionStage<List<PlayerMatchHistoryEntry>> playerHistory(
@@ -376,8 +371,8 @@ public final class MahjongRuntime implements AutoCloseable {
                 new RulePackMatchCoordinator(
                         executors.actor(),
                         executors.io(),
-                        ruleExecutor,
-                        automationExecutor,
+                        ruleExecutors.rules(),
+                        ruleExecutors.automation(),
                         deadlines,
                         actors,
                         database.matches().orElseThrow(),
@@ -482,8 +477,7 @@ public final class MahjongRuntime implements AutoCloseable {
         dialogs.close();
         platform.close();
         deadlines.close();
-        automationExecutor.close();
-        ruleExecutor.close();
+        ruleExecutors.close();
         RuntimeServices current = services.getAndSet(null);
         if (current != null) {
             current.close();

@@ -102,6 +102,7 @@ class TableActorIsolationStressTest {
                 TableActor actor = new TableActor(
                         dispatcher,
                         rules,
+                        rules,
                         provider,
                         outbox,
                         deadlines,
