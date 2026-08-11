@@ -1,9 +1,11 @@
 package top.ellan.mahjong.craftengine.privateview;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -12,6 +14,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDismountEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerLocaleChangeEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.plugin.Plugin;
@@ -44,6 +47,7 @@ public final class SparrowPrivateProjectionGateway
                 Listener,
                 AutoCloseable {
     private final PrivateProjectionState state = new PrivateProjectionState();
+    private final ConcurrentHashMap<PlayerId, Locale> locales = new ConcurrentHashMap<>();
     private final PlayerRegionTaskScheduler tasks;
     private final PrivateNodeRenderer renderer;
     private final OverheadCameraController cameras;
@@ -117,6 +121,7 @@ public final class SparrowPrivateProjectionGateway
         for (UpsertedNode upserted : state.upsert(tableId, node)) {
             Player player = Bukkit.getPlayer(upserted.key().viewer().value());
             if (player != null) {
+                locales.putIfAbsent(upserted.key().viewer(), player.locale());
                 tasks.execute(
                         player,
                         () -> renderer.apply(player, upserted.key(), upserted.generation()));
@@ -151,6 +156,7 @@ public final class SparrowPrivateProjectionGateway
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         PlayerId viewer = new PlayerId(player.getUniqueId());
+        locales.put(viewer, player.locale());
         tasks.execute(
                 player,
                 () -> {
@@ -170,8 +176,19 @@ public final class SparrowPrivateProjectionGateway
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
         PlayerId playerId = new PlayerId(event.getPlayer().getUniqueId());
+        locales.remove(playerId);
         renderer.onQuit(playerId);
         cameras.onQuit(playerId);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onLocaleChange(PlayerLocaleChangeEvent event) {
+        locales.put(new PlayerId(event.getPlayer().getUniqueId()), event.locale());
+    }
+
+    /** Locale snapshot used by the render worker; never calls Bukkit off-thread. */
+    public Locale locale(PlayerId playerId) {
+        return locales.getOrDefault(playerId, Locale.ENGLISH);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -217,6 +234,7 @@ public final class SparrowPrivateProjectionGateway
     public void close() {
         cameras.close();
         renderer.close();
+        locales.clear();
         state.clear();
     }
 

@@ -23,6 +23,8 @@ final class UniversalLayoutPlan {
     private final SceneTransform[][] winClaims;
     private final SceneTransform[][] actions;
     private final SceneTransform[][] secondaryActions;
+    private final double[] seatTangentX;
+    private final double[] seatTangentZ;
     private final SceneTransform[] viewControls;
     private final SceneTransform[] wall;
 
@@ -39,6 +41,8 @@ final class UniversalLayoutPlan {
             SceneTransform[][] winClaims,
             SceneTransform[][] actions,
             SceneTransform[][] secondaryActions,
+            double[] seatTangentX,
+            double[] seatTangentZ,
             SceneTransform[] viewControls,
             SceneTransform[] wall) {
         this.geometry = geometry;
@@ -53,6 +57,8 @@ final class UniversalLayoutPlan {
         this.winClaims = winClaims;
         this.actions = actions;
         this.secondaryActions = secondaryActions;
+        this.seatTangentX = seatTangentX;
+        this.seatTangentZ = seatTangentZ;
         this.viewControls = viewControls;
         this.wall = wall;
     }
@@ -84,16 +90,38 @@ final class UniversalLayoutPlan {
     }
 
     SceneTransform action(SeatId seat, ActionPlacement placement, int index) {
-        int seatIndex = seatIndex(seat);
         if (index < 0 || index >= geometry.maxActions()) {
             throw new IllegalArgumentException("Action index exceeds the layout capacity");
         }
-        return switch (Objects.requireNonNull(placement, "placement")) {
-            case ACTION_ROW -> actions[seatIndex][index];
-            case SECONDARY_ROW -> secondaryActions[seatIndex][index];
+        int row = index / 4;
+        int column = index % 4;
+        double tangent = (column - 1.5D) * geometry.actionColumnSpacing();
+        return action(seat, placement, row, tangent);
+    }
+
+    SceneTransform action(
+            SeatId seat, ActionPlacement placement, int row, double tangentOffset) {
+        int seatIndex = seatIndex(seat);
+        if (row < 0 || row >= actions[seatIndex].length || !Double.isFinite(tangentOffset)) {
+            throw new IllegalArgumentException("Action row exceeds the layout capacity");
+        }
+        SceneTransform base = switch (Objects.requireNonNull(placement, "placement")) {
+            case ACTION_ROW -> actions[seatIndex][row];
+            case SECONDARY_ROW -> secondaryActions[seatIndex][row];
             case HAND_TILE -> throw new IllegalArgumentException(
                     "Hand-tile actions use the target tile transform");
         };
+        if (tangentOffset == 0.0D) {
+            return base;
+        }
+        return new SceneTransform(
+                base.x() + seatTangentX[seatIndex] * tangentOffset,
+                base.y(),
+                base.z() + seatTangentZ[seatIndex] * tangentOffset,
+                base.yawDegrees(),
+                base.pitchDegrees(),
+                base.rollDegrees(),
+                base.scale());
     }
 
     SceneTransform viewControl(SeatId seat) {

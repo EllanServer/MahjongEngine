@@ -69,6 +69,9 @@ public record PluginConfiguration(
                                 "craftengine.assets.action-hitbox",
                                 "mahjongpaper:action_button_hitbox"),
                         config.getString(
+                                "craftengine.assets.action-hitbox-prefix",
+                                "mahjongpaper:action_button_hitbox_"),
+                        config.getString(
                                 "craftengine.assets.opening-die-slot-prefix",
                                 "mahjongpaper:opening_die_slot_")),
                 new LayoutGeometry(
@@ -122,6 +125,7 @@ public record PluginConfiguration(
             String flatBack,
             String handHitbox,
             String actionHitbox,
+            String actionHitboxPrefix,
             String openingDieSlotPrefix) {
         public CraftEngineAssets {
             table = requireAsset(table, "table furniture");
@@ -130,6 +134,8 @@ public record PluginConfiguration(
             flatBack = requireAsset(flatBack, "flat back furniture");
             handHitbox = requireAsset(handHitbox, "hand hitbox furniture");
             actionHitbox = requireAsset(actionHitbox, "action hitbox furniture");
+            actionHitboxPrefix = requireAsset(
+                    actionHitboxPrefix, "action hitbox furniture prefix");
             openingDieSlotPrefix = requireAsset(
                     openingDieSlotPrefix, "opening die slot furniture prefix");
         }

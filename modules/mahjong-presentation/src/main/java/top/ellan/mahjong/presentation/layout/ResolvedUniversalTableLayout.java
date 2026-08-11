@@ -36,6 +36,12 @@ record ResolvedUniversalTableLayout(
     }
 
     @Override
+    public SceneTransform action(
+            SeatId seat, ActionPlacement placement, int row, double tangentOffset) {
+        return plan.action(seat, placement, row, tangentOffset);
+    }
+
+    @Override
     public SceneTransform viewControl(SeatId seat) {
         return plan.viewControl(seat);
     }

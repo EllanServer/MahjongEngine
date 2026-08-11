@@ -53,4 +53,28 @@ class PrivatePresentationAssetsTest {
         assertTrue(json.contains("line\\n\\\"quoted\\\""));
         assertTrue(json.contains("one.two"));
     }
+
+    @Test
+    void semanticTileArgumentsAreLocalizedAsOneV15StyleLabel() {
+        ActionLabelNode label = new ActionLabelNode(
+                new SceneNodeId("label/chii"),
+                SceneVisibility.privateTo(VIEWER),
+                "action.chii:tile.m2:tile.m3",
+                TRANSFORM,
+                false);
+
+        String json = PrivatePresentationAssets.labelJson(
+                label,
+                Locale.SIMPLIFIED_CHINESE,
+                (locale, key, fallback) -> switch (key) {
+                    case "mahjongpaper.action.chii" -> "吃";
+                    case "mahjongpaper.tile.m2" -> "二万";
+                    case "mahjongpaper.tile.m3" -> "三万";
+                    default -> fallback;
+                });
+
+        assertTrue(json.contains("吃 二万 三万"));
+        assertFalse(json.contains("tile.m2"));
+        assertFalse(json.contains("translate"));
+    }
 }

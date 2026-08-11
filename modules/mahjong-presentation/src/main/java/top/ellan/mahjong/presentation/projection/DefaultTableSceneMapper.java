@@ -12,6 +12,7 @@ import top.ellan.mahjong.presentation.node.SceneNode;
 import top.ellan.mahjong.presentation.node.SceneNodeId;
 import top.ellan.mahjong.presentation.projection.asset.RuleTileFurnitureResolver;
 import top.ellan.mahjong.presentation.projection.interaction.InteractionSceneProjector;
+import top.ellan.mahjong.presentation.projection.interaction.ActionButtonMetrics;
 import top.ellan.mahjong.presentation.projection.privateview.PrivateSceneProjector;
 import top.ellan.mahjong.presentation.projection.publicview.PublicSceneProjector;
 import top.ellan.mahjong.presentation.projection.support.ViewerZoneCounts;
@@ -41,12 +42,22 @@ public final class DefaultTableSceneMapper implements TableSceneMapper {
             TableSceneAssets assets,
             double overheadHeight,
             boolean overheadEnabled) {
+        this(layout, assets, overheadHeight, overheadEnabled, ActionButtonMetrics.fallback());
+    }
+
+    public DefaultTableSceneMapper(
+            TableLayout layout,
+            TableSceneAssets assets,
+            double overheadHeight,
+            boolean overheadEnabled,
+            ActionButtonMetrics buttonMetrics) {
         this.layout = Objects.requireNonNull(layout, "layout");
         Objects.requireNonNull(assets, "assets");
         RuleTileFurnitureResolver furniture = new RuleTileFurnitureResolver(assets);
         publicScene = new PublicSceneProjector(assets, furniture);
         privateScene = new PrivateSceneProjector(overheadHeight, overheadEnabled);
-        interactionScene = new InteractionSceneProjector(assets, overheadEnabled);
+        interactionScene =
+                new InteractionSceneProjector(assets, overheadEnabled, buttonMetrics);
         this.overheadEnabled = overheadEnabled;
     }
 

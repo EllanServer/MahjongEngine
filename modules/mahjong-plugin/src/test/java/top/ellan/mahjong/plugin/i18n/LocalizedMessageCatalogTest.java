@@ -1,6 +1,7 @@
 package top.ellan.mahjong.plugin.i18n;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Locale;
@@ -70,5 +71,28 @@ class LocalizedMessageCatalogTest {
                         Locale.JAPANESE,
                         "mahjongpaper.command.help.description.help",
                         "missing"));
+    }
+
+    @Test
+    void localizesSemanticTileAndSuitLabelsWithLocaleSizedHitboxes() {
+        assertEquals(
+                "二万",
+                messages.resolve(
+                        Locale.SIMPLIFIED_CHINESE,
+                        "mahjongpaper.tile.m2",
+                        "2m"));
+        assertEquals(
+                "萬子",
+                messages.resolve(
+                        Locale.JAPANESE,
+                        "mahjongpaper.suit.wan",
+                        "Characters"));
+        assertTrue(
+                messages.actionButtonWidth(
+                                Locale.SIMPLIFIED_CHINESE,
+                                "action.declare_missing:suit.wan")
+                        < messages.actionButtonWidth(
+                                Locale.ENGLISH,
+                                "action.declare_missing:suit.wan"));
     }
 }

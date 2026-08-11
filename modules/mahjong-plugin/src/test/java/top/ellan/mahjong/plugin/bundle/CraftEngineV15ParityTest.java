@@ -42,6 +42,27 @@ class CraftEngineV15ParityTest {
         assertTrue(hand.contains("height: 0.18"));
     }
 
+    @Test
+    void actionButtonsUseV15HeightAndCeOwnedLocalizedWidthBuckets() throws IOException {
+        String source = configuration();
+        String base = section(
+                source,
+                "mahjongpaper:action_button_hitbox:",
+                "mahjongpaper:seat_chair_model:");
+        String variants = section(
+                source,
+                "config_factory#action_button_hitboxes:",
+                "config_factory#point_sticks:");
+
+        assertTrue(base.contains("width: 0.7"));
+        assertTrue(base.contains("height: 0.22"));
+        assertEquals(16, occurrences(variants, "- {size:"));
+        assertTrue(variants.contains("- {size: \"070\", width: 0.7}"));
+        assertTrue(variants.contains("- {size: \"220\", width: 2.2}"));
+        assertTrue(variants.contains("width: \"${width}\""));
+        assertTrue(variants.contains("height: 0.22"));
+    }
+
     private static String configuration() throws IOException {
         try (InputStream input = CraftEngineV15ParityTest.class
                 .getClassLoader()

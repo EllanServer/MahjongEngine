@@ -194,11 +194,7 @@ final class PrivateNodeRenderer implements AutoCloseable {
         FakeTextDisplay display = displays.createText(
                 PrivateSceneGeometry.localToWorld(anchor, label.transform()));
         display.name(PrivatePresentationAssets.labelJson(label, player.locale(), messages));
-        if (label.emphasized()) {
-            display.rgba(92, 63, 0, 190);
-        } else {
-            display.rgba(0, 62, 70, 190);
-        }
+        display.rgba(0, 0, 0, 60);
         display.spawn(player);
         ActiveLabel replaced =
                 state.putActiveLabel(key, new ActiveLabel(expectedGeneration, display));

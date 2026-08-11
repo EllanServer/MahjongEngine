@@ -16,6 +16,8 @@ craftengine:
     flat-back: "mahjongpaper:tile_flat_face_down_back"
     hand-hitbox: "mahjongpaper:hand_tile_hitbox"
     action-hitbox: "mahjongpaper:action_button_hitbox"
+    # CE owns the width-bucket hitboxes; Java only chooses one when an action row changes.
+    action-hitbox-prefix: "mahjongpaper:action_button_hitbox_"
     # Four fixed slot assets expose CE-owned rolling and face variants for both layouts.
     opening-die-slot-prefix: "mahjongpaper:opening_die_slot_"
 presentation:

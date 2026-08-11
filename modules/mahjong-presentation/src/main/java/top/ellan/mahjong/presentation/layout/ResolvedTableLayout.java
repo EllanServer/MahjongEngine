@@ -14,6 +14,10 @@ public interface ResolvedTableLayout {
 
     SceneTransform action(SeatId seat, ActionPlacement placement, int index);
 
+    /** Places a dynamically sized button inside one centered four-button row. */
+    SceneTransform action(
+            SeatId seat, ActionPlacement placement, int row, double tangentOffset);
+
     SceneTransform viewControl(SeatId seat);
 
     SceneTransform overheadCamera(SeatId seat, double height);

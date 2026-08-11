@@ -7,6 +7,7 @@ import java.util.Objects;
 import top.ellan.mahjong.application.interaction.InteractionHandle;
 import top.ellan.mahjong.application.projection.TableProjection;
 import top.ellan.mahjong.presentation.asset.TableSceneAssets;
+import top.ellan.mahjong.presentation.label.ActionLabelPolicy;
 import top.ellan.mahjong.presentation.layout.ResolvedTableLayout;
 import top.ellan.mahjong.presentation.node.ActionLabelNode;
 import top.ellan.mahjong.presentation.node.InteractionNode;
@@ -33,10 +34,19 @@ public final class InteractionSceneProjector {
 
     private final TableSceneAssets assets;
     private final boolean overheadEnabled;
+    private final ActionRowProjector actionRows;
 
     public InteractionSceneProjector(TableSceneAssets assets, boolean overheadEnabled) {
+        this(assets, overheadEnabled, ActionButtonMetrics.fallback());
+    }
+
+    public InteractionSceneProjector(
+            TableSceneAssets assets,
+            boolean overheadEnabled,
+            ActionButtonMetrics buttonMetrics) {
         this.assets = Objects.requireNonNull(assets, "assets");
         this.overheadEnabled = overheadEnabled;
+        actionRows = new ActionRowProjector(assets, buttonMetrics);
     }
 
     public void project(
@@ -46,37 +56,39 @@ public final class InteractionSceneProjector {
             ResolvedTableLayout layout,
             ViewerZoneCounts viewerCounts) {
         Objects.requireNonNull(viewerCounts, "viewerCounts");
-        for (Map.Entry<PlayerId, List<AuthorizedAction>> entry
-                : projection.authorizedActions().entrySet()) {
-            PlayerId player = entry.getKey();
-            PrivateRuleView privateView = projection.privateViews().get(player);
-            if (privateView == null) {
+        for (PlayerId authorized : projection.authorizedActions().keySet()) {
+            if (!projection.privateViews().containsKey(authorized)) {
                 throw new IllegalArgumentException("authorized player has no private rule view");
             }
-            addActions(
+        }
+        boolean addViewControl = overheadEnabled && projection.lifecycle().acceptsRuleActions();
+        for (Map.Entry<PlayerId, PrivateRuleView> entry : projection.privateViews().entrySet()) {
+            PlayerId player = entry.getKey();
+            List<AuthorizedAction> actions =
+                    projection.authorizedActions().getOrDefault(player, List.of());
+            double firstRowWidth = addActions(
                     nodes,
                     bindings,
                     projection,
                     layout,
                     player,
-                    privateView,
                     entry.getValue(),
+                    actions,
                     viewerCounts);
-        }
-        if (overheadEnabled && projection.lifecycle().acceptsRuleActions()) {
-            for (Map.Entry<PlayerId, PrivateRuleView> entry : projection.privateViews().entrySet()) {
+            if (addViewControl) {
                 addViewControl(
                         nodes,
                         bindings,
                         projection,
-                        entry.getKey(),
+                        player,
                         entry.getValue().seat(),
-                        layout);
+                        layout,
+                        firstRowWidth);
             }
         }
     }
 
-    private void addActions(
+    private double addActions(
             Map<SceneNodeId, SceneNode> nodes,
             List<SceneInteractionBinding> bindings,
             TableProjection projection,
@@ -87,8 +99,6 @@ public final class InteractionSceneProjector {
             ViewerZoneCounts viewerCounts) {
         ZoneTileCounts counts = viewerCounts.of(player, privateView);
         String playerKey = SceneNodeIdentity.compact(player);
-        int primaryIndex = 0;
-        int secondaryIndex = 0;
         Map<TileInstanceId, RuleViewTile> handTiles = null;
         for (AuthorizedAction action : actions) {
             ActionPlacement placement = action.legalAction().actionPresentation().placement();
@@ -106,23 +116,29 @@ public final class InteractionSceneProjector {
                         handTiles,
                         action,
                         layout);
-                continue;
             }
-            int index = placement == ActionPlacement.ACTION_ROW
-                    ? primaryIndex++
-                    : secondaryIndex++;
-            addRowAction(
-                    nodes,
-                    bindings,
-                    projection,
-                    player,
-                    playerKey,
-                    privateView.seat(),
-                    action,
-                    placement,
-                    index,
-                    layout);
         }
+        double firstRowWidth = actionRows.add(
+                nodes,
+                bindings,
+                projection,
+                layout,
+                player,
+                playerKey,
+                privateView.seat(),
+                actions,
+                ActionPlacement.ACTION_ROW);
+        actionRows.add(
+                nodes,
+                bindings,
+                projection,
+                layout,
+                player,
+                playerKey,
+                privateView.seat(),
+                actions,
+                ActionPlacement.SECONDARY_ROW);
+        return firstRowWidth;
     }
 
     private void addViewControl(
@@ -131,20 +147,26 @@ public final class InteractionSceneProjector {
             TableProjection projection,
             PlayerId player,
             SeatId seat,
-            ResolvedTableLayout layout) {
+            ResolvedTableLayout layout,
+            double firstRowWidth) {
         String playerKey = SceneNodeIdentity.compact(player);
         SceneNodeId id = SceneNodeId.trusted("interaction/view/" + playerKey + "/river");
         SceneNodeId labelId = SceneNodeId.trusted("label/view/" + playerKey + "/river");
         InteractionHandle handle = SceneNodeIdentity.interaction(
                 projection.tableId() + ":view:" + player + ":river");
-        SceneTransform transform = layout.viewControl(seat);
+        double width = actionRows.width(player, "action.view_river");
+        double tangent = firstRowWidth == 0.0D
+                ? -ActionLabelPolicy.EMPTY_ROW_PINNED_EDGE - width / 2.0D
+                : -firstRowWidth / 2.0D - ActionLabelPolicy.PINNED_BUTTON_GAP - width / 2.0D;
+        SceneTransform transform =
+                layout.action(seat, ActionPlacement.ACTION_ROW, 0, tangent);
         nodes.put(
                 id,
                 new InteractionNode(
                         id,
                         SceneVisibility.publicToAll(),
                         handle,
-                        assets.actionInteractionFurniture(),
+                        assets.actionInteractionFurniture(width),
                         transform));
         nodes.put(
                 labelId,
@@ -198,51 +220,6 @@ public final class InteractionSceneProjector {
             index.put(tile.instanceId(), tile);
         }
         return index;
-    }
-
-    private void addRowAction(
-            Map<SceneNodeId, SceneNode> nodes,
-            List<SceneInteractionBinding> bindings,
-            TableProjection projection,
-            PlayerId player,
-            String playerKey,
-            SeatId seat,
-            AuthorizedAction action,
-            ActionPlacement placement,
-            int index,
-            ResolvedTableLayout layout) {
-        // The action key originates from the rule pack, so the id must go through the validating
-        // constructor; only the per-player compact() is hoisted out of the loop.
-        String actionKey = action.legalAction().key();
-        SceneNodeId id =
-                new SceneNodeId("interaction/action/" + playerKey + '/' + actionKey);
-        SceneNodeId labelId = new SceneNodeId("label/action/" + playerKey + '/' + actionKey);
-        InteractionHandle handle = SceneNodeIdentity.interaction(
-                projection.tableId() + ":action:" + player + ':' + actionKey);
-        SceneTransform transform = layout.action(seat, placement, index);
-        if (nodes.putIfAbsent(
-                        id,
-                        new InteractionNode(
-                                id,
-                                SceneVisibility.publicToAll(),
-                                handle,
-                                assets.actionInteractionFurniture(),
-                                transform))
-                != null) {
-            throw new IllegalArgumentException("duplicate action interaction node");
-        }
-        if (nodes.putIfAbsent(
-                        labelId,
-                        new ActionLabelNode(
-                                labelId,
-                                SceneVisibility.privateTo(player),
-                                action.legalAction().actionPresentation().labelKey(),
-                                labelTransform(transform),
-                                action.legalAction().actionPresentation().emphasized()))
-                != null) {
-            throw new IllegalArgumentException("duplicate action label node");
-        }
-        bindings.add(new SceneInteractionBinding(handle, player, action.token()));
     }
 
     private static SceneTransform labelTransform(SceneTransform base) {

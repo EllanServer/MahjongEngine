@@ -52,6 +52,7 @@ import top.ellan.mahjong.platform.paper.anchor.PaperTableAnchorRegistry;
 import top.ellan.mahjong.platform.paper.anchor.PaperTableAnchorService;
 import top.ellan.mahjong.plugin.MahjongPaperPlugin;
 import top.ellan.mahjong.plugin.config.PluginConfiguration;
+import top.ellan.mahjong.plugin.i18n.LocalizedMessageCatalog;
 import top.ellan.mahjong.plugin.runtime.FailureSupport;
 import top.ellan.mahjong.presentation.projection.DefaultTableSceneMapper;
 import top.ellan.mahjong.presentation.projection.LatestSceneProjector;
@@ -92,7 +93,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
             BoundedPlatformExecutors executors,
             BoundedDeadlineScheduler deadlines,
             TableActorRegistry actors,
-            PlayerTextResolver messages) {
+            LocalizedMessageCatalog messages) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.configuration = Objects.requireNonNull(configuration, "configuration");
         this.executors = Objects.requireNonNull(executors, "executors");
@@ -134,7 +135,10 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                                         tableGeometry(configuration.layoutGeometry())),
                                 sceneAssets(configuration.craftEngineAssets()),
                                 configuration.viewSettings().overheadHeight(),
-                                configuration.viewSettings().overheadEnabled()),
+                                configuration.viewSettings().overheadEnabled(),
+                                (player, labelKey) ->
+                                        messages.actionButtonWidth(
+                                                privateProjection.locale(player), labelKey)),
                         sceneBackend,
                         new SceneGraphDiffer(),
                         deadlines);
@@ -419,7 +423,9 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                 configured.standingBack(),
                 configured.flatBack(),
                 configured.handHitbox(),
-                configured.actionHitbox());
+                configured.actionHitbox(),
+                TableSceneAssets.actionInteractionVariants(
+                        configured.actionHitboxPrefix()));
     }
 
     private static TableGeometry tableGeometry(

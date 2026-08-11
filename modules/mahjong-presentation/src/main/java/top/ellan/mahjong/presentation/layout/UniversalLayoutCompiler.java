@@ -24,8 +24,10 @@ final class UniversalLayoutCompiler {
                 precomputePointSticks(),
                 precomputeCenterRows(0.34D, geometry.maxAuxiliaryTiles()),
                 precomputeCenterRows(-0.34D, geometry.maxAuxiliaryTiles()),
-                precomputeActions(0.0D),
-                precomputeActions(geometry.secondaryActionOffset()),
+                precomputeActionRows(0.0D),
+                precomputeActionRows(geometry.secondaryActionOffset()),
+                precomputeSeatTangentX(),
+                precomputeSeatTangentZ(),
                 precomputeViewControls(),
                 precomputeWall());
     }
@@ -165,25 +167,36 @@ final class UniversalLayoutCompiler {
         return result;
     }
 
-    private SceneTransform[][] precomputeActions(double extraOutward) {
-        SceneTransform[][] result =
-                new SceneTransform[spec.seatCount()][geometry.maxActions()];
+    private SceneTransform[][] precomputeActionRows(double extraOutward) {
+        int rows = (geometry.maxActions() + 3) / 4;
+        SceneTransform[][] result = new SceneTransform[spec.seatCount()][rows];
         for (int seat = 0; seat < spec.seatCount(); seat++) {
             SeatAxis axis = axis(seat);
-            for (int index = 0; index < geometry.maxActions(); index++) {
-                int row = index / 4;
-                int column = index % 4;
-                double tangent = (column - 1.5D) * geometry.actionColumnSpacing();
-                double outward = geometry.handRadius()
-                        - 0.42D
-                        + extraOutward
-                        + row * geometry.actionRowSpacing();
-                result[seat][index] = transform(
-                        axis.outX() * outward + axis.tangentX() * tangent,
-                        geometry.surfaceHeight() + 0.36D,
-                        axis.outZ() * outward + axis.tangentZ() * tangent,
+            double outward = geometry.handRadius() - 0.42D + extraOutward;
+            for (int row = 0; row < rows; row++) {
+                result[seat][row] = transform(
+                        axis.outX() * outward,
+                        geometry.surfaceHeight() + 0.36D
+                                - row * geometry.actionRowSpacing(),
+                        axis.outZ() * outward,
                         seat);
             }
+        }
+        return result;
+    }
+
+    private double[] precomputeSeatTangentX() {
+        double[] result = new double[spec.seatCount()];
+        for (int seat = 0; seat < result.length; seat++) {
+            result[seat] = axis(seat).tangentX();
+        }
+        return result;
+    }
+
+    private double[] precomputeSeatTangentZ() {
+        double[] result = new double[spec.seatCount()];
+        for (int seat = 0; seat < result.length; seat++) {
+            result[seat] = axis(seat).tangentZ();
         }
         return result;
     }

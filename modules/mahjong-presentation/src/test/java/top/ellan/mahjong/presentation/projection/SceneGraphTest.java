@@ -380,11 +380,69 @@ class SceneGraphTest {
         SceneGraph graph = mapper().map(ordered);
         String player = PLAYER.toString().replace("-", "");
         InteractionNode firstNode = (InteractionNode) graph.nodes().get(
-                new SceneNodeId("interaction/action/" + player + "/z_first"));
+                new SceneNodeId("interaction/action/" + player + "/z_first-0"));
         InteractionNode secondNode = (InteractionNode) graph.nodes().get(
-                new SceneNodeId("interaction/action/" + player + "/a_second"));
+                new SceneNodeId("interaction/action/" + player + "/a_second-1"));
 
         assertTrue(firstNode.transform().z() < secondNode.transform().z());
+    }
+
+    @Test
+    void duplicateSemanticActionsKeepIndependentRoutes() {
+        TableProjection base = projection(TableId.random(), 2, "playing");
+        TableProjection duplicate = new TableProjection(
+                base.tableId(),
+                base.revision(),
+                base.lifecycle(),
+                base.publicView(),
+                base.privateViews(),
+                Map.of(
+                        PLAYER,
+                        List.of(
+                                action(2, "chii", ActionPresentation.actionRow("action.chii")),
+                                action(2, "chii", ActionPresentation.actionRow("action.chii")))));
+
+        SceneGraph graph = mapper().map(duplicate);
+        String prefix = "interaction/action/" + PLAYER.toString().replace("-", "") + "/chii-";
+
+        assertEquals(
+                2,
+                graph.nodes().keySet().stream()
+                        .filter(id -> id.value().startsWith(prefix))
+                        .count());
+        assertEquals(2, graph.interactionBindings().size());
+    }
+
+    @Test
+    void fifthActionWrapsDownWithoutMovingAwayFromThePlayer() {
+        TableProjection base = projection(TableId.random(), 5, "playing");
+        List<AuthorizedAction> actions = new ArrayList<>();
+        for (int index = 0; index < 5; index++) {
+            actions.add(action(
+                    5,
+                    "action" + index,
+                    ActionPresentation.actionRow("action.ready")));
+        }
+        TableProjection wrapped = new TableProjection(
+                base.tableId(),
+                base.revision(),
+                base.lifecycle(),
+                base.publicView(),
+                base.privateViews(),
+                Map.of(PLAYER, List.copyOf(actions)));
+
+        SceneGraph graph = mapper().map(wrapped);
+        String player = PLAYER.toString().replace("-", "");
+        InteractionNode first = (InteractionNode) graph.nodes().get(
+                new SceneNodeId("interaction/action/" + player + "/action0-0"));
+        InteractionNode fifth = (InteractionNode) graph.nodes().get(
+                new SceneNodeId("interaction/action/" + player + "/action4-4"));
+
+        assertEquals(first.transform().x(), fifth.transform().x(), 0.000_001D);
+        assertEquals(
+                GEOMETRY.actionRowSpacing(),
+                first.transform().y() - fifth.transform().y(),
+                0.000_001D);
     }
 
     @Test
