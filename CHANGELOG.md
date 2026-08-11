@@ -2,7 +2,8 @@
 
 ## 2.0.0 - Unreleased
 
-- Replaced the 1.x runtime with a Java 21, CraftEngine-first multi-module core.
+- Replaced the 1.x runtime with a Java 21 portable core and Java 25,
+  CraftEngine-first Paper/Folia adapters.
 - Removed every embedded rules implementation, Kotlin production rule path, GB JNI/native code,
   Display Entity fallback, legacy/shadow mode, global table scan, and direct `mahjong-utils`
   dependency.
@@ -14,7 +15,7 @@
   facts, and stable furniture changes variant without entity respawn.
 - Added the rule-neutral SPI 1.4 tabletop contract and one cached physical layout compiler; rule
   packs now declare their tile inventory, wall shape, stable slots, rotations and action targets.
-- Added Linux and Windows Java 21 verification plus a legacy-free release-artifact contract in
-  GitHub Actions.
+- Added Linux Java 25 verification plus a legacy-free release-artifact contract in GitHub Actions;
+  the external rule SDK and rule packs remain Java 21.
 
 This history intentionally starts at 2.0. The former implementation is not part of this branch.

@@ -4,8 +4,8 @@
 
 要求：
 
-- Java 21；
-- Paper 或 Folia 1.20.1 及以上受支持版本；
+- Java 25；
+- Paper 或 Folia 26.2；
 - CraftEngine 26.7 及以上；
 - 至少一个已安装、已验证并在重启后激活的官方规则包。
 

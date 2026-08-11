@@ -29,11 +29,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Set up Java 21
+      - name: Set up Java 25
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "25"
       - uses: gradle/actions/setup-gradle@v6
       - name: Make wrapper executable
         run: chmod +x ./gradlew
@@ -52,16 +52,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Set up Java 21
+      - name: Set up Java 25
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "25"
       - uses: gradle/actions/setup-gradle@v6
       - run: chmod +x ./gradlew
       - name: Build the platform-independent core plugin
         run: ./gradlew :mahjong-plugin:shadowJar --no-daemon --stacktrace
-      - name: Verify Java 21 and legacy-free artifact
+      - name: Verify Java 25 and legacy-free artifact
         shell: bash
         run: |
           set -euo pipefail
@@ -93,13 +93,13 @@ jobs:
                   header = archive.read(name)[:8]
                   if len(header) == 8 and header[:4] == b"\xca\xfe\xba\xbe":
                       major = struct.unpack(">H", header[6:8])[0]
-                      if major > 65:
+                      if major > 69:
                           bad_classes.append((name, major))
           if bad_entries:
               raise SystemExit(f"legacy/forbidden artifact entries: {bad_entries[:20]}")
           if bad_classes:
-              raise SystemExit(f"classes newer than Java 21: {bad_classes[:20]}")
-          print("Artifact is Java 21 and contains no legacy rule/native path")
+              raise SystemExit(f"classes newer than Java 25: {bad_classes[:20]}")
+          print("Artifact is Java 25 and contains no legacy rule/native path")
           PY
       - name: Upload core plugin
         uses: actions/upload-artifact@v7

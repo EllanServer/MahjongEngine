@@ -1,6 +1,6 @@
 # Contributing
 
-MahjongPaper production code is Java 21. Gradle Kotlin DSL and the CraftEngine bundle generator are the only Kotlin build-time code.
+MahjongPaper's portable core and rule SDK use Java 21. The Paper/CraftEngine adapters and final plugin use Java 25 for Paper 26.2. Gradle Kotlin DSL and the CraftEngine bundle generator are the only Kotlin build-time code.
 
 Dependency direction:
 
@@ -19,6 +19,6 @@ Rules:
 - Prefer CraftEngine YAML for furniture models, variants, hitboxes, seats, interactions, and culling. Java should only coordinate state, security and diffs that configuration cannot express.
 - Rule-pack code may not access Bukkit, files, network, clocks or threads through the SPI.
 - All accepted actions must be persisted through the ordered outbox and must be recoverable from the last committed sequence.
-- Build and test changes through GitHub Actions on branch `2.0`; release artifacts must remain Java 21 and platform-independent.
+- Build and test changes through GitHub Actions on branch `2.0`; the final plugin must remain Java 25, rule-neutral, and legacy-free, while the rule SDK stays Java 21.
 
 The root `architectureCheck` task enforces the most important boundaries.

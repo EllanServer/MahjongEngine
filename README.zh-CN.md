@@ -8,7 +8,7 @@ MahjongPaper 2.0 是一个面向 Paper/Folia 的麻将核心插件。核心不�
 
 `2.0` 分支正在重构中，尚未发布稳定版。当前已经完成：
 
-- Java 21 多模块边界；根项目不再编译旧生产源码。
+- 平台无关核心与规则 SDK 保持 Java 21 边界；Paper/CraftEngine 适配层和最终插件面向 Java 25，根项目不再编译旧生产源码。
 - 每桌一个有界 mailbox 的 `TableActor`，单写者状态，不创建“每桌线程”。
 - 三玩法公平共享的有界规则 CPU 池；单玩法最多占一半 worker。
 - 内存先行、逐桌有序的 SQL outbox、事件日志、快照和恢复。
@@ -58,7 +58,7 @@ Paper / CraftEngine event
 
 ## 安装与命令
 
-稳定版发布前请只在测试服使用。要求 Java 21、Paper/Folia 1.20.1+ 和 CraftEngine 26.7+。参见 [安装说明](docs/installation.zh-CN.md)。
+稳定版发布前请只在测试服使用。要求 Java 25、Paper/Folia 26.2 和 CraftEngine 26.7+。参见 [安装说明](docs/installation.zh-CN.md)。规则 SPI、TCK 与三个外部规则包仍保持 Java 21 字节码。
 
 核心命令：
 
@@ -81,12 +81,12 @@ Paper / CraftEngine event
 
 ## 构建
 
-仓库的真实编译门禁在 GitHub Actions。CI 使用 Java 21 执行：
+仓库的真实编译门禁在 GitHub Actions。最终插件 CI 使用 Java 25 执行：
 
 ```text
 ./gradlew clean check :mahjong-plugin:shadowJar --no-daemon
 ```
 
-最终 JAR 位于 `modules/mahjong-plugin/build/libs/`。CI 还会验证 Java 21 classfile，并拒绝 native、旧控制器、Kotlin runtime 和具体规则实现进入核心 JAR。
+最终 JAR 位于 `modules/mahjong-plugin/build/libs/`。CI 还会验证最终产物不包含高于 Java 25 的 classfile，并拒绝 native、旧控制器、Kotlin runtime 和具体规则实现进入核心 JAR。
 
 三个规则仓及发布要求见 [规则包说明](docs/rule-packs.zh-CN.md)。

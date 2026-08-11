@@ -1,9 +1,7 @@
 package top.ellan.mahjong.runtime.loading;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -13,16 +11,17 @@ import top.ellan.mahjong.runtime.common.RulePackException;
 import top.ellan.mahjong.runtime.security.Hashing;
 
 /**
- * One-pass JAR inspection with a bounded identity cache.
+ * Content-authenticated JAR inspection with a bounded validation cache.
  *
  * <p>Verifying, activating and starting the same coordinate previously re-hashed the whole file and
  * re-walked every archive entry each time, and the pinned path additionally opened the archive twice
- * per load. Inspection is deterministic for a given file, so the result is cached under the file's
- * identity: absolute path plus last-modified time plus size. Any rewrite changes at least one of
- * those, so a replaced artifact is always re-hashed rather than trusted.</p>
+ * per load. Inspection is deterministic for a given file, so the validated result is cached under
+ * its absolute path and SHA-256 digest. Filesystem timestamps and sizes are deliberately not trusted:
+ * a same-size replacement can preserve both, especially on filesystems with coarse timestamp
+ * precision.</p>
  *
- * <p>The SHA-256 is still computed for every distinct file identity; the cache removes repeated work
- * for an unchanged file, it never skips verification of a new one.</p>
+ * <p>The SHA-256 is computed on every lookup. The cache removes the repeated archive walk for
+ * unchanged bytes without ever allowing metadata collisions to bypass verification of new bytes.</p>
  */
 final class ArtifactInspections {
     private static final int CAPACITY = 64;
@@ -35,7 +34,12 @@ final class ArtifactInspections {
         }
     }
 
-    private record Identity(Path path, long lastModifiedMillis, long size) {}
+    private record Identity(Path path, String sha256) {
+        private Identity {
+            Objects.requireNonNull(path, "path");
+            Objects.requireNonNull(sha256, "sha256");
+        }
+    }
 
     private final Map<Identity, Inspection> cache =
             new LinkedHashMap<>(16, 0.75f, true) {
@@ -52,28 +56,25 @@ final class ArtifactInspections {
      */
     synchronized Inspection inspect(Path artifact, ArchiveValidator validator)
             throws IOException, RulePackException {
-        Identity identity = identityOf(artifact);
+        Path normalized = artifact.toAbsolutePath().normalize();
+        String sha256 = Hashing.sha256(normalized);
+        Identity identity = new Identity(normalized, sha256);
         Inspection cached = cache.get(identity);
         if (cached != null) {
             return cached;
         }
-        String sha256 = Hashing.sha256(artifact);
         RulePackManifest manifest;
-        try (ZipFile jar = new ZipFile(artifact.toFile())) {
+        try (ZipFile jar = new ZipFile(normalized.toFile())) {
             manifest = RulePackManifest.read(jar);
             validator.validate(jar, manifest);
         }
         Inspection inspection = new Inspection(sha256, manifest);
-        // Re-read the identity: a rewrite that raced with hashing must not be cached as verified.
-        if (identityOf(artifact).equals(identity)) {
-            cache.put(identity, inspection);
+        // A verdict and digest from different byte sequences must never escape this boundary.
+        if (!Hashing.sha256(normalized).equals(sha256)) {
+            throw new RulePackException("Rule-pack artifact changed during inspection");
         }
+        cache.put(identity, inspection);
         return inspection;
-    }
-
-    private static Identity identityOf(Path artifact) throws IOException {
-        BasicFileAttributes attributes = Files.readAttributes(artifact, BasicFileAttributes.class);
-        return new Identity(artifact, attributes.lastModifiedTime().toMillis(), attributes.size());
     }
 
     @FunctionalInterface

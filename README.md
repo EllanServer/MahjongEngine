@@ -10,7 +10,7 @@ The pre-match path is modular as well: immutable lobby state lives in `mahjong-d
 
 Production packages are classified by responsibility. Domain, application, presentation, CraftEngine, SQL, rule-runtime, and plugin integration roots reject unclassified classes in CI; the plugin root contains only the JavaPlugin entry point and the composition root. Presentation also enforces a 300-line class ceiling: the universal layout is split into cache/compiler/immutable lookup plan, while public, private, and interaction scene projection are separate components.
 
-Rule SPI 1.5 adds rule-aware bots and trustee control without leaking concrete action names into the core. System progression and automation compete for one deterministic, revision-bound `ScheduledRuleAction`; the core owns one bounded timer per table and never scans every table for timeouts.
+Rule SPI 1.6 provides rule-aware bots, trustee control, opening facts, and presentation cues without leaking concrete action names into the core. System progression and automation compete for one deterministic, revision-bound `ScheduledRuleAction`; the core owns one bounded timer per table and never scans every table for timeouts.
 
 The signed rule-pack runtime is likewise separated into activation, administration, installation, class loading, registry verification, security, storage, and lifecycle packages. The Java-only rule SPI remains a deliberately flat, versioned external contract for the three rule repositories.
 
@@ -20,7 +20,7 @@ All modes share one physical table compiler. A rule pack supplies only its actua
 
 The former session/controllers, mixed Java/Kotlin rule code, `mahjong-utils`, GB JNI/CMake tree, Display Entity renderer, legacy/shadow modes, and runtime fallback have been removed.
 
-Requirements: Java 21, Paper/Folia 1.20.1+, and CraftEngine 26.7+.
+Requirements: Java 25, Paper/Folia 26.2, and CraftEngine 26.7+. The portable core and external rule-pack SDK remain Java 21 contracts; only the server-facing adapters and final plugin target Java 25.
 
 See the [Chinese architecture guide](docs/architecture.zh-CN.md), [interaction contract](docs/interaction.zh-CN.md), [installation guide](docs/installation.zh-CN.md), and [rule-pack guide](docs/rule-packs.zh-CN.md).
 

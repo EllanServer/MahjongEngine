@@ -43,13 +43,19 @@ class ArtifactInspectionsTest {
     @Test
     void aReplacedArtifactIsRehashedInsteadOfTrusted() throws Exception {
         Path jar = jar("riichi", "2.0.1");
+        FileTime originalTimestamp = Files.getLastModifiedTime(jar);
+        long originalSize = Files.size(jar);
         ArtifactInspections inspections = new ArtifactInspections();
         String original = inspections.inspect(jar, (archive, manifest) -> {}).sha256();
 
-        // Same path, different bytes: the identity must change so verification runs again.
+        // Preserve every cheap metadata key that previously identified the cache entry. Only the
+        // content digest can reliably distinguish the replacement.
         Files.delete(jar);
         Path replaced = jar("riichi", "2.0.2");
+        Files.setLastModifiedTime(replaced, originalTimestamp);
         assertEquals(jar, replaced);
+        assertEquals(originalSize, Files.size(replaced));
+        assertEquals(originalTimestamp, Files.getLastModifiedTime(replaced));
         AtomicInteger validations = new AtomicInteger();
         var after = inspections.inspect(jar, (archive, manifest) -> validations.incrementAndGet());
 
@@ -59,8 +65,7 @@ class ArtifactInspectionsTest {
     }
 
     @Test
-    void aRewriteThatKeepsSizeAndTimestampStillFailsValidationRatherThanBeingCached()
-            throws Exception {
+    void aRejectedArtifactIsNeverCached() throws Exception {
         Path jar = jar("riichi", "2.0.1");
         FileTime stamp = Files.getLastModifiedTime(jar);
         ArtifactInspections inspections = new ArtifactInspections();
