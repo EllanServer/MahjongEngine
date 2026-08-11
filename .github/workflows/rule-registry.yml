@@ -67,34 +67,178 @@ jobs:
               rmdir "$temporary"
             done
           done
-      - name: Verify entries and their downloadable JAR bytes
+      - name: Verify entries and both downloadable artifact types
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import datetime
           import hashlib
+          import io
           import json
           import pathlib
           import re
           import urllib.parse
           import urllib.request
+          import zipfile
 
           expected_repositories = {
               "riichi": "riichi-mahjong-java",
               "mcr": "mahjong-mcr-java",
               "sichuan": "sichuan-mahjong-java",
           }
-          exact_keys = {
+          code_keys = {
               "id", "version", "url", "sha256", "spiVersion",
               "requiredCoreVersion", "sizeBytes",
           }
+          resource_keys = code_keys | {
+              "resourceUrl", "resourceSha256", "resourceSizeBytes",
+          }
+
+          def verify_download(url, expected_size, expected_sha256):
+              request = urllib.request.Request(url, headers={"User-Agent": "MahjongEngine-registry-builder"})
+              digest = hashlib.sha256()
+              total = 0
+              content = bytearray()
+              with urllib.request.urlopen(request, timeout=120) as response:
+                  while chunk := response.read(65536):
+                      total += len(chunk)
+                      if total > 64 * 1024 * 1024:
+                          raise SystemExit(f"artifact too large: {url}")
+                      digest.update(chunk)
+                      content.extend(chunk)
+              if total != expected_size or digest.hexdigest() != expected_sha256:
+                  raise SystemExit(f"artifact bytes differ: {url}")
+              return bytes(content)
+
+          def properties(data, label):
+              result = {}
+              for raw in data.decode("utf-8").splitlines():
+                  line = raw.strip()
+                  if not line or line.startswith(("#", "!")):
+                      continue
+                  separator = line.find("=")
+                  if separator < 1:
+                      raise SystemExit(f"malformed {label}")
+                  key, value = line[:separator].strip(), line[separator + 1:].strip()
+                  if not key or key in result:
+                      raise SystemExit(f"duplicate {label} key: {key}")
+                  result[key] = value
+              return result
+
+          def verify_resource_archive(content, rule_id, version):
+              required = {
+                  "META-INF/mahjong-rule-resources.properties",
+                  "META-INF/mahjong-rule-sounds.properties",
+                  "META-INF/RESOURCEPACK_ATTRIBUTION.md",
+                  "craftengine/_bundle_index.txt",
+                  "craftengine/_bundle_manifest.sha256",
+                  "craftengine/pack.yml",
+              }
+              with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                  files = {}
+                  total_uncompressed = 0
+                  if len(archive.infolist()) > 20_000:
+                      raise SystemExit("rule resource ZIP has too many entries")
+                  for item in archive.infolist():
+                      name = item.filename
+                      parts = pathlib.PurePosixPath(name.rstrip("/")).parts
+                      if ("\\" in name or name.startswith("/") or ".." in parts
+                              or not parts or item.file_size < 0
+                              or item.file_size > 64 * 1024 * 1024):
+                          raise SystemExit(f"unsafe rule resource path: {name}")
+                      if item.is_dir():
+                          continue
+                      total_uncompressed += item.file_size
+                      if total_uncompressed > 256 * 1024 * 1024:
+                          raise SystemExit("rule resource ZIP exceeds expansion limit")
+                      lower = name.lower()
+                      allowed_meta = (name in required
+                                      or name.startswith("META-INF/licenses/"))
+                      if (lower.endswith((".class", ".jar", ".java"))
+                              or name.startswith("META-INF/services/")
+                              or (not name.startswith("craftengine/") and not allowed_meta)):
+                          raise SystemExit(f"non-CE rule resource payload: {name}")
+                      if name in files:
+                          raise SystemExit(f"duplicate rule resource path: {name}")
+                      files[name] = archive.read(item)
+                  if not required.issubset(files):
+                      raise SystemExit("rule resource ZIP is missing required CE metadata")
+
+                  descriptor = properties(
+                      files["META-INF/mahjong-rule-resources.properties"],
+                      "rule resource descriptor",
+                  )
+                  if descriptor != {"format": "1", "id": rule_id, "version": version}:
+                      raise SystemExit("rule resource descriptor differs from release coordinate")
+
+                  namespace = "mahjong_" + rule_id + "_v" + re.sub(
+                      r"[^0-9A-Za-z]", "_", version,
+                  ).lower()
+                  sounds = properties(
+                      files["META-INF/mahjong-rule-sounds.properties"],
+                      "rule sound descriptor",
+                  )
+                  if (not sounds or any(
+                          not value.split(",", 1)[0].strip().startswith(namespace + ":")
+                          for value in sounds.values())):
+                      raise SystemExit("rule sounds must use a version-isolated CE namespace")
+                  registry_path = (
+                      f"craftengine/resourcepack/assets/{namespace}/sounds.json"
+                  )
+                  if registry_path not in files:
+                      raise SystemExit("versioned CraftEngine sounds.json is missing")
+                  namespace_lines = [
+                      line.strip()
+                      for line in files["craftengine/pack.yml"]
+                          .decode("utf-8").splitlines()
+                      if line.strip().startswith("namespace:")
+                  ]
+                  if namespace_lines != [f"namespace: {namespace}"]:
+                      raise SystemExit("CraftEngine pack namespace differs from rule version")
+                  registry = json.loads(files[registry_path])
+                  for value in sounds.values():
+                      event = value.split(",", 1)[0].split(":", 1)[1]
+                      if event not in registry:
+                          raise SystemExit(f"sounds.json has no event: {event}")
+
+                  index = {
+                      line.strip()
+                      for line in files["craftengine/_bundle_index.txt"]
+                          .decode("utf-8").splitlines()
+                      if line.strip()
+                  }
+                  actual = {
+                      name.removeprefix("craftengine/")
+                      for name in files
+                      if name.startswith("craftengine/")
+                      and name != "craftengine/_bundle_index.txt"
+                  }
+                  if index != actual or "_bundle_manifest.sha256" not in index:
+                      raise SystemExit("CraftEngine bundle index differs from ZIP contents")
+                  manifest = {}
+                  for line in (
+                      files["craftengine/_bundle_manifest.sha256"]
+                          .decode("utf-8").splitlines()
+                  ):
+                      digest, separator, name = line.partition("  ")
+                      if (separator != "  " or not re.fullmatch(r"[0-9a-f]{64}", digest)
+                              or not name or name in manifest):
+                          raise SystemExit("invalid CraftEngine bundle manifest")
+                      manifest[name] = digest
+                  content_names = index - {"_bundle_manifest.sha256"}
+                  if set(manifest) != content_names:
+                      raise SystemExit("CraftEngine index and manifest differ")
+                  for name, digest in manifest.items():
+                      if hashlib.sha256(files["craftengine/" + name]).hexdigest() != digest:
+                          raise SystemExit(f"CraftEngine content hash mismatch: {name}")
+
           entries = []
           coordinates = set()
           seen_ids = set()
           for path in sorted(pathlib.Path("registry-entries").glob("*.json")):
               entry = json.loads(path.read_text(encoding="utf-8"))
-              if set(entry) != exact_keys:
+              if set(entry) not in (code_keys, resource_keys):
                   raise SystemExit(f"unexpected fields in {path}: {set(entry)}")
               rule_id = entry["id"]
               if rule_id not in expected_repositories:
@@ -102,6 +246,9 @@ jobs:
               version = entry["version"]
               if not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z._+-]{0,63}", version):
                   raise SystemExit(f"invalid version in {path}")
+              semantic = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", version)
+              if semantic and tuple(map(int, semantic.groups())) >= (2, 0, 2) and set(entry) != resource_keys:
+                  raise SystemExit(f"rule versions 2.0.2+ require a resource artifact: {path}")
               coordinate = (rule_id, version)
               if coordinate in coordinates:
                   raise SystemExit(f"duplicate coordinate: {coordinate}")
@@ -117,23 +264,27 @@ jobs:
               expected_prefix = f"/EllanServer/{expected_repositories[rule_id]}/releases/download/v{version}/"
               if parsed.scheme != "https" or parsed.netloc != "github.com" or not parsed.path.startswith(expected_prefix):
                   raise SystemExit(f"unexpected artifact URL in {path}: {entry['url']}")
-              request = urllib.request.Request(entry["url"], headers={"User-Agent": "MahjongEngine-registry-builder"})
-              digest = hashlib.sha256()
-              total = 0
-              with urllib.request.urlopen(request, timeout=120) as response:
-                  while chunk := response.read(65536):
-                      total += len(chunk)
-                      if total > 64 * 1024 * 1024:
-                          raise SystemExit(f"artifact too large: {entry['url']}")
-                      digest.update(chunk)
-              if total != entry["sizeBytes"] or digest.hexdigest() != entry["sha256"]:
-                  raise SystemExit(f"artifact bytes differ from {path}")
+              verify_download(entry["url"], entry["sizeBytes"], entry["sha256"])
+              if set(entry) == resource_keys:
+                  if not isinstance(entry["resourceSizeBytes"], int) or not 1 <= entry["resourceSizeBytes"] <= 64 * 1024 * 1024:
+                      raise SystemExit(f"invalid resource size in {path}")
+                  if not re.fullmatch(r"[0-9a-f]{64}", entry["resourceSha256"]):
+                      raise SystemExit(f"invalid resource SHA-256 in {path}")
+                  resource_parsed = urllib.parse.urlparse(entry["resourceUrl"])
+                  if resource_parsed.scheme != "https" or resource_parsed.netloc != "github.com" or not resource_parsed.path.startswith(expected_prefix):
+                      raise SystemExit(f"unexpected resource URL in {path}: {entry['resourceUrl']}")
+                  resource_content = verify_download(
+                      entry["resourceUrl"],
+                      entry["resourceSizeBytes"],
+                      entry["resourceSha256"],
+                  )
+                  verify_resource_archive(resource_content, rule_id, version)
               entries.append(entry)
 
           if seen_ids != set(expected_repositories):
               raise SystemExit(f"registry must include all official ids; got {seen_ids}")
           generated = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-          payload = {"format": 1, "generatedAt": generated, "packs": sorted(entries, key=lambda item: (item["id"], item["version"]))}
+          payload = {"format": 2, "generatedAt": generated, "packs": sorted(entries, key=lambda item: (item["id"], item["version"]))}
           pathlib.Path("registry-payload.json").write_text(
               json.dumps(payload, ensure_ascii=True, separators=(",", ":")),
               encoding="utf-8",

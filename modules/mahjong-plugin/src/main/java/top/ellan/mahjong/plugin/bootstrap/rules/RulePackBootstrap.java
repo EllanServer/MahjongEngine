@@ -25,6 +25,7 @@ import top.ellan.mahjong.runtime.loading.RulePackLoader;
 import top.ellan.mahjong.runtime.storage.RulePackPaths;
 import top.ellan.mahjong.runtime.storage.RulePackReferenceIndex;
 import top.ellan.mahjong.runtime.lifecycle.RulePackRuntime;
+import top.ellan.mahjong.runtime.resources.RuleResourcePackResolver;
 
 /** Starts installed providers and builds the signed official-package administration boundary. */
 public final class RulePackBootstrap {
@@ -62,8 +63,12 @@ public final class RulePackBootstrap {
         RuleActivationStore activation = new RuleActivationStore(paths.activationState());
         RulePackInventoryReader inventory = new RulePackInventoryReader(paths, activation);
         Optional<RulePackRuntime> running = startRuntime(paths, loader, activation);
-        Optional<RulePackAdminService> admin = createAdmin(paths, loader, activation, running);
-        return new RulePackRuntimeServices(running, admin, inventory);
+        Optional<OfficialTrustRoot> trustRoot = loadTrustRoot();
+        Optional<RuleResourcePackResolver> resources = trustRoot.map(
+                trust -> new RuleResourcePackResolver(paths, activation, trust));
+        Optional<RulePackAdminService> admin = trustRoot.flatMap(
+                trust -> createAdmin(paths, loader, activation, running, trust));
+        return new RulePackRuntimeServices(running, admin, inventory, resources);
     }
 
     private Optional<RulePackRuntime> startRuntime(
@@ -78,7 +83,8 @@ public final class RulePackBootstrap {
             new RulePackRuntimeServices(
                             Optional.of(runtime),
                             Optional.empty(),
-                            new RulePackInventoryReader(paths, activation))
+                            new RulePackInventoryReader(paths, activation),
+                            Optional.empty())
                     .close();
             logger.log(Level.SEVERE, "Rule-pack runtime failed closed", failure);
             return Optional.empty();
@@ -89,16 +95,13 @@ public final class RulePackBootstrap {
             RulePackPaths paths,
             RulePackLoader loader,
             RuleActivationStore activation,
-            Optional<RulePackRuntime> running) {
-        if (registryUrl.isBlank()) {
-            return Optional.empty();
-        }
+            Optional<RulePackRuntime> running,
+            OfficialTrustRoot trustRoot) {
         try {
             URI registryUri = URI.create(registryUrl);
             if (!"https".equalsIgnoreCase(registryUri.getScheme())) {
                 throw new IllegalArgumentException("rules.registry-url must use HTTPS");
             }
-            OfficialTrustRoot trustRoot = EmbeddedRuleTrustRoot.load(pluginClassLoader);
             HttpClient client =
                     HttpClient.newBuilder()
                             .executor(ioExecutor)
@@ -138,8 +141,20 @@ public final class RulePackBootstrap {
                             installer,
                             activation,
                             garbageCollector));
-        } catch (IOException | RulePackException | IllegalArgumentException failure) {
+        } catch (IllegalArgumentException failure) {
             logger.log(Level.WARNING, "Rule-pack administration disabled", failure);
+            return Optional.empty();
+        }
+    }
+
+    private Optional<OfficialTrustRoot> loadTrustRoot() {
+        if (registryUrl.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(EmbeddedRuleTrustRoot.load(pluginClassLoader));
+        } catch (IOException | RulePackException failure) {
+            logger.log(Level.WARNING, "Rule-pack trust root is unavailable", failure);
             return Optional.empty();
         }
     }

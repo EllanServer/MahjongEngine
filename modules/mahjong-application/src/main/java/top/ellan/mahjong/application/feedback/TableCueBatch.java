@@ -7,18 +7,19 @@ import java.util.Set;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.RuleId;
+import top.ellan.mahjong.spi.RulePackRef;
 import top.ellan.mahjong.spi.RulePresentationCue;
 
 /** Immutable one-shot feedback emitted only after an accepted in-memory commit. */
 public record TableCueBatch(
         TableId tableId,
-        RuleId ruleId,
+        RulePackRef rulePack,
         long revision,
         List<PlayerId> audience,
         List<RulePresentationCue> cues) {
     public TableCueBatch {
         Objects.requireNonNull(tableId, "tableId");
-        Objects.requireNonNull(ruleId, "ruleId");
+        Objects.requireNonNull(rulePack, "rulePack");
         if (revision < 1) {
             throw new IllegalArgumentException("cue revision must follow an accepted transition");
         }
@@ -38,5 +39,9 @@ public record TableCueBatch(
                 }
             });
         }
+    }
+
+    public RuleId ruleId() {
+        return rulePack.ruleId();
     }
 }

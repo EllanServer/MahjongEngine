@@ -8,14 +8,14 @@ import top.ellan.mahjong.domain.table.TableAggregate;
 import top.ellan.mahjong.domain.table.ParticipantRole;
 import top.ellan.mahjong.domain.table.TableParticipant;
 import top.ellan.mahjong.spi.PlayerId;
-import top.ellan.mahjong.spi.RuleId;
 import top.ellan.mahjong.spi.RuleOpeningPresentation;
+import top.ellan.mahjong.spi.RulePackRef;
 
 /** Detects hand boundaries without replaying an opening when an actor restores a snapshot. */
 final class TableOpeningPublisher {
     private final TableOpeningPresentationPort port;
     private final top.ellan.mahjong.domain.table.TableId tableId;
-    private final RuleId ruleId;
+    private final RulePackRef rulePack;
     private final java.util.List<PlayerId> audience;
     private final boolean presentInitialOpening;
     private boolean initialized;
@@ -24,12 +24,12 @@ final class TableOpeningPublisher {
     TableOpeningPublisher(
             TableOpeningPresentationPort port,
             TableAggregate aggregate,
-            RuleId ruleId,
+            RulePackRef rulePack,
             boolean presentInitialOpening) {
         this.port = Objects.requireNonNull(port, "port");
         Objects.requireNonNull(aggregate, "aggregate");
         tableId = aggregate.tableId();
-        this.ruleId = Objects.requireNonNull(ruleId, "ruleId");
+        this.rulePack = Objects.requireNonNull(rulePack, "rulePack");
         audience = aggregate.participants().stream()
                 .filter(participant -> participant.role() != ParticipantRole.BOT)
                 .map(TableParticipant::playerId)
@@ -52,7 +52,7 @@ final class TableOpeningPublisher {
             return;
         }
         try {
-            port.present(new TableOpeningBatch(tableId, ruleId, revision, audience, opening));
+            port.present(new TableOpeningBatch(tableId, rulePack, revision, audience, opening));
         } catch (RuntimeException ignored) {
             // A cosmetic opening is never allowed to roll back or block rule state.
         }

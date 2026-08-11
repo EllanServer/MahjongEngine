@@ -55,6 +55,11 @@ public final class RulePackPaths {
         return versionDirectory(ruleId, version).resolve(ruleId.value() + "-rule-pack.jar");
     }
 
+    public Path installedResources(RuleId ruleId, String version) {
+        return versionDirectory(ruleId, version)
+                .resolve(ruleId.value() + "-resource-pack.zip");
+    }
+
     public Path requireInsideRoot(Path candidate) {
         Path normalized = candidate.toAbsolutePath().normalize();
         if (!normalized.startsWith(root)) {

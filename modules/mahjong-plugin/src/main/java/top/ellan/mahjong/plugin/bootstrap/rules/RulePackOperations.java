@@ -20,10 +20,15 @@ import top.ellan.mahjong.spi.RuleId;
 public final class RulePackOperations {
     private final RulePackRuntimeServices services;
     private final FairRuleExecutor rules;
+    private final RuleResourceActivator resources;
 
-    public RulePackOperations(RulePackRuntimeServices services, FairRuleExecutor rules) {
+    public RulePackOperations(
+            RulePackRuntimeServices services,
+            FairRuleExecutor rules,
+            RuleResourceActivator resources) {
         this.services = Objects.requireNonNull(services, "services");
         this.rules = Objects.requireNonNull(rules, "rules");
+        this.resources = Objects.requireNonNull(resources, "resources");
     }
 
     public RulePackInventoryReader inventory() {
@@ -71,6 +76,11 @@ public final class RulePackOperations {
                 services.runtime()
                         .orElseThrow(
                                 () -> new IllegalStateException("Rule-pack runtime is unavailable")),
-                rules);
+                rules,
+                services.resources()
+                        .orElseThrow(
+                                () -> new IllegalStateException(
+                                        "Rule resource verification is unavailable")),
+                resources);
     }
 }

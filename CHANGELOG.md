@@ -9,6 +9,9 @@
   dependency.
 - Added the signed rule-pack SPI/runtime, per-table bounded actor, fair bounded rule execution,
   memory-first SQL outbox and replayable snapshots.
+- Split every official rule version into a pure rule JAR and a separately signed resource ZIP;
+  the plugin retains common table/chair/tile visuals while rule-owned sounds no longer live in
+  either the plugin bundle or the rule classloader.
 - Moved public scene assets, furniture geometry, hitboxes, seats, interactions, and entity culling
   into the CraftEngine bundle. Secret faces remain per-player packet projections.
 - Added CE-owned opening-dice slots and face variants; rule packs publish only deterministic dice

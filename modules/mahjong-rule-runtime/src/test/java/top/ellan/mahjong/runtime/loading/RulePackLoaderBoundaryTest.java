@@ -79,6 +79,15 @@ class RulePackLoaderBoundaryTest {
     }
 
     @Test
+    void rejectsPresentationResourcesMixedIntoTheRuleJar() throws Exception {
+        Path jar = jarWith("assets/riichi/sounds/tile_draw.ogg");
+
+        RulePackException failure = assertThrows(
+                RulePackException.class, () -> new RulePackLoader("2.0.0").load(jar, entry(jar)));
+        assertTrue(failure.getMessage().contains("must not contain resource-pack content"));
+    }
+
+    @Test
     void acceptsTheIntermediateCoreDirectoryEntryAShadedPackContains() throws Exception {
         // Shaded rule packs necessarily contain the parent directory entries of their own package.
         // Those carry no bytecode, so rejecting them would reject every real pack.

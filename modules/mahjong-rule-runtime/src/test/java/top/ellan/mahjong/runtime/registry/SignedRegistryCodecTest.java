@@ -2,6 +2,7 @@ package top.ellan.mahjong.runtime.registry;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
@@ -45,6 +46,26 @@ class SignedRegistryCodecTest {
                 () -> SignedRegistryCodec.decode(envelope(mutated, signature), trust));
     }
 
+    @Test
+    void formatTwoBindsASeparateResourceArtifact() throws Exception {
+        KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+        byte[] payload = payloadV2();
+        byte[] envelope = envelope(payload, sign(keyPair, payload));
+
+        VerifiedRegistryDocument decoded =
+                SignedRegistryCodec.decode(
+                        envelope, OfficialTrustRoot.fromX509(keyPair.getPublic().getEncoded()));
+
+        RulePackRegistryEntry entry = decoded.registry().entries().getFirst();
+        assertEquals(2, decoded.registry().formatVersion());
+        assertEquals(2, decoded.registry().entries().size());
+        assertTrue(entry.resources().isPresent());
+        assertEquals(
+                "https://example.invalid/riichi-resources.zip",
+                entry.resources().orElseThrow().uri().toString());
+        assertTrue(decoded.registry().entries().get(1).resources().isEmpty());
+    }
+
     private static byte[] payload() {
         return ("{\"format\":1,\"generatedAt\":\"2026-08-08T00:00:00Z\",\"packs\":[{"
                         + "\"id\":\"riichi\",\"version\":\"1.2.3\","
@@ -55,6 +76,29 @@ class SignedRegistryCodecTest {
                         + SpiVersion.CURRENT
                         + "\","
                         + "\"requiredCoreVersion\":\">=1.5.0\",\"sizeBytes\":1234}]}")
+                .getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static byte[] payloadV2() {
+        return ("{\"format\":2,\"generatedAt\":\"2026-08-11T00:00:00Z\",\"packs\":[{"
+                        + "\"id\":\"riichi\",\"version\":\"2.0.2\","
+                        + "\"url\":\"https://example.invalid/riichi.jar\","
+                        + "\"sha256\":\""
+                        + "0".repeat(64)
+                        + "\",\"spiVersion\":\""
+                        + SpiVersion.CURRENT
+                        + "\",\"requiredCoreVersion\":\">=2.0.0\",\"sizeBytes\":1234,"
+                        + "\"resourceUrl\":\"https://example.invalid/riichi-resources.zip\","
+                        + "\"resourceSha256\":\""
+                        + "1".repeat(64)
+                        + "\",\"resourceSizeBytes\":4321},{"
+                        + "\"id\":\"mcr\",\"version\":\"2.0.1\","
+                        + "\"url\":\"https://example.invalid/mcr.jar\","
+                        + "\"sha256\":\""
+                        + "2".repeat(64)
+                        + "\",\"spiVersion\":\""
+                        + SpiVersion.CURRENT
+                        + "\",\"requiredCoreVersion\":\">=2.0.0\",\"sizeBytes\":1000}]}")
                 .getBytes(StandardCharsets.UTF_8);
     }
 

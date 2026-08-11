@@ -28,7 +28,6 @@ object CraftEngineBundleGenerator {
         require(configurationFiles.isNotEmpty()) { "No CraftEngine configuration files found" }
         verifyTileFactory(configurationFiles, resourcepackDir)
         verifyOpeningDice(configurationFiles, resourcepackDir)
-        verifyFeedbackAssets(resourcepackDir)
         verifyLocales(resourcepackDir)
 
         val outputRoot = outputDir.resolve("craftengine").resolve("mahjongpaper")
@@ -129,19 +128,6 @@ object CraftEngineBundleGenerator {
                 .toSet()
         require(modelFaces == expectedFaces) {
             "CraftEngine opening dice models must contain faces 1 through 6"
-        }
-    }
-
-    private fun verifyFeedbackAssets(resourcepackDir: File) {
-        val sounds =
-            resourcepackDir
-                .resolve("assets/mahjongcraft/sounds.json")
-                .also { require(it.isFile) { "Mahjong sound registry is missing" } }
-                .readText(Charsets.UTF_8)
-        listOf("opening_dice", "opening_wall_break").forEach { cue ->
-            require(Regex("\"${Regex.escape(cue)}\"\\s*:").containsMatchIn(sounds)) {
-                "Opening sound event is missing: $cue"
-            }
         }
     }
 

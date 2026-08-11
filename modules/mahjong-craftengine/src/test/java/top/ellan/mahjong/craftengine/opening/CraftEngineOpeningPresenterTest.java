@@ -20,6 +20,7 @@ import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.RuleDiceRoll;
 import top.ellan.mahjong.spi.RuleId;
 import top.ellan.mahjong.spi.RuleOpeningPresentation;
+import top.ellan.mahjong.spi.RulePackRef;
 import top.ellan.mahjong.spi.SeatId;
 
 class CraftEngineOpeningPresenterTest {
@@ -59,7 +60,7 @@ class CraftEngineOpeningPresenterTest {
 
         presenter.present(new TableOpeningBatch(
                 table,
-                new RuleId("mcr"),
+                new RulePackRef(new RuleId("mcr"), "2.0.2", "0".repeat(64), 1),
                 0,
                 List.of(new PlayerId(UUID.randomUUID())),
                 opening));

@@ -29,6 +29,7 @@ import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.platform.paper.concurrent.BoundedPlatformExecutors;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackBootstrap;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackOperations;
+import top.ellan.mahjong.plugin.bootstrap.rules.RuleResourceStartup;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackRuntimeServices;
 import top.ellan.mahjong.plugin.bootstrap.sql.DatabaseBootstrap;
 import top.ellan.mahjong.plugin.bootstrap.sql.DatabaseRuntime;
@@ -280,7 +281,8 @@ public final class MahjongRuntime implements AutoCloseable {
     }
 
     private RulePackOperations ruleAdmin() {
-        return new RulePackOperations(requireServices().rules(), ruleExecutor);
+        return new RulePackOperations(
+                requireServices().rules(), ruleExecutor, platform::activateRuleResource);
     }
 
     public CompletionStage<List<PlayerMatchHistoryEntry>> playerHistory(
@@ -322,11 +324,15 @@ public final class MahjongRuntime implements AutoCloseable {
                                     clock,
                                     plugin.getLogger())
                             .initialize();
+            RuleResourceStartup ruleResources =
+                    new RuleResourceStartup(rules, platform::installRuleResources);
+            ruleResources.installActive();
             Optional<RulePackMatchCoordinator> coordinator =
                     createCoordinator(database, rules);
             initialized = new RuntimeServices(database, rules, coordinator);
             services.set(initialized);
             bindAndRecover(initialized);
+            ruleResources.installLoaded();
             updateReadyState(coordinator);
         } catch (RuntimeException failure) {
             if (initialized != null) {

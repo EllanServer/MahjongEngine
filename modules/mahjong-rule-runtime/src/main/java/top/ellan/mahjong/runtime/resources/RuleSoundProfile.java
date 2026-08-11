@@ -1,10 +1,10 @@
-package top.ellan.mahjong.platform.paper.feedback;
+package top.ellan.mahjong.runtime.resources;
 
 import java.util.Objects;
 
-/** Validated immutable sound parameters supplied by a verified rule resource pack. */
-public record PaperSoundProfile(String key, float volume, float pitch) {
-    public PaperSoundProfile {
+/** Platform-neutral sound key and playback parameters supplied by a rule resource pack. */
+public record RuleSoundProfile(String key, float volume, float pitch) {
+    public RuleSoundProfile {
         key = Objects.requireNonNull(key, "key").trim();
         if (!key.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
             throw new IllegalArgumentException("sound key must be namespaced");

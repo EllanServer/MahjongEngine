@@ -2,9 +2,12 @@ package top.ellan.mahjong.plugin.platform;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -36,9 +39,12 @@ import top.ellan.mahjong.craftengine.privateview.SparrowPrivateProjectionGateway
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.platform.paper.concurrent.BoundedPlatformExecutors;
 import top.ellan.mahjong.platform.paper.feedback.PaperOpeningSoundGateway;
+import top.ellan.mahjong.platform.paper.feedback.PaperRuleSoundCatalog;
 import top.ellan.mahjong.platform.paper.feedback.PaperSoundDispatcher;
 import top.ellan.mahjong.platform.paper.feedback.PaperSoundProfile;
 import top.ellan.mahjong.platform.paper.feedback.PaperTableSoundGateway;
+import top.ellan.mahjong.platform.paper.feedback.RuleSoundBinding;
+import top.ellan.mahjong.platform.paper.feedback.RuleSoundProfiles;
 import top.ellan.mahjong.platform.paper.region.PaperRegionScheduler;
 import top.ellan.mahjong.platform.paper.anchor.PaperTableAnchorRegistry;
 import top.ellan.mahjong.platform.paper.anchor.PaperTableAnchorService;
@@ -51,6 +57,10 @@ import top.ellan.mahjong.presentation.scene.SceneGraphDiffer;
 import top.ellan.mahjong.presentation.layout.TableGeometry;
 import top.ellan.mahjong.presentation.asset.TableSceneAssets;
 import top.ellan.mahjong.presentation.layout.UniversalTableLayout;
+import top.ellan.mahjong.runtime.resources.InspectedRuleResourcePack;
+import top.ellan.mahjong.runtime.resources.RuleSoundCatalog;
+import top.ellan.mahjong.runtime.resources.RuleSoundProfile;
+import top.ellan.mahjong.spi.RulePackRef;
 import top.ellan.mahjong.spi.RulePresentationCueType;
 
 /** Owns the Paper/CraftEngine presentation boundary and its restart-scoped resources. */
@@ -68,6 +78,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
     private final LatestSceneProjector sceneProjector;
     private final TablePresentationCuePort presentationCues;
     private final CraftEngineOpeningPresenter openingPresentations;
+    private final PaperRuleSoundCatalog soundCatalog = new PaperRuleSoundCatalog();
     private final AtomicBoolean bundleInstalled = new AtomicBoolean();
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -94,9 +105,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
         interactions = new InteractionRouter(actors, privateProjection, privateProjection);
         mutations = new DirectCraftEngineMutationGateway(plugin, anchors, privateProjection);
         PaperSoundDispatcher sounds = new PaperSoundDispatcher(plugin);
-        PluginConfiguration.SoundSettings soundSettings = configuration.soundSettings();
-        presentationCues = new PaperTableSoundGateway(
-                sounds, cueProfiles(soundSettings.cues()), soundSettings.variantPrefixes());
+        presentationCues = new PaperTableSoundGateway(sounds, soundCatalog);
         sceneBackend =
                 new CraftEngineSceneBackend(
                         mutations,
@@ -134,8 +143,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                         Duration.ofMillis(Math.multiplyExact(opening.revealTicks(), 50L))),
                 new PaperOpeningSoundGateway(
                         sounds,
-                        soundProfile(soundSettings.openingDice()),
-                        soundProfile(soundSettings.openingWall())));
+                        soundCatalog));
     }
 
     /** Registers platform listeners and starts the immutable CE bundle installation once. */
@@ -148,6 +156,57 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
         }
         registerListeners(seatInteractions, playerPresence);
         installBundle();
+    }
+
+    /** Installs and activates all resources belonging to the startup rule selection. */
+    public void installRuleResources(List<InspectedRuleResourcePack> resources)
+            throws IOException {
+        ArrayList<RuleSoundBinding> profiles = new ArrayList<>();
+        boolean changed = false;
+        for (InspectedRuleResourcePack resource : List.copyOf(resources)) {
+            CraftEngineBundleInstaller.InstallResult result =
+                    CraftEngineBundleInstaller.fromArchive(
+                                    resource.archive(), ruleBundleFolder(resource))
+                            .install(craftEngine);
+            changed |= result.changed();
+            profiles.add(soundBinding(resource));
+        }
+        soundCatalog.replaceAll(profiles);
+        if (changed) {
+            plugin.getLogger()
+                    .info(
+                            "Rule resources updated; their sounds become available after CraftEngine reload.");
+        }
+    }
+
+    /** Switches one rule's verified companion resources during an immediate hot swap. */
+    public void activateRuleResource(
+            RulePackRef reference, Optional<InspectedRuleResourcePack> resource) throws IOException {
+        Objects.requireNonNull(reference, "reference");
+        Objects.requireNonNull(resource, "resource");
+        if (resource.isEmpty()) {
+            soundCatalog.remove(reference);
+            return;
+        }
+        InspectedRuleResourcePack selected = resource.orElseThrow();
+        if (!selected.belongsTo(reference)) {
+            throw new IllegalArgumentException(
+                    "Rule resources differ from the activation coordinate");
+        }
+        CraftEngineBundleInstaller.InstallResult result =
+                CraftEngineBundleInstaller.fromArchive(
+                                selected.archive(), ruleBundleFolder(selected))
+                        .install(craftEngine);
+        soundCatalog.put(soundBinding(selected));
+        if (result.changed()) {
+            plugin.getLogger()
+                    .info(
+                            "Rule resources updated for "
+                                    + reference.ruleId()
+                                    + ':'
+                                    + reference.version()
+                                    + "; CraftEngine reload is required.");
+        }
     }
 
     public LatestSceneProjector sceneProjector() {
@@ -348,16 +407,37 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                 configured.maxActions());
     }
 
-    private static Map<RulePresentationCueType, PaperSoundProfile> cueProfiles(
-            Map<RulePresentationCueType, PluginConfiguration.SoundProfile> configured) {
+    private static RuleSoundProfiles soundProfiles(RuleSoundCatalog configured) {
         EnumMap<RulePresentationCueType, PaperSoundProfile> profiles =
                 new EnumMap<>(RulePresentationCueType.class);
-        configured.forEach((type, profile) -> profiles.put(type, soundProfile(profile)));
-        return Map.copyOf(profiles);
+        configured.cues().forEach(
+                (type, profile) -> profiles.put(type, soundProfile(profile)));
+        return new RuleSoundProfiles(
+                Map.copyOf(profiles),
+                soundProfile(configured.openingDice()),
+                soundProfile(configured.openingWall()));
     }
 
-    private static PaperSoundProfile soundProfile(PluginConfiguration.SoundProfile configured) {
+    private static PaperSoundProfile soundProfile(RuleSoundProfile configured) {
         return new PaperSoundProfile(configured.key(), configured.volume(), configured.pitch());
+    }
+
+    private static RuleSoundBinding soundBinding(InspectedRuleResourcePack resource) {
+        return new RuleSoundBinding(
+                resource.ruleId(),
+                resource.version(),
+                resource.jarSha256(),
+                soundProfiles(resource.sounds()));
+    }
+
+    private static String ruleBundleFolder(InspectedRuleResourcePack resource) {
+        String version = resource.version().replaceAll("[^0-9A-Za-z._-]", "_");
+        return "mahjongpaper-rule-"
+                + resource.ruleId().value()
+                + '-'
+                + version
+                + '-'
+                + resource.jarSha256().substring(0, 12);
     }
 
     @Override

@@ -6,17 +6,20 @@ import java.util.Optional;
 import top.ellan.mahjong.runtime.admin.RulePackAdminService;
 import top.ellan.mahjong.runtime.admin.RulePackInventoryReader;
 import top.ellan.mahjong.runtime.lifecycle.RulePackRuntime;
+import top.ellan.mahjong.runtime.resources.RuleResourcePackResolver;
 
 /** Restart-scoped rule-pack runtime and administration services. */
 public record RulePackRuntimeServices(
         Optional<RulePackRuntime> runtime,
         Optional<RulePackAdminService> admin,
-        RulePackInventoryReader inventory)
+        RulePackInventoryReader inventory,
+        Optional<RuleResourcePackResolver> resources)
         implements AutoCloseable {
     public RulePackRuntimeServices {
         Objects.requireNonNull(runtime, "runtime");
         Objects.requireNonNull(admin, "admin");
         Objects.requireNonNull(inventory, "inventory");
+        Objects.requireNonNull(resources, "resources");
     }
 
     @Override

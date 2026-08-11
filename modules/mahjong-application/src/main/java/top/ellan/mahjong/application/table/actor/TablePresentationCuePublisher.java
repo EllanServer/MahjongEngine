@@ -7,22 +7,22 @@ import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
 import top.ellan.mahjong.domain.table.TableAggregate;
 import top.ellan.mahjong.domain.table.TableParticipant;
 import top.ellan.mahjong.spi.PlayerId;
-import top.ellan.mahjong.spi.RuleId;
+import top.ellan.mahjong.spi.RulePackRef;
 import top.ellan.mahjong.spi.RulePresentationCue;
 
 /** Failure-isolated one-shot publisher; scene refreshes and event replay never call this path. */
 final class TablePresentationCuePublisher {
     private final TablePresentationCuePort port;
     private final top.ellan.mahjong.domain.table.TableId tableId;
-    private final RuleId ruleId;
+    private final RulePackRef rulePack;
     private final List<PlayerId> audience;
 
     TablePresentationCuePublisher(
-            TablePresentationCuePort port, TableAggregate aggregate, RuleId ruleId) {
+            TablePresentationCuePort port, TableAggregate aggregate, RulePackRef rulePack) {
         this.port = Objects.requireNonNull(port, "port");
         Objects.requireNonNull(aggregate, "aggregate");
         tableId = aggregate.tableId();
-        this.ruleId = Objects.requireNonNull(ruleId, "ruleId");
+        this.rulePack = Objects.requireNonNull(rulePack, "rulePack");
         audience = aggregate.participants().stream()
                 .map(TableParticipant::playerId)
                 .toList();
@@ -33,7 +33,7 @@ final class TablePresentationCuePublisher {
             return;
         }
         try {
-            port.publish(new TableCueBatch(tableId, ruleId, revision, audience, cues));
+            port.publish(new TableCueBatch(tableId, rulePack, revision, audience, cues));
         } catch (RuntimeException ignored) {
             // Transient feedback is never allowed to roll back or block committed rule state.
         }

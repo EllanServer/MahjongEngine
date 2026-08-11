@@ -52,7 +52,7 @@ application/
 
 `mahjong-presentation` 只保存平台无关的桌面语义，并按 `asset / layout / node / port / projection / scene` 分类：资产名、通用桌面坐标编译、节点值对象、后端端口、规则视图映射和场景差分互不混放。通用布局内部再分成有界缓存、冷路径编译器和不可变热路径查表计划；场景映射再按 `publicview / privateview / interaction / asset / support` 分解，公开实体、私有 HUD/暗手和 revision-bound 命中区不会堆在同一个类中。表现层生产类由 CI 强制限制在 300 行以内。具体 CraftEngine 家具调用仍只存在于 `mahjong-craftengine`。
 
-`mahjong-rule-runtime` 按 `activation / admin / catalog / common / install / lifecycle / loading / registry / security / storage` 分类，激活状态、管理命令、下载安装、类加载、签名注册表和本地文件边界彼此独立。`mahjong-rule-spi` 是三个外部规则仓共同编译的稳定公共协议，因此保持扁平且版本化，不把一次内部整理变成规则包 ABI 破坏。
+`mahjong-rule-runtime` 按 `activation / admin / catalog / common / install / lifecycle / loading / registry / resources / security / storage` 分类，激活状态、管理命令、下载安装、类加载、签名注册表、资源 ZIP 检查和本地文件边界彼此独立。`mahjong-rule-spi` 是三个外部规则仓共同编译的稳定公共协议，因此保持扁平且版本化，不把一次内部整理变成规则包 ABI 破坏。
 
 规则包只通过父 classloader 提供的 SPI 通信。规则包是完整 JVM 受信代码；Ed25519 签名验证来源，不宣称提供 Java 沙箱。
 
@@ -85,11 +85,11 @@ SPI 1.5 的 `ScheduledRuleAction` 由规则包为不可变状态给出已入座 
 
 ## CraftEngine 边界
 
-CraftEngine bundle 在构建期复制已审查的 `craftengine/configuration` 与 `resourcepack`，并生成 SHA-256 清单；启动时逐文件校验后原子安装。内容完全未变且 CE registry 已加载时可直接恢复；任一文件变化后必须等新的 `CraftEngineReloadEvent`，期间场景保持关闭。家具模型、牌姿态、座椅、hitbox、interaction 与 entity culling 都由 CraftEngine YAML 的 template/config factory 表达，不由 Java 拼装。
+插件主体的 CraftEngine bundle 在构建期只复制已审查的通用牌桌、凳子、麻将牌、骰子、hitbox 与本地化资源，并生成 SHA-256 清单；启动时逐文件校验后原子安装。每个规则版本另带独立的资源 ZIP，ZIP 的有效载荷必须完整位于 `craftengine/` 并由 CE 管理。运行时只依据签名 registry 校验其 URL、长度和 SHA-256，再校验资源 descriptor、索引和逐文件清单，最后交给 CE 安装到版本与 JAR 哈希隔离的目录。规则资源 ZIP 不进入规则 classloader，也不合并进插件主体资源包。
 
 开局骰子同样遵守这条边界：四个稳定槽位家具和所有 face/layout variant 由 CE 配置生成。Java 只提交槽位与点数；同一节点变化时在目标 Folia region 调用 CE `setVariant`，不删除并重建实体。只有节点首次出现和开局层结束时才执行 `place/remove`。
 
-声音不是场景实体。规则只发出平台无关 cue，`presentation.sound` 将 cue 映射为资源包 sound event、音量和音高，Paper 每名听众至多提交一个 Folia player-scheduler 任务。骰子开始和墙打开与 CE 动画阶段同步，但声音失败只丢失该次装饰性反馈，不能取消动画或规则 transition。资源包定义声音文件与复用别名，Java 不复制音源。
+声音不是场景实体。规则代码只发出平台无关 cue；同版本的 CE 资源 ZIP 通过 `META-INF/mahjong-rule-sounds.properties` 把 cue 映射为版本化命名空间下的 sound event、音量和音高，实际 `sounds.json` 与音源只由 CE pack 提供。Paper 每名听众至多提交一个 Folia player-scheduler 任务。骰子开始和墙打开与 CE 动画阶段同步，但声音失败只丢失该次装饰性反馈，不能取消动画或规则 transition。插件配置不再硬编码 MCR/四川前缀，也不持有或分发规则音源。
 
 玩家文字使用 Adventure translatable component，翻译键随 CE 资源包提供 `en_us/zh_cn/zh_tw/ja_jp` 四套文件；控制台使用代码内英文回退。构建期强制四个 locale 的键集合与 `%s` 参数数量完全一致，因此新增命令、动作或反馈不能只补一种语言。
 

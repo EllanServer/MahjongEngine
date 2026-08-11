@@ -1,5 +1,6 @@
 package top.ellan.mahjong.craftengine.bundle;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -19,30 +20,52 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import org.bukkit.plugin.Plugin;
 
-/** Verifies and atomically installs the embedded CraftEngine resource bundle. */
+/** Verifies and atomically installs an embedded or signed external CraftEngine bundle. */
 public final class CraftEngineBundleInstaller {
-    private static final String BUNDLE_ROOT = "craftengine/mahjongpaper";
-    private static final String BUNDLE_INDEX = BUNDLE_ROOT + "/_bundle_index.txt";
+    private static final String EMBEDDED_BUNDLE_ROOT = "craftengine/mahjongpaper";
+    private static final String ARCHIVE_BUNDLE_ROOT = "craftengine/";
+    private static final String BUNDLE_INDEX = "_bundle_index.txt";
     private static final String BUNDLE_MANIFEST = "_bundle_manifest.sha256";
     private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
     private static final Pattern BUNDLE_FOLDER = Pattern.compile("[a-z0-9_.-]+");
 
-    private final Plugin plugin;
+    private final BundleSource source;
     private final String bundleFolderName;
 
     public CraftEngineBundleInstaller(Plugin plugin, String bundleFolderName) {
-        this.plugin = Objects.requireNonNull(plugin, "plugin");
-        this.bundleFolderName = Objects.requireNonNull(bundleFolderName, "bundleFolderName");
-        if (!BUNDLE_FOLDER.matcher(bundleFolderName).matches()) {
+        Objects.requireNonNull(plugin, "plugin");
+        this.source =
+                relativePath ->
+                        plugin.getResource(EMBEDDED_BUNDLE_ROOT + '/' + relativePath);
+        this.bundleFolderName = requireBundleFolder(bundleFolderName);
+    }
+
+    private CraftEngineBundleInstaller(BundleSource source, String bundleFolderName) {
+        this.source = Objects.requireNonNull(source, "source");
+        this.bundleFolderName = requireBundleFolder(bundleFolderName);
+    }
+
+    public static CraftEngineBundleInstaller fromArchive(Path archive, String bundleFolderName) {
+        Path normalized = Objects.requireNonNull(archive, "archive").toAbsolutePath().normalize();
+        return new CraftEngineBundleInstaller(
+                relativePath -> readArchiveEntry(normalized, relativePath), bundleFolderName);
+    }
+
+    private static String requireBundleFolder(String bundleFolderName) {
+        String normalized = Objects.requireNonNull(bundleFolderName, "bundleFolderName");
+        if (!BUNDLE_FOLDER.matcher(normalized).matches()) {
             throw new IllegalArgumentException("Invalid CraftEngine bundle folder");
         }
+        return normalized;
     }
 
     public InstallResult install(Plugin craftEngine) throws IOException {
         Objects.requireNonNull(craftEngine, "craftEngine");
-        try (InputStream indexStream = plugin.getResource(BUNDLE_INDEX)) {
+        try (InputStream indexStream = source.open(BUNDLE_INDEX)) {
             if (indexStream == null) {
                 throw new IOException("Missing embedded CraftEngine bundle index");
             }
@@ -78,7 +101,7 @@ public final class CraftEngineBundleInstaller {
     }
 
     private Map<String, String> readManifest() throws IOException {
-        try (InputStream stream = plugin.getResource(BUNDLE_ROOT + '/' + BUNDLE_MANIFEST)) {
+        try (InputStream stream = source.open(BUNDLE_MANIFEST)) {
             if (stream == null) {
                 throw new IOException("Missing embedded CraftEngine SHA-256 manifest");
             }
@@ -188,12 +211,31 @@ public final class CraftEngineBundleInstaller {
     }
 
     private void copyBundledFile(String relativePath, Path targetPath) throws IOException {
-        try (InputStream stream = plugin.getResource(BUNDLE_ROOT + '/' + relativePath)) {
+        try (InputStream stream = source.open(relativePath)) {
             if (stream == null) {
                 throw new IOException("Missing embedded resource: " + relativePath);
             }
             Files.createDirectories(Objects.requireNonNull(targetPath.getParent()));
             Files.copy(stream, targetPath, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private static InputStream readArchiveEntry(Path archive, String relativePath)
+            throws IOException {
+        if (!Files.isRegularFile(archive, LinkOption.NOFOLLOW_LINKS)) {
+            return null;
+        }
+        try (ZipFile zip = new ZipFile(archive.toFile(), StandardCharsets.UTF_8)) {
+            ZipEntry entry = zip.getEntry(ARCHIVE_BUNDLE_ROOT + relativePath);
+            if (entry == null || entry.isDirectory()) {
+                return null;
+            }
+            if (entry.getSize() < 0 || entry.getSize() > 64L * 1024 * 1024) {
+                throw new IOException("External CraftEngine entry exceeds 64 MiB");
+            }
+            try (InputStream input = zip.getInputStream(entry)) {
+                return new ByteArrayInputStream(input.readAllBytes());
+            }
         }
     }
 
@@ -252,5 +294,10 @@ public final class CraftEngineBundleInstaller {
         public InstallResult {
             target = Objects.requireNonNull(target, "target").toAbsolutePath().normalize();
         }
+    }
+
+    @FunctionalInterface
+    private interface BundleSource {
+        InputStream open(String relativePath) throws IOException;
     }
 }

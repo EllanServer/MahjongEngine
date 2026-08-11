@@ -7,6 +7,8 @@ import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
 import top.ellan.mahjong.runtime.admin.RulePackAdminService;
 import top.ellan.mahjong.runtime.common.RulePackException;
 import top.ellan.mahjong.runtime.lifecycle.RulePackRuntime;
+import top.ellan.mahjong.runtime.resources.InspectedRuleResourcePack;
+import top.ellan.mahjong.runtime.resources.RuleResourcePackResolver;
 import top.ellan.mahjong.spi.RuleId;
 import top.ellan.mahjong.spi.RulePackRef;
 
@@ -21,34 +23,115 @@ public final class RulePackHotSwapService {
     private final RulePackAdminService admin;
     private final RulePackRuntime runtime;
     private final FairRuleExecutor rules;
+    private final RuleResourcePackResolver resourcePacks;
+    private final RuleResourceActivator resourceActivator;
 
     public RulePackHotSwapService(
-            RulePackAdminService admin, RulePackRuntime runtime, FairRuleExecutor rules) {
+            RulePackAdminService admin,
+            RulePackRuntime runtime,
+            FairRuleExecutor rules,
+            RuleResourcePackResolver resourcePacks,
+            RuleResourceActivator resourceActivator) {
         this.admin = Objects.requireNonNull(admin, "admin");
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.rules = Objects.requireNonNull(rules, "rules");
+        this.resourcePacks = Objects.requireNonNull(resourcePacks, "resourcePacks");
+        this.resourceActivator = Objects.requireNonNull(resourceActivator, "resourceActivator");
     }
 
     public String swap(RuleId ruleId, String version) throws Exception {
-        // activateNow returns the durable selection, which already carries the verified coordinate.
-        RulePackRef target = admin.activateNow(ruleId, version).active().get(ruleId);
-        if (target == null || !target.version().equals(version)) {
-            throw new RulePackException("Activation did not select " + ruleId + ':' + version);
+        Optional<RulePackRef> previous = runtime.activeReference(ruleId);
+        boolean selectionChanged = false;
+        RulePackRef target = null;
+        try {
+            // activateNow returns the durable selection, which already carries the verified coordinate.
+            target = admin.activateNow(ruleId, version).active().get(ruleId);
+            selectionChanged = true;
+            if (target == null || !target.version().equals(version)) {
+                throw new RulePackException("Activation did not select " + ruleId + ':' + version);
+            }
+            Optional<InspectedRuleResourcePack> resources = resourcePacks.resolve(target);
+            resourceActivator.activate(target, resources);
+            Optional<RulePackRef> stillRunning = runtime.promote(target);
+            return describe(stillRunning, "replaced version fully unloaded");
+        } catch (Exception failure) {
+            if (selectionChanged) {
+                restoreSelection(ruleId, previous, failure);
+            }
+            removeFailedTarget(target, previous, failure);
+            restoreResource(previous, failure);
+            throw failure;
         }
-        return describe(runtime.promote(target), "replaced version fully unloaded");
     }
 
     public String deactivate(RuleId ruleId) throws Exception {
+        runtime.activeReference(ruleId)
+                .orElseThrow(() -> new RulePackException("Rule is not active: " + ruleId));
         admin.deactivate(ruleId);
-        return describe(runtime.deactivate(ruleId), "unloaded");
+        Optional<RulePackRef> stillRunning = runtime.deactivate(ruleId);
+        return describe(stillRunning, "unloaded");
+    }
+
+    private void restoreSelection(
+            RuleId ruleId, Optional<RulePackRef> previous, Exception original) {
+        try {
+            if (previous.isPresent()) {
+                admin.rollback(ruleId);
+            } else {
+                admin.deactivate(ruleId);
+            }
+        } catch (Exception restoreFailure) {
+            original.addSuppressed(restoreFailure);
+        }
+    }
+
+    private void restoreResource(Optional<RulePackRef> previous, Exception original) {
+        try {
+            Optional<InspectedRuleResourcePack> resource = previous.isEmpty()
+                    ? Optional.empty()
+                    : resourcePacks.resolve(previous.orElseThrow());
+            if (previous.isPresent()) {
+                resourceActivator.activate(previous.orElseThrow(), resource);
+            }
+        } catch (Exception restoreFailure) {
+            original.addSuppressed(restoreFailure);
+        }
     }
 
     public String rollback(RuleId ruleId) throws Exception {
-        RulePackRef restored = admin.rollback(ruleId).active().get(ruleId);
-        if (restored == null) {
-            throw new RulePackException("Rollback did not restore an active version");
+        Optional<RulePackRef> current = runtime.activeReference(ruleId);
+        RulePackRef target = admin.rollbackTarget(ruleId);
+        boolean selectionChanged = false;
+        try {
+            RulePackRef restored = admin.rollback(ruleId).active().get(ruleId);
+            selectionChanged = true;
+            if (!target.equals(restored)) {
+                throw new RulePackException("Rollback did not restore the verified coordinate");
+            }
+            Optional<InspectedRuleResourcePack> targetResources = resourcePacks.resolve(target);
+            resourceActivator.activate(target, targetResources);
+            Optional<RulePackRef> stillRunning = runtime.promote(restored);
+            return describe(stillRunning, "restored " + restored.version());
+        } catch (Exception failure) {
+            if (selectionChanged) {
+                restoreSelection(ruleId, current, failure);
+            }
+            removeFailedTarget(target, current, failure);
+            restoreResource(current, failure);
+            throw failure;
         }
-        return describe(runtime.promote(restored), "restored " + restored.version());
+    }
+
+    private void removeFailedTarget(
+            RulePackRef target, Optional<RulePackRef> previous, Exception original) {
+        if (target == null || previous.filter(target::equals).isPresent()) {
+            return;
+        }
+        try {
+            resourceActivator.activate(target, Optional.empty());
+        } catch (Exception restoreFailure) {
+            original.addSuppressed(restoreFailure);
+        }
     }
 
     /**

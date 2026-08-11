@@ -18,6 +18,8 @@ Create a reusable table with `/mahjong create <riichi|mcr|sichuan> [profile]`. P
 
 All modes share one physical table compiler. A rule pack supplies only its actual tile instances, wall stacks and draw origin, zone ordering, rotations/stacks, and typed action placement; the core contains no 108/136/144-tile mode branches.
 
+The plugin owns the reusable table, chairs, dice and Mahjong tile visuals. Each official rule version is published as two signed artifacts in one release: a pure rule JAR and a resource-only ZIP whose entire payload is a version-isolated CraftEngine pack for that rule's sounds and similar presentation data. The core only authenticates and hands that pack to CraftEngine; the signed registry binds both artifacts to the same rule ID and version.
+
 The former session/controllers, mixed Java/Kotlin rule code, `mahjong-utils`, GB JNI/CMake tree, Display Entity renderer, legacy/shadow modes, and runtime fallback have been removed.
 
 Requirements: Java 25, Paper/Folia 26.2, and CraftEngine 26.7+. The portable core and external rule-pack SDK remain Java 21 contracts; only the server-facing adapters and final plugin target Java 25.

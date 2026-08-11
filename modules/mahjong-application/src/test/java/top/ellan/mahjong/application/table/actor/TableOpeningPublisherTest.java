@@ -27,12 +27,14 @@ import top.ellan.mahjong.spi.SeatId;
 
 class TableOpeningPublisherTest {
     private static final RuleId RULE_ID = new RuleId("mcr");
+    private static final RulePackRef RULE_PACK =
+            new RulePackRef(RULE_ID, "1.0.0", "0".repeat(64), 1);
 
     @Test
     void publishesInitialAndEachChangedHandExactlyOnce() {
         ArrayList<TableOpeningBatch> batches = new ArrayList<>();
         TableOpeningPublisher publisher =
-                new TableOpeningPublisher(batches::add, aggregate(), RULE_ID, true);
+                new TableOpeningPublisher(batches::add, aggregate(), RULE_PACK, true);
         RuleOpeningPresentation first = opening(1, 2, 5);
         RuleOpeningPresentation second = opening(2, 3, 4);
 
@@ -51,7 +53,7 @@ class TableOpeningPublisherTest {
     void recoverySuppressesOnlyTheRestoredOpening() {
         ArrayList<TableOpeningBatch> batches = new ArrayList<>();
         TableOpeningPublisher publisher =
-                new TableOpeningPublisher(batches::add, aggregate(), RULE_ID, false);
+                new TableOpeningPublisher(batches::add, aggregate(), RULE_PACK, false);
 
         publisher.publishIfChanged(17, Optional.of(opening(4, 1, 6)));
         publisher.publishIfChanged(18, Optional.of(opening(5, 2, 3)));
@@ -72,7 +74,7 @@ class TableOpeningPublisherTest {
         PlayerId player = new PlayerId(UUID.randomUUID());
         MatchBinding binding = new MatchBinding(
                 MatchId.random(),
-                new RulePackRef(RULE_ID, "1.0.0", "0".repeat(64), 1),
+                RULE_PACK,
                 new ProfileId("green-book"),
                 "0".repeat(64),
                 Instant.parse("2026-08-09T00:00:00Z"));

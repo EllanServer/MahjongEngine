@@ -224,6 +224,10 @@ public final class RulePackLoader implements PinnedRulePackLoader {
                 // registry forever, which would make the classloader unreclaimable after unload.
                 throw new RulePackException("Rule pack must not register a JDBC driver");
             }
+            if (isPresentationResource(name)) {
+                throw new RulePackException(
+                        "Rule JAR must not contain resource-pack content: " + name);
+            }
         }
         String service = "META-INF/services/" + RulePackProvider.class.getName();
         if (!names.contains(service)) {
@@ -234,6 +238,16 @@ public final class RulePackLoader implements PinnedRulePackLoader {
                 throw new RulePackException("Rule pack is missing required resource: " + resource);
             }
         }
+    }
+
+    private static boolean isPresentationResource(String name) {
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        return name.startsWith("assets/")
+                || name.startsWith("resourcepack/")
+                || name.startsWith("craftengine/")
+                || lower.endsWith(".ogg")
+                || lower.endsWith(".png")
+                || lower.endsWith(".mcmeta");
     }
 
     private static void closeAfterFailure(

@@ -12,7 +12,7 @@ import top.ellan.mahjong.spi.RuleId;
 /** Verified registry payload. */
 public record RulePackRegistry(int formatVersion, Instant generatedAt, List<RulePackRegistryEntry> entries) {
     public RulePackRegistry {
-        if (formatVersion != 1) {
+        if (formatVersion < 1 || formatVersion > 2) {
             throw new IllegalArgumentException("Unsupported registry format: " + formatVersion);
         }
         Objects.requireNonNull(generatedAt, "generatedAt");

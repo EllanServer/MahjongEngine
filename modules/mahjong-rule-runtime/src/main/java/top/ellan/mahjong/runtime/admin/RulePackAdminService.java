@@ -20,6 +20,7 @@ import top.ellan.mahjong.runtime.registry.RulePackRegistry;
 import top.ellan.mahjong.runtime.registry.RulePackRegistryEntry;
 import top.ellan.mahjong.runtime.registry.SignedRegistryCodec;
 import top.ellan.mahjong.runtime.registry.VerifiedRegistryDocument;
+import top.ellan.mahjong.runtime.resources.RuleResourcePackInspector;
 import top.ellan.mahjong.runtime.security.OfficialTrustRoot;
 import top.ellan.mahjong.runtime.storage.AtomicFiles;
 import top.ellan.mahjong.runtime.storage.RulePackPaths;
@@ -39,6 +40,7 @@ public final class RulePackAdminService {
     private final RuleActivationStore activationStore;
     private final RulePackGarbageCollector garbageCollector;
     private final RulePackInventoryReader inventoryReader;
+    private final RuleResourcePackInspector resourceInspector = new RuleResourcePackInspector();
 
     public RulePackAdminService(
             RulePackPaths paths,
@@ -87,6 +89,7 @@ public final class RulePackAdminService {
                 continue;
             }
             try (LoadedRulePack loaded = loader.load(installed.artifact(), expected.orElseThrow())) {
+                verifyResources(expected.orElseThrow());
                 results.add(new RulePackVerification(
                         installed.ruleId(), installed.version(), true, loaded.reference(), "verified"));
             } catch (RulePackException | IOException failure) {
@@ -120,6 +123,21 @@ public final class RulePackAdminService {
         return activationStore.rollback(requireOfficial(ruleId));
     }
 
+    /** Verifies the recorded rollback coordinate before any durable selection is changed. */
+    public RulePackRef rollbackTarget(RuleId ruleId)
+            throws IOException, InterruptedException, RulePackException {
+        requireOfficial(ruleId);
+        RulePackRef recorded = activationStore.read().previous().get(ruleId);
+        if (recorded == null) {
+            throw new RulePackException("No previous version is recorded for " + ruleId);
+        }
+        RulePackRef verified = verifiedReference(ruleId, recorded.version());
+        if (!verified.equals(recorded)) {
+            throw new RulePackException("Recorded rollback provenance differs from signed registry");
+        }
+        return verified;
+    }
+
     /** Stops handing this rule to new matches; installed artifacts are left in place. */
     public RuleActivationState deactivate(RuleId ruleId) throws IOException, RulePackException {
         return activationStore.deactivate(requireOfficial(ruleId));
@@ -134,7 +152,16 @@ public final class RulePackAdminService {
                         "Requested rule-pack version is absent from signed registry"));
         Path artifact = paths.installedJar(ruleId, version);
         try (LoadedRulePack loaded = loader.load(artifact, expected)) {
+            verifyResources(expected);
             return loaded.reference();
+        }
+    }
+
+    private void verifyResources(RulePackRegistryEntry expected)
+            throws IOException, RulePackException {
+        if (expected.resources().isPresent()) {
+            resourceInspector.inspect(
+                    paths.installedResources(expected.ruleId(), expected.version()), expected);
         }
     }
 

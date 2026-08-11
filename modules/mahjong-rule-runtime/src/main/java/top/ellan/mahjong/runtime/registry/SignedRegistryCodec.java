@@ -23,7 +23,7 @@ import top.ellan.mahjong.spi.RuleId;
 public final class SignedRegistryCodec {
     private static final Set<String> ENVELOPE_KEYS = Set.of("format", "payload", "signature");
     private static final Set<String> PAYLOAD_KEYS = Set.of("format", "generatedAt", "packs");
-    private static final Set<String> ENTRY_KEYS =
+    private static final Set<String> ENTRY_KEYS_V1 =
             Set.of(
                     "id",
                     "version",
@@ -32,6 +32,18 @@ public final class SignedRegistryCodec {
                     "spiVersion",
                     "requiredCoreVersion",
                     "sizeBytes");
+    private static final Set<String> ENTRY_KEYS_V2 =
+            Set.of(
+                    "id",
+                    "version",
+                    "url",
+                    "sha256",
+                    "spiVersion",
+                    "requiredCoreVersion",
+                    "sizeBytes",
+                    "resourceUrl",
+                    "resourceSha256",
+                    "resourceSizeBytes");
 
     private SignedRegistryCodec() {}
 
@@ -55,7 +67,7 @@ public final class SignedRegistryCodec {
     private static RulePackRegistry decodePayload(byte[] payload) throws RulePackException {
         Map<String, Object> root = object(MiniJson.parse(decodeUtf8(payload)), "payload");
         requireExactKeys(root, PAYLOAD_KEYS, "payload");
-        int format = Math.toIntExact(requireInteger(root, "format", 1, 1));
+        int format = Math.toIntExact(requireInteger(root, "format", 1, 2));
         Instant generatedAt;
         try {
             generatedAt = Instant.parse(requireString(root, "generatedAt"));
@@ -66,8 +78,23 @@ public final class SignedRegistryCodec {
         List<RulePackRegistryEntry> entries = new ArrayList<>(packValues.size());
         for (Object value : packValues) {
             Map<String, Object> item = object(value, "pack entry");
-            requireExactKeys(item, ENTRY_KEYS, "pack entry");
+            boolean hasResources = item.keySet().equals(ENTRY_KEYS_V2);
+            if (format == 1 || !hasResources) {
+                requireExactKeys(item, ENTRY_KEYS_V1, "pack entry");
+            }
             try {
+                java.util.Optional<RuleResourcePackArtifact> resources =
+                        !hasResources
+                                ? java.util.Optional.empty()
+                                : java.util.Optional.of(
+                                        new RuleResourcePackArtifact(
+                                                URI.create(requireString(item, "resourceUrl")),
+                                                requireString(item, "resourceSha256"),
+                                                requireInteger(
+                                                        item,
+                                                        "resourceSizeBytes",
+                                                        1,
+                                                        64L * 1024 * 1024)));
                 entries.add(
                         new RulePackRegistryEntry(
                                 new RuleId(requireString(item, "id")),
@@ -76,7 +103,8 @@ public final class SignedRegistryCodec {
                                 requireString(item, "sha256"),
                                 requireString(item, "spiVersion"),
                                 requireString(item, "requiredCoreVersion"),
-                                requireInteger(item, "sizeBytes", 1, 64L * 1024 * 1024)));
+                                requireInteger(item, "sizeBytes", 1, 64L * 1024 * 1024),
+                                resources));
             } catch (IllegalArgumentException failure) {
                 throw new RulePackException("Invalid registry pack entry", failure);
             }

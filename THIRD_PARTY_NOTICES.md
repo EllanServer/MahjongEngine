@@ -10,7 +10,7 @@ MahjongPaper-authored source is offered under the root MIT license. Third-party 
 - MySQL Connector/J (GPL-2.0 with the Universal FOSS Exception).
 - Sparrow Heart 0.72 (MIT) and its required Sparrow Reflection/YAML components. Sparrow Reflection and Sparrow YAML are GPL-3.0; their license text is packaged under `META-INF/licenses`.
 - ASM (BSD-3-Clause) and Mapping-IO (Apache-2.0), where pulled by the Sparrow stack; available notices are packaged under `META-INF/licenses`.
-- Mahjong tile/resource models derived from MahjongCraft and the additional art/audio sources listed in `resourcepack/ATTRIBUTION.md`; that attribution is packaged in the JAR.
+- Shared Mahjong table/tile resource models derived from MahjongCraft and the visual sources listed in `resourcepack/ATTRIBUTION.md`; that attribution is packaged in the plugin JAR.
 
 Because GPL-covered Sparrow components are included in the executable distribution, redistributors must satisfy the applicable GPL source and notice obligations. This notice is not legal advice.
 
@@ -18,6 +18,6 @@ Because GPL-covered Sparrow components are included in the executable distributi
 
 - Paper/Folia.
 - CraftEngine 26.7 or newer.
-- The signed Riichi, MCR and Sichuan rule-pack JARs. Each rule repository carries its own notices and dependency boundary.
+- The signed Riichi, MCR and Sichuan pure rule JARs and their separately signed resource ZIPs. Each rule resource ZIP carries its own sound attribution and terms.
 
 No GB-Mahjong native source/library, `mahjong-utils`, Kotlin runtime, InvSync or AntiGriefLib is distributed by MahjongPaper 2.0.

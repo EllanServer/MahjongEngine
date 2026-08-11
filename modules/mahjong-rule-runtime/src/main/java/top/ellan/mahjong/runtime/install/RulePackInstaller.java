@@ -18,20 +18,23 @@ import top.ellan.mahjong.runtime.loading.LoadedRulePack;
 import top.ellan.mahjong.runtime.loading.RulePackLoader;
 import top.ellan.mahjong.runtime.registry.RegistrySource;
 import top.ellan.mahjong.runtime.registry.RulePackRegistryEntry;
+import top.ellan.mahjong.runtime.registry.RuleResourcePackArtifact;
 import top.ellan.mahjong.runtime.registry.SignedRegistryCodec;
 import top.ellan.mahjong.runtime.registry.VerifiedRegistryDocument;
+import top.ellan.mahjong.runtime.resources.RuleResourcePackInspector;
 import top.ellan.mahjong.runtime.security.OfficialTrustRoot;
 import top.ellan.mahjong.runtime.storage.AtomicFiles;
 import top.ellan.mahjong.runtime.storage.RulePackPaths;
 import top.ellan.mahjong.spi.RuleId;
 
-/** Signed-registry installer. It probes in staging and exposes artifacts only by an atomic move. */
+/** Signed-registry installer for paired code/resources, exposed only after staged verification. */
 public final class RulePackInstaller {
     private final RulePackPaths paths;
     private final RegistrySource registrySource;
     private final ArtifactDownloader downloader;
     private final OfficialTrustRoot trustRoot;
     private final RulePackLoader loader;
+    private final RuleResourcePackInspector resourceInspector = new RuleResourcePackInspector();
     private final Clock clock;
 
     public RulePackInstaller(
@@ -68,7 +71,9 @@ public final class RulePackInstaller {
         Path installed = paths.installedJar(ruleId, entry.version());
         if (Files.isRegularFile(installed)) {
             try (LoadedRulePack loaded = loader.load(installed, entry)) {
-                return new InstallationResult(loaded.reference(), installed, entry, true);
+                Optional<Path> resources = ensureExistingResources(entry);
+                return new InstallationResult(
+                        loaded.reference(), installed, resources, entry, true);
             }
         }
 
@@ -79,10 +84,11 @@ public final class RulePackInstaller {
         Files.createDirectory(stagingDirectory);
         Path stagedJar = stagingDirectory.resolve(ruleId.value() + "-rule-pack.jar");
         try {
-            downloader.download(entry, stagedJar);
+            downloader.download(entry.artifactUri(), entry.sizeBytes(), stagedJar);
             if (Files.size(stagedJar) != entry.sizeBytes()) {
                 throw new RulePackException("Downloaded artifact has the wrong size");
             }
+            Optional<Path> stagedResources = downloadResources(entry, stagingDirectory);
             top.ellan.mahjong.spi.RulePackRef reference;
             try (LoadedRulePack loaded = loader.load(stagedJar, entry)) {
                 reference = loaded.reference();
@@ -97,10 +103,15 @@ public final class RulePackInstaller {
             } catch (FileAlreadyExistsException race) {
                 try (LoadedRulePack loaded = loader.load(installed, entry)) {
                     quarantine(stagingDirectory, ruleId, entry.version(), race);
-                    return new InstallationResult(loaded.reference(), installed, entry, true);
+                    Optional<Path> resources = ensureExistingResources(entry);
+                    return new InstallationResult(
+                            loaded.reference(), installed, resources, entry, true);
                 }
             }
-            return new InstallationResult(reference, installed, entry, false);
+            Optional<Path> installedResources = stagedResources.map(
+                    ignored -> paths.installedResources(ruleId, entry.version()));
+            return new InstallationResult(
+                    reference, installed, installedResources, entry, false);
         } catch (RulePackException | IOException | InterruptedException failure) {
             quarantine(stagingDirectory, ruleId, entry.version(), failure);
             throw failure;
@@ -108,6 +119,59 @@ public final class RulePackInstaller {
             quarantine(stagingDirectory, ruleId, entry.version(), failure);
             throw failure;
         }
+    }
+
+    private Optional<Path> ensureExistingResources(RulePackRegistryEntry entry)
+            throws IOException, InterruptedException, RulePackException {
+        Optional<RuleResourcePackArtifact> expected = entry.resources();
+        if (expected.isEmpty()) {
+            return Optional.empty();
+        }
+        Path installed = paths.installedResources(entry.ruleId(), entry.version());
+        if (Files.isRegularFile(installed)) {
+            resourceInspector.inspect(installed, entry);
+            return Optional.of(installed);
+        }
+        String nonce = UUID.randomUUID().toString();
+        Path stagingDirectory = paths.requireInsideRoot(
+                paths.staging().resolve(
+                        entry.ruleId().value()
+                                + '-'
+                                + entry.version()
+                                + "-resources-"
+                                + nonce));
+        Files.createDirectory(stagingDirectory);
+        try {
+            Path staged = downloadResources(entry, stagingDirectory).orElseThrow();
+            try {
+                Files.move(staged, installed, StandardCopyOption.ATOMIC_MOVE);
+            } catch (FileAlreadyExistsException race) {
+                Files.deleteIfExists(staged);
+                resourceInspector.inspect(installed, entry);
+            } catch (AtomicMoveNotSupportedException failure) {
+                throw new RulePackException(
+                        "Filesystem cannot atomically install rule resources", failure);
+            }
+            Files.deleteIfExists(stagingDirectory);
+            return Optional.of(installed);
+        } catch (RulePackException | IOException | InterruptedException failure) {
+            quarantine(stagingDirectory, entry.ruleId(), entry.version(), failure);
+            throw failure;
+        }
+    }
+
+    private Optional<Path> downloadResources(
+            RulePackRegistryEntry entry, Path stagingDirectory)
+            throws IOException, InterruptedException, RulePackException {
+        Optional<RuleResourcePackArtifact> expected = entry.resources();
+        if (expected.isEmpty()) {
+            return Optional.empty();
+        }
+        RuleResourcePackArtifact resource = expected.orElseThrow();
+        Path staged = stagingDirectory.resolve(entry.ruleId().value() + "-resource-pack.zip");
+        downloader.download(resource.uri(), resource.sizeBytes(), staged);
+        resourceInspector.inspect(staged, entry);
+        return Optional.of(staged);
     }
 
     private void quarantine(

@@ -13,7 +13,7 @@
 
 1. 从 GitHub Actions 或正式 Release 获取 `mahjong-plugin` 的无分类器 fat JAR。
 2. 放入 `plugins/`，同时安装 CraftEngine。
-3. 首次启动会生成 `plugins/MahjongPaper/config.yml` 并把校验后的资源 bundle 原子安装到 `plugins/CraftEngine/resources/mahjongpaper`。
+3. 首次启动会生成 `plugins/MahjongPaper/config.yml`，把插件主体的通用牌桌/凳子/牌资源原子安装到 `plugins/CraftEngine/resources/mahjongpaper`，并把已激活规则的独立资源 ZIP 作为完整 CE pack 安装到 `plugins/CraftEngine/resources/mahjongpaper-rule-<id>-<version>-<jar-sha-prefix>`。插件不另建资源加载路径。
 4. 内容与已加载 bundle 完全相同时可直接恢复；首次安装或任一文件变化后执行 `/ce reload all`，插件只在安装完成后的 `CraftEngineReloadEvent` 恢复场景。
 5. 新安装默认使用 [`rule-registry-v2026.08.10.1`](https://github.com/EllanServer/MahjongEngine/releases/tag/rule-registry-v2026.08.10.1) 的签名 registry；已有配置若仍为空，设置 `rules.registry-url` 为该 Release 的 `registry.json`。正式核心 Release 会内置对应的官方 Ed25519 公钥。
 6. 用 `/mahjong rules install ...`、`verify`、`activate` 安装规则，然后完整重启。
@@ -30,10 +30,13 @@ plugins/MahjongPaper/rules/
   quarantine/
   registry-cache.json
   riichi/<version>/riichi-rule-pack.jar
+  riichi/<version>/riichi-resource-pack.zip
   mcr/<version>/mcr-rule-pack.jar
+  mcr/<version>/mcr-resource-pack.zip
   sichuan/<version>/sichuan-rule-pack.jar
+  sichuan/<version>/sichuan-resource-pack.zip
 ```
 
-规则升级、激活与回滚都要求重启；进行中的比赛始终绑定原来的版本和 SHA-256。
+`activate` 仍是重启生效的保守路径；`swap`、`deactivate` 与 `rollback` 可即时切换新开牌局及其规则资源。进行中的比赛始终绑定原来的规则 JAR 版本和 SHA-256。
 
 正式 Release 工作流要求 GitHub Actions repository variable `MAHJONG_RULE_PACK_PUBLIC_KEY_BASE64`，其值必须是 Ed25519 X.509 公钥 DER 的 Base64。变量缺失、格式错误或最终 JAR 内嵌值不一致都会直接阻止发布。签名私钥不得进入源码或构建日志；普通分支构建制品不等同于嵌入信任根的正式核心 Release。

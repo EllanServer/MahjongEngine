@@ -68,11 +68,11 @@ final class TableActorStateMachine {
         presentationCues = new TablePresentationCuePublisher(
                 cuePort,
                 aggregate,
-                aggregate.matchBinding().orElseThrow().rulePack().ruleId());
+                aggregate.matchBinding().orElseThrow().rulePack());
         openings = new TableOpeningPublisher(
                 openingPort,
                 aggregate,
-                aggregate.matchBinding().orElseThrow().rulePack().ruleId(),
+                aggregate.matchBinding().orElseThrow().rulePack(),
                 presentInitialOpening);
         outboxHealth = outbox.health();
     }
