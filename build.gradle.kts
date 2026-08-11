@@ -25,7 +25,7 @@ subprojects {
     }
 
     dependencies {
-        add("testImplementation", "org.junit.jupiter:junit-jupiter:6.1.2")
+        add("testImplementation", "org.junit.jupiter:junit-jupiter:6.1.3")
         add("testRuntimeOnly", "org.junit.platform:junit-platform-launcher")
     }
 
