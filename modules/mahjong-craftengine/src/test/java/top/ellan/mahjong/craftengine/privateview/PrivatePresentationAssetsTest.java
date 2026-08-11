@@ -37,7 +37,7 @@ class PrivatePresentationAssetsTest {
     }
 
     @Test
-    void literalTranslationAndChoiceSuffixAreJsonEscaped() {
+    void translationIsSingleLineAndChoiceSuffixIsJsonEscaped() {
         ActionLabelNode label = new ActionLabelNode(
                 new SceneNodeId("label/respond"),
                 SceneVisibility.privateTo(VIEWER),
@@ -48,9 +48,10 @@ class PrivatePresentationAssetsTest {
         String json = PrivatePresentationAssets.labelJson(
                 label,
                 Locale.ENGLISH,
-                (locale, key, fallback) -> "line\n\"quoted\"");
+                (locale, key, fallback) -> "line\n\"q\"");
 
-        assertTrue(json.contains("line\\n\\\"quoted\\\""));
+        assertTrue(json.contains("line \\\"q\\\" one.two"));
+        assertFalse(json.contains("\\n"));
         assertTrue(json.contains("one.two"));
     }
 
