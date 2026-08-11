@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -36,6 +37,7 @@ import top.ellan.mahjong.craftengine.scene.CraftEngineSceneBackend;
 import top.ellan.mahjong.craftengine.bundle.CraftEngineVersion;
 import top.ellan.mahjong.craftengine.scene.DirectCraftEngineMutationGateway;
 import top.ellan.mahjong.craftengine.privateview.SparrowPrivateProjectionGateway;
+import top.ellan.mahjong.craftengine.port.PlayerTextResolver;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.platform.paper.concurrent.BoundedPlatformExecutors;
 import top.ellan.mahjong.platform.paper.feedback.PaperOpeningSoundGateway;
@@ -69,6 +71,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
     private final PluginConfiguration configuration;
     private final BoundedPlatformExecutors executors;
     private final Plugin craftEngine;
+    private final PlayerTextResolver messages;
     private final PaperTableAnchorRegistry anchors = new PaperTableAnchorRegistry();
     private final PaperTableAnchorService anchorService;
     private final SparrowPrivateProjectionGateway privateProjection;
@@ -88,10 +91,12 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
             PluginConfiguration configuration,
             BoundedPlatformExecutors executors,
             BoundedDeadlineScheduler deadlines,
-            TableActorRegistry actors) {
+            TableActorRegistry actors,
+            PlayerTextResolver messages) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.configuration = Objects.requireNonNull(configuration, "configuration");
         this.executors = Objects.requireNonNull(executors, "executors");
+        this.messages = Objects.requireNonNull(messages, "messages");
         Objects.requireNonNull(deadlines, "deadlines");
         Objects.requireNonNull(actors, "actors");
         craftEngine = requireCraftEngine();
@@ -101,7 +106,8 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                         plugin,
                         anchors,
                         configuration.layoutGeometry().emphasisRaise(),
-                        configuration.viewSettings().transitionTicks());
+                        configuration.viewSettings().transitionTicks(),
+                        messages);
         interactions = new InteractionRouter(actors, privateProjection, privateProjection);
         mutations = new DirectCraftEngineMutationGateway(plugin, anchors, privateProjection);
         PaperSoundDispatcher sounds = new PaperSoundDispatcher(plugin);
@@ -251,7 +257,8 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                                 plugin,
                                 interactions,
                                 (player, result, failure) -> {
-                                    Component message = interactionFeedback(result, failure);
+                                    Component message = interactionFeedback(
+                                            messages, player.locale(), result, failure);
                                     if (message == null) {
                                         return;
                                     }
@@ -277,11 +284,17 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
     }
 
     private static Component interactionFeedback(
+            PlayerTextResolver messages,
+            Locale locale,
             TableActionResult result,
             Throwable failure) {
         if (failure != null || result == null) {
-            return Component.translatable("mahjongpaper.feedback.action_failed")
-                    .color(NamedTextColor.RED);
+            return localized(
+                    messages,
+                    locale,
+                    "mahjongpaper.feedback.action_failed",
+                    "The action could not be completed.",
+                    NamedTextColor.RED);
         }
         return switch (result.code()) {
             case HAND_TILE_SELECTED,
@@ -289,19 +302,44 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                     DUPLICATE_INTERACTION,
                     ACCEPTED_MEMORY -> null;
             case OVERHEAD_VIEW_ENTERED ->
-                    Component.translatable("mahjongpaper.feedback.overhead_entered")
-                            .color(NamedTextColor.AQUA);
+                    localized(
+                            messages,
+                            locale,
+                            "mahjongpaper.feedback.overhead_entered",
+                            "Viewing the river from above. Press Shift to return to your seat.",
+                            NamedTextColor.AQUA);
             case OVERHEAD_VIEW_EXITED ->
-                    Component.translatable("mahjongpaper.feedback.overhead_exited")
-                            .color(NamedTextColor.GREEN);
+                    localized(
+                            messages,
+                            locale,
+                            "mahjongpaper.feedback.overhead_exited",
+                            "Returned to your seat.",
+                            NamedTextColor.GREEN);
             case OVERHEAD_VIEW_UNAVAILABLE ->
-                    Component.translatable("mahjongpaper.feedback.overhead_unavailable")
-                            .color(NamedTextColor.RED);
+                    localized(
+                            messages,
+                            locale,
+                            "mahjongpaper.feedback.overhead_unavailable",
+                            "The overhead view is unavailable on this server version.",
+                            NamedTextColor.RED);
             case OVERHEAD_VIEW_READ_ONLY ->
-                    Component.translatable("mahjongpaper.feedback.overhead_read_only")
-                            .color(NamedTextColor.YELLOW);
+                    localized(
+                            messages,
+                            locale,
+                            "mahjongpaper.feedback.overhead_read_only",
+                            "The overhead view is read-only. Press Shift to return first.",
+                            NamedTextColor.YELLOW);
             default -> Component.text(result.reasonCode(), NamedTextColor.RED);
         };
+    }
+
+    private static Component localized(
+            PlayerTextResolver messages,
+            Locale locale,
+            String key,
+            String fallback,
+            NamedTextColor color) {
+        return Component.text(messages.resolve(locale, key, fallback), color);
     }
 
     private void installBundle() {
@@ -377,6 +415,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
             PluginConfiguration.CraftEngineAssets configured) {
         return new TableSceneAssets(
                 configured.table(),
+                configured.seat(),
                 configured.standingBack(),
                 configured.flatBack(),
                 configured.handHitbox(),

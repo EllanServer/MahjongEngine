@@ -18,6 +18,7 @@ import org.bukkit.plugin.Plugin;
 import top.ellan.mahjong.application.interaction.HandTileSelectionPort;
 import top.ellan.mahjong.application.interaction.OverheadViewPort;
 import top.ellan.mahjong.craftengine.port.PrivateProjectionGateway;
+import top.ellan.mahjong.craftengine.port.PlayerTextResolver;
 import top.ellan.mahjong.platform.paper.anchor.TableAnchorLookup;
 import top.ellan.mahjong.craftengine.privateview.PrivateProjectionState.DesiredNode;
 import top.ellan.mahjong.craftengine.privateview.PrivateProjectionState.RemovedNode;
@@ -49,7 +50,7 @@ public final class SparrowPrivateProjectionGateway
 
     public SparrowPrivateProjectionGateway(
             Plugin plugin, TableAnchorLookup anchors, double selectionRaise) {
-        this(plugin, anchors, selectionRaise, 16);
+        this(plugin, anchors, selectionRaise, 16, PlayerTextResolver.fallbackOnly());
     }
 
     public SparrowPrivateProjectionGateway(
@@ -57,8 +58,23 @@ public final class SparrowPrivateProjectionGateway
             TableAnchorLookup anchors,
             double selectionRaise,
             int cameraTransitionTicks) {
+        this(
+                plugin,
+                anchors,
+                selectionRaise,
+                cameraTransitionTicks,
+                PlayerTextResolver.fallbackOnly());
+    }
+
+    public SparrowPrivateProjectionGateway(
+            Plugin plugin,
+            TableAnchorLookup anchors,
+            double selectionRaise,
+            int cameraTransitionTicks,
+            PlayerTextResolver messages) {
         Objects.requireNonNull(plugin, "plugin");
         Objects.requireNonNull(anchors, "anchors");
+        Objects.requireNonNull(messages, "messages");
         tasks = new PlayerRegionTaskScheduler(plugin);
         SparrowDisplayGateway displays = new SparrowDisplayGateway(plugin.getLogger());
         renderer = new PrivateNodeRenderer(
@@ -67,7 +83,8 @@ public final class SparrowPrivateProjectionGateway
                 tasks,
                 displays,
                 selectionRaise,
-                this::cameraViewing);
+                this::cameraViewing,
+                messages);
         cameras = new OverheadCameraController(
                 plugin,
                 anchors,

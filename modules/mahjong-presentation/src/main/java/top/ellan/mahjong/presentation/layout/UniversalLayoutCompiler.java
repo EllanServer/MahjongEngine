@@ -41,7 +41,7 @@ final class UniversalLayoutCompiler {
                     double drawGap = index == size - 1 && size % 3 == 2
                             ? geometry.tileGap() * 15.0D
                             : 0.0D;
-                    double tangent = index * tileStep() - start + drawGap;
+                    double tangent = start - index * tileStep() - drawGap;
                     result[seat][size][index] = transform(
                             axis.outX() * (geometry.handRadius() + outwardOffset)
                                     + axis.tangentX() * tangent,
@@ -76,7 +76,7 @@ final class UniversalLayoutCompiler {
                 int row = index / columns;
                 int column = index % columns;
                 double outward = radial + row * (geometry.tileHeight() + geometry.tileGap());
-                double tangent = column * tileStep() - tangentStart;
+                double tangent = tangentStart - column * tileStep();
                 result[seat][index] = transform(
                         axis.outX() * outward + axis.tangentX() * tangent,
                         flatY(),
@@ -244,11 +244,11 @@ final class UniversalLayoutCompiler {
     private SeatAxis axis(int seat) {
         double angle = Math.PI * 2.0D * seat / spec.seatCount();
         return new SeatAxis(
-                Math.sin(angle), Math.cos(angle), Math.cos(angle), -Math.sin(angle));
+                Math.cos(angle), Math.sin(angle), -Math.sin(angle), Math.cos(angle));
     }
 
     private double seatYaw(int seat) {
-        return 360.0D * seat / spec.seatCount();
+        return -90.0D + 360.0D * seat / spec.seatCount();
     }
 
     private double tileStep() {

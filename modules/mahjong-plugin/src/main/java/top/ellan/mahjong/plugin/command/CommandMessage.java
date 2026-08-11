@@ -4,9 +4,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import net.kyori.adventure.text.Component;
 
-/** Client-translated player message with an English console fallback. */
+/** Localizable player message with an English console fallback. */
 public record CommandMessage(
         String translationKey, String consolePattern, List<String> arguments) {
     public CommandMessage {
@@ -23,11 +22,6 @@ public record CommandMessage(
                 key,
                 fallback,
                 Arrays.stream(arguments).map(String::valueOf).toList());
-    }
-
-    public Component playerComponent() {
-        Component[] components = arguments.stream().map(Component::text).toArray(Component[]::new);
-        return Component.translatable(translationKey, components);
     }
 
     public String consoleText() {

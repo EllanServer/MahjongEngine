@@ -6,12 +6,14 @@ import java.util.regex.Pattern;
 /** Restart-scoped CraftEngine asset references; geometry remains in CraftEngine configuration. */
 public record TableSceneAssets(
         String tableFurniture,
+        String seatFurniture,
         String standingBackFurniture,
         String flatBackFurniture,
         String handInteractionFurniture,
         String actionInteractionFurniture) {
     public TableSceneAssets {
         tableFurniture = requireAsset(tableFurniture, "tableFurniture");
+        seatFurniture = requireAsset(seatFurniture, "seatFurniture");
         standingBackFurniture = requireAsset(standingBackFurniture, "standingBackFurniture");
         flatBackFurniture = requireAsset(flatBackFurniture, "flatBackFurniture");
         handInteractionFurniture = requireAsset(handInteractionFurniture, "handInteractionFurniture");

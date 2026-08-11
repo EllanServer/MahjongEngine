@@ -105,7 +105,7 @@ final class UniversalLayoutPlan {
         if (!Double.isFinite(height) || height <= geometry.surfaceHeight()) {
             throw new IllegalArgumentException("Overhead camera height must clear the table");
         }
-        double facingCenterYaw = 180.0D - 360.0D * seatIndex / spec.seatCount();
+        double facingCenterYaw = 90.0D - 360.0D * seatIndex / spec.seatCount();
         return new SceneTransform(0, height, 0, facingCenterYaw, 90, 0, 1);
     }
 

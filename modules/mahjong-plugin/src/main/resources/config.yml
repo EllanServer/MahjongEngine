@@ -11,6 +11,7 @@ craftengine:
   bundle-folder: "mahjongpaper"
   assets:
     table: "mahjongpaper:table_visual"
+    seat: "mahjongpaper:seat_chair"
     standing-back: "mahjongpaper:tile_standing_face_down_back"
     flat-back: "mahjongpaper:tile_flat_face_down_back"
     hand-hitbox: "mahjongpaper:hand_tile_hitbox"

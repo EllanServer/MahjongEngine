@@ -69,6 +69,7 @@ public final class SceneProjectionBenchmark {
             64);
     private static final TableSceneAssets ASSETS = new TableSceneAssets(
             "mahjongpaper:table_visual",
+            "mahjongpaper:seat_chair",
             "mahjongpaper:tile_standing_face_down_back",
             "mahjongpaper:tile_flat_face_down_back",
             "mahjongpaper:hand_tile_hitbox",

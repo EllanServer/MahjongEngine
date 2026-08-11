@@ -141,12 +141,12 @@ public final class CraftEngineInteractionListener implements Listener {
 
     private void routeSeat(FurnitureInteractEvent event, Entity entity) {
         String node = entity.getPersistentDataContainer().get(nodeKey, PersistentDataType.STRING);
-        if (!"furniture/table".equals(node)) {
+        SeatId seatId = seatResolver.resolve(node, event.hitBox()).orElse(null);
+        if (seatId == null && !"furniture/table".equals(node)) {
             return;
         }
         String encodedTable =
                 entity.getPersistentDataContainer().get(tableKey, PersistentDataType.STRING);
-        SeatId seatId = seatResolver.resolve(event.hitBox()).orElse(null);
         if (encodedTable == null || seatId == null) {
             event.setCancelled(true);
             return;

@@ -21,6 +21,14 @@ import top.ellan.mahjong.spi.TileInstanceId;
 
 /** Projects only information that every nearby client is allowed to receive. */
 public final class PublicSceneProjector {
+    private static final SceneTransform TABLE_TRANSFORM =
+            new SceneTransform(0, 0.895D, 0, 0, 0, 0, 1);
+    private static final SceneTransform[] SEAT_TRANSFORMS = {
+        new SceneTransform(2.125D, 0.9D, 0, 90, 0, 0, 1),
+        new SceneTransform(0, 0.9D, 2.125D, 0, 0, 0, 1),
+        new SceneTransform(-2.125D, 0.9D, 0, 270, 0, 0, 1),
+        new SceneTransform(0, 0.9D, -2.125D, 180, 0, 0, 1)
+    };
     private final TableSceneAssets assets;
     private final RuleTileFurnitureResolver furniture;
 
@@ -41,7 +49,17 @@ public final class PublicSceneProjector {
                         tableId,
                         SceneVisibility.publicToAll(),
                         assets.tableFurniture(),
-                        new SceneTransform(0, 0.375, 0, 0, 0, 0, 1)));
+                        TABLE_TRANSFORM));
+        for (int seat = 0; seat < SEAT_TRANSFORMS.length; seat++) {
+            SceneNodeId seatId = SceneNodeId.trusted("furniture/seat/" + seat);
+            nodes.put(
+                    seatId,
+                    new FurnitureNode(
+                            seatId,
+                            SceneVisibility.publicToAll(),
+                            assets.seatFurniture(),
+                            SEAT_TRANSFORMS[seat]));
+        }
 
         ZoneTileCounts counts = ZoneTileCounts.from(projection.publicView().tiles());
         HashSet<TileInstanceId> revealedHands = null;

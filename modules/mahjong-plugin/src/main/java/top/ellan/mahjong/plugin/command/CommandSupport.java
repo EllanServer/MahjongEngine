@@ -47,8 +47,14 @@ public final class CommandSupport {
     public void reply(CommandSender sender, CommandMessage message) {
         Objects.requireNonNull(sender, "sender");
         Objects.requireNonNull(message, "message");
-        Component rendered = sender instanceof Player
-                ? message.playerComponent()
+        Component rendered = sender instanceof Player player
+                ? Component.text(
+                        runtime.messages()
+                                .format(
+                                        player.locale(),
+                                        message.translationKey(),
+                                        message.consolePattern(),
+                                        message.arguments()))
                 : Component.text(message.consoleText());
         Runnable send = () -> sender.sendMessage(rendered);
         if (sender instanceof Player player) {

@@ -43,6 +43,7 @@ import top.ellan.mahjong.plugin.match.MatchRefereeService;
 import top.ellan.mahjong.plugin.match.RulePackMatchCoordinator;
 import top.ellan.mahjong.plugin.match.StartedRulePackMatch;
 import top.ellan.mahjong.plugin.history.PlayerRecordService;
+import top.ellan.mahjong.plugin.i18n.LocalizedMessageCatalog;
 import top.ellan.mahjong.plugin.platform.CraftEnginePlatformRuntime;
 import top.ellan.mahjong.plugin.recovery.MatchRecoveryService;
 import top.ellan.mahjong.plugin.runtime.ActorDrain;
@@ -71,6 +72,7 @@ public final class MahjongRuntime implements AutoCloseable {
     private final MatchAutomationService automation = new MatchAutomationService(liveTables);
     private final MatchRefereeService referees = new MatchRefereeService(liveTables);
     private final PlayerRecordService playerRecords;
+    private final LocalizedMessageCatalog messages;
     private final CraftEnginePlatformRuntime platform;
     private final LobbyRuntimeCoordinator lobbyRuntime;
     private final MatchRecoveryService recovery;
@@ -83,6 +85,7 @@ public final class MahjongRuntime implements AutoCloseable {
     public MahjongRuntime(MahjongPaperPlugin plugin, PluginConfiguration configuration) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.configuration = Objects.requireNonNull(configuration, "configuration");
+        messages = LocalizedMessageCatalog.load(plugin.getClass().getClassLoader());
         int processors = Math.max(1, Runtime.getRuntime().availableProcessors());
         executors = new BoundedPlatformExecutors(processors);
         playerRecords = new PlayerRecordService(
@@ -100,7 +103,8 @@ public final class MahjongRuntime implements AutoCloseable {
                         configuration,
                         executors,
                         deadlines,
-                        actors);
+                        actors,
+                        messages);
         lobbyRuntime =
                 new LobbyRuntimeCoordinator(
                         executors.actor(),
@@ -158,6 +162,10 @@ public final class MahjongRuntime implements AutoCloseable {
                                 + ", lobbies="
                                 + lobbyRuntime.directory().list().size();
         return state.get() + ": " + detail.get() + suffix;
+    }
+
+    public LocalizedMessageCatalog messages() {
+        return messages;
     }
 
     public LiveTableDirectory liveTables() {

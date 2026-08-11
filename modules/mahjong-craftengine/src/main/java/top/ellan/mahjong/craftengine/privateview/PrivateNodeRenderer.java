@@ -14,6 +14,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import top.ellan.mahjong.craftengine.port.PlayerTextResolver;
 import top.ellan.mahjong.platform.paper.anchor.TableAnchorLookup;
 import top.ellan.mahjong.craftengine.privateview.PrivateProjectionState.ActiveItem;
 import top.ellan.mahjong.craftengine.privateview.PrivateProjectionState.ActiveLabel;
@@ -34,6 +35,7 @@ final class PrivateNodeRenderer implements AutoCloseable {
     private final PlayerRegionTaskScheduler tasks;
     private final SparrowDisplayGateway displays;
     private final Predicate<PlayerId> cameraViewing;
+    private final PlayerTextResolver messages;
     private final HandTileSelectionController selections;
 
     PrivateNodeRenderer(
@@ -42,12 +44,14 @@ final class PrivateNodeRenderer implements AutoCloseable {
             PlayerRegionTaskScheduler tasks,
             SparrowDisplayGateway displays,
             double selectionRaise,
-            Predicate<PlayerId> cameraViewing) {
+            Predicate<PlayerId> cameraViewing,
+            PlayerTextResolver messages) {
         this.anchors = anchors;
         this.state = state;
         this.tasks = tasks;
         this.displays = displays;
         this.cameraViewing = cameraViewing;
+        this.messages = messages;
         selections = new HandTileSelectionController(tasks, this::moveHandTile, selectionRaise);
     }
 
@@ -189,7 +193,7 @@ final class PrivateNodeRenderer implements AutoCloseable {
                         () -> new IllegalStateException("No anchor for table " + key.tableId()));
         FakeTextDisplay display = displays.createText(
                 PrivateSceneGeometry.localToWorld(anchor, label.transform()));
-        display.name(PrivatePresentationAssets.labelJson(label));
+        display.name(PrivatePresentationAssets.labelJson(label, player.locale(), messages));
         if (label.emphasized()) {
             display.rgba(92, 63, 0, 190);
         } else {

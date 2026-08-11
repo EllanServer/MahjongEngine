@@ -54,6 +54,9 @@ public record PluginConfiguration(
                                 "craftengine.assets.table",
                                 "mahjongpaper:table_visual"),
                         config.getString(
+                                "craftengine.assets.seat",
+                                "mahjongpaper:seat_chair"),
+                        config.getString(
                                 "craftengine.assets.standing-back",
                                 "mahjongpaper:tile_standing_face_down_back"),
                         config.getString(
@@ -114,6 +117,7 @@ public record PluginConfiguration(
 
     public record CraftEngineAssets(
             String table,
+            String seat,
             String standingBack,
             String flatBack,
             String handHitbox,
@@ -121,6 +125,7 @@ public record PluginConfiguration(
             String openingDieSlotPrefix) {
         public CraftEngineAssets {
             table = requireAsset(table, "table furniture");
+            seat = requireAsset(seat, "seat furniture");
             standingBack = requireAsset(standingBack, "standing back furniture");
             flatBack = requireAsset(flatBack, "flat back furniture");
             handHitbox = requireAsset(handHitbox, "hand hitbox furniture");

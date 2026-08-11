@@ -72,6 +72,7 @@ class SceneGraphTest {
     private static final TableSceneAssets ASSETS =
             new TableSceneAssets(
                     "mahjongpaper:table_visual",
+                    "mahjongpaper:seat_chair",
                     "mahjongpaper:tile_standing_face_down_back",
                     "mahjongpaper:tile_flat_face_down_back",
                     "mahjongpaper:hand_tile_hitbox",
@@ -96,6 +97,27 @@ class SceneGraphTest {
                     64,
                     32,
                     64);
+
+    @Test
+    void tableAndIndependentChairsMatchTheV15FurnitureAnchors() {
+        SceneGraph graph = mapper().map(projection(TableId.random(), 4, "playing"));
+
+        assertEquals(
+                new SceneTransform(0, 0.895D, 0, 0, 0, 0, 1),
+                ((FurnitureNode) graph.nodes().get(new SceneNodeId("furniture/table"))).transform());
+        assertEquals(
+                new SceneTransform(2.125D, 0.9D, 0, 90, 0, 0, 1),
+                ((FurnitureNode) graph.nodes().get(new SceneNodeId("furniture/seat/0"))).transform());
+        assertEquals(
+                new SceneTransform(0, 0.9D, 2.125D, 0, 0, 0, 1),
+                ((FurnitureNode) graph.nodes().get(new SceneNodeId("furniture/seat/1"))).transform());
+        assertEquals(
+                new SceneTransform(-2.125D, 0.9D, 0, 270, 0, 0, 1),
+                ((FurnitureNode) graph.nodes().get(new SceneNodeId("furniture/seat/2"))).transform());
+        assertEquals(
+                new SceneTransform(0, 0.9D, -2.125D, 180, 0, 0, 1),
+                ((FurnitureNode) graph.nodes().get(new SceneNodeId("furniture/seat/3"))).transform());
+    }
 
     @Test
     void mapperKeepsSecretFacesOutOfWorldBackedNodes() {
@@ -134,9 +156,9 @@ class SceneGraphTest {
         PrivateItemNode privateFace = (PrivateItemNode) graph.nodes().get(
                 new SceneNodeId("tile/private/" + viewer + "/1"));
 
-        assertEquals(publicBack.transform().x(), privateFace.transform().x());
-        assertTrue(privateFace.transform().z() > publicBack.transform().z());
-        assertTrue(privateFace.transform().z() - publicBack.transform().z() < 0.01D);
+        assertEquals(publicBack.transform().z(), privateFace.transform().z());
+        assertTrue(privateFace.transform().x() > publicBack.transform().x());
+        assertTrue(privateFace.transform().x() - publicBack.transform().x() < 0.01D);
     }
 
     @Test
@@ -333,7 +355,7 @@ class SceneGraphTest {
         assertEquals(Optional.of(PLAYER), label.visibility().singleViewer());
         assertEquals(Optional.of(PLAYER), camera.visibility().singleViewer());
         assertEquals(4.5D, camera.transform().y());
-        assertEquals(180.0D, camera.transform().yawDegrees());
+        assertEquals(90.0D, camera.transform().yawDegrees());
         assertEquals(90.0D, camera.transform().pitchDegrees());
         assertTrue(view.transform().x() > 0.0D);
         assertEquals(11, binding.revision());
@@ -362,7 +384,7 @@ class SceneGraphTest {
         InteractionNode secondNode = (InteractionNode) graph.nodes().get(
                 new SceneNodeId("interaction/action/" + player + "/a_second"));
 
-        assertTrue(firstNode.transform().x() < secondNode.transform().x());
+        assertTrue(firstNode.transform().z() < secondNode.transform().z());
     }
 
     @Test
@@ -479,10 +501,10 @@ class SceneGraphTest {
         SceneTransform seatThree = layout.tile(wallTile(5, 102), 136);
 
         assertNotEquals(seatZeroTop.y(), seatZeroBottom.y());
-        assertEquals(1.0D, seatZeroTop.z(), 0.000_001D);
-        assertEquals(1.0D, seatOne.x(), 0.000_001D);
-        assertEquals(-1.0D, seatTwo.z(), 0.000_001D);
-        assertEquals(-1.0D, seatThree.x(), 0.000_001D);
+        assertEquals(1.0D, seatZeroTop.x(), 0.000_001D);
+        assertEquals(1.0D, seatOne.z(), 0.000_001D);
+        assertEquals(-1.0D, seatTwo.x(), 0.000_001D);
+        assertEquals(-1.0D, seatThree.z(), 0.000_001D);
     }
 
     @Test
@@ -515,8 +537,8 @@ class SceneGraphTest {
         SceneTransform firstTransform = layout.tile(first, 7);
         SceneTransform seventhTransform = layout.tile(seventh, 7);
 
-        assertEquals(firstTransform.x(), seventhTransform.x(), 0.000_001D);
-        assertNotEquals(firstTransform.z(), seventhTransform.z());
+        assertEquals(firstTransform.z(), seventhTransform.z(), 0.000_001D);
+        assertNotEquals(firstTransform.x(), seventhTransform.x());
         assertEquals(firstTransform.y(), seventhTransform.y());
     }
 
@@ -534,11 +556,11 @@ class SceneGraphTest {
                     SceneTransform privateTransform = layout.privateTile(tile, size);
 
                     assertEquals(
-                            publicTransform.x() + Math.sin(angle) * offset,
+                            publicTransform.x() + Math.cos(angle) * offset,
                             privateTransform.x(),
                             0.000_000_001D);
                     assertEquals(
-                            publicTransform.z() + Math.cos(angle) * offset,
+                            publicTransform.z() + Math.sin(angle) * offset,
                             privateTransform.z(),
                             0.000_000_001D);
                     assertEquals(publicTransform.y(), privateTransform.y());
@@ -568,8 +590,8 @@ class SceneGraphTest {
                 RuleMeldPresentation.tile(
                         0, 3, 4, 0, 1, RuleMeldTileRole.CLAIMED, -1)), 3);
 
-        assertTrue(fromLeft.x() < fromOpposite.x());
-        assertTrue(fromOpposite.x() < fromRight.x());
+        assertTrue(fromLeft.z() < fromOpposite.z());
+        assertTrue(fromOpposite.z() < fromRight.z());
     }
 
     @Test
@@ -583,15 +605,15 @@ class SceneGraphTest {
                 List.of(13, 14, 13, 14), table(108).wall().stackCountsBySide());
         assertEquals(
                 -1.0D,
-                layout.resolve(table(108)).tile(wallTile(1, 107), 108).x(),
+                layout.resolve(table(108)).tile(wallTile(1, 107), 108).z(),
                 0.000_001D);
         assertEquals(
                 -1.0D,
-                layout.resolve(table(136)).tile(wallTile(2, 135), 136).x(),
+                layout.resolve(table(136)).tile(wallTile(2, 135), 136).z(),
                 0.000_001D);
         assertEquals(
                 -1.0D,
-                layout.resolve(table(144)).tile(wallTile(3, 143), 144).x(),
+                layout.resolve(table(144)).tile(wallTile(3, 143), 144).z(),
                 0.000_001D);
     }
 

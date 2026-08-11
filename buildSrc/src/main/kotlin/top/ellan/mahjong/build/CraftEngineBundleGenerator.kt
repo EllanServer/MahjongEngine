@@ -194,7 +194,7 @@ object CraftEngineBundleGenerator {
 
     private fun verifyLocales(resourcepackDir: File) {
         val localeDir = resourcepackDir.resolve("assets/mahjongcraft/lang")
-        val expected = setOf("en_us", "zh_cn", "zh_tw", "ja_jp")
+        val expected = setOf("en_us", "zh_cn", "zh_tw", "zh_hk", "zh_mo", "ja_jp")
         val files =
             localeDir
                 .listFiles { file -> file.isFile && file.extension == "json" }
