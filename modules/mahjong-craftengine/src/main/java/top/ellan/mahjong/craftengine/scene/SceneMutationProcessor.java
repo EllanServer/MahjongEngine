@@ -3,6 +3,8 @@ package top.ellan.mahjong.craftengine.scene;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import top.ellan.mahjong.application.interaction.InteractionRouter;
@@ -40,38 +42,90 @@ final class SceneMutationProcessor {
      */
     SceneMutation next(CraftEngineTableState table) {
         synchronized (table) {
-            while (true) {
-                SceneNodeId id = firstDirty(table);
-                if (id == null) {
-                    return null;
+            if (table.failed) {
+                return null;
+            }
+            var iterator = table.dirty.iterator();
+            while (iterator.hasNext()) {
+                SceneNodeId id = iterator.next();
+                if (table.inFlight.contains(id)) {
+                    continue;
                 }
-                table.dirty.remove(id);
                 SceneNode desired = table.desired.get(id);
                 SceneNode actual = table.actual.get(id);
                 boolean forced = table.forced.contains(id);
                 if (!forced && Objects.equals(desired, actual)) {
+                    iterator.remove();
                     continue;
                 }
+                iterator.remove();
+                table.inFlight.add(id);
                 return new SceneMutation(id, desired, table.applyEpoch);
             }
+            return null;
         }
     }
 
-    private static SceneNodeId firstDirty(CraftEngineTableState table) {
-        return table.dirty.isEmpty() ? null : table.dirty.iterator().next();
+    boolean apply(
+            TableId tableId,
+            CraftEngineTableState table,
+            SceneMutation mutation,
+            Runnable asyncWake) {
+        CompletionStage<Void> result;
+        try {
+            result = mutation.desired() == null
+                    ? gateway.remove(tableId, mutation.id())
+                    : gateway.upsert(tableId, mutation.desired());
+        } catch (RuntimeException failure) {
+            return complete(tableId, table, mutation, failure, null);
+        }
+        if (result == null) {
+            return complete(
+                    tableId,
+                    table,
+                    mutation,
+                    new IllegalStateException("CraftEngine mutation returned a null stage"),
+                    null);
+        }
+        var future = result.toCompletableFuture();
+        if (future.isDone()) {
+            try {
+                future.join();
+                return complete(tableId, table, mutation, null, null);
+            } catch (CompletionException failure) {
+                return complete(tableId, table, mutation, unwrap(failure), null);
+            }
+        }
+        future.whenComplete((ignored, failure) -> complete(
+                tableId,
+                table,
+                mutation,
+                unwrap(failure),
+                asyncWake));
+        return true;
     }
 
-    boolean apply(TableId tableId, CraftEngineTableState table, SceneMutation mutation) {
-        try {
-            if (mutation.desired() == null) {
-                gateway.remove(tableId, mutation.id());
-            } else {
-                gateway.upsert(tableId, mutation.desired());
+    private boolean complete(
+            TableId tableId,
+            CraftEngineTableState table,
+            SceneMutation mutation,
+            Throwable failure,
+            Runnable asyncWake) {
+        CraftEngineTableFailure report = null;
+        boolean wake = false;
+        synchronized (table) {
+            if (!table.inFlight.remove(mutation.id())) {
+                return failure == null;
             }
-            synchronized (table) {
-                if (mutation.applyEpoch() != table.applyEpoch) {
-                    return true;
-                }
+            if (mutation.applyEpoch() != table.applyEpoch) {
+                wake = !table.dirty.isEmpty();
+            } else if (failure != null) {
+                table.failed = true;
+                report = new CraftEngineTableFailure(
+                        tableId,
+                        Math.max(0, table.desiredRevision),
+                        failure.getClass().getSimpleName());
+            } else {
                 if (mutation.desired() == null) {
                     table.actual.remove(mutation.id());
                 } else {
@@ -83,27 +137,38 @@ final class SceneMutationProcessor {
                 } else {
                     table.dirty.add(mutation.id());
                 }
+                wake = !table.dirty.isEmpty();
             }
-            return true;
-        } catch (RuntimeException failure) {
-            synchronized (table) {
-                if (mutation.applyEpoch() != table.applyEpoch) {
-                    return true;
-                }
-                table.failed = true;
-            }
-            failureSink.accept(new CraftEngineTableFailure(
-                    tableId,
-                    Math.max(0, table.desiredRevision),
-                    failure.getClass().getSimpleName()));
+        }
+        if (report != null) {
+            failureSink.accept(report);
             return false;
         }
+        installBindingsIfReady(tableId, table);
+        finishClosedTable(tableId, table);
+        if (wake && asyncWake != null) {
+            asyncWake.run();
+        }
+        return true;
+    }
+
+    private static Throwable unwrap(Throwable failure) {
+        Throwable current = failure;
+        while ((current instanceof CompletionException
+                        || current instanceof java.util.concurrent.ExecutionException)
+                && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
     }
 
     void finishClosedTable(TableId tableId, CraftEngineTableState table) {
         installBindingsIfReady(tableId, table);
         synchronized (table) {
-            if (table.closed && table.actual.isEmpty() && table.dirty.isEmpty()) {
+            if (table.closed
+                    && table.actual.isEmpty()
+                    && table.dirty.isEmpty()
+                    && table.inFlight.isEmpty()) {
                 tables.remove(tableId, table);
             }
         }
@@ -115,6 +180,7 @@ final class SceneMutationProcessor {
                     || table.closed
                     || table.failed
                     || !table.dirty.isEmpty()
+                    || !table.inFlight.isEmpty()
                     || table.bindingsInstalled) {
                 return;
             }

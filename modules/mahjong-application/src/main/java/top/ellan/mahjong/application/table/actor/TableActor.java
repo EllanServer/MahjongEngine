@@ -67,6 +67,42 @@ public final class TableActor
             TableAggregate aggregate,
             RuleState initialRuleState,
             long lastEventSequence) {
+        this(
+                dispatcher,
+                ruleExecutor,
+                ruleExecutor,
+                provider,
+                outbox,
+                deadlineScheduler,
+                projector,
+                cuePort,
+                openingPort,
+                presentInitialOpening,
+                tokenIssuer,
+                clock,
+                config,
+                aggregate,
+                initialRuleState,
+                lastEventSequence);
+    }
+
+    public TableActor(
+            Executor dispatcher,
+            FairRuleExecutor ruleExecutor,
+            FairRuleExecutor automationExecutor,
+            RulePackProvider provider,
+            PersistenceOutbox outbox,
+            TaskScheduler deadlineScheduler,
+            SceneProjectionPort projector,
+            TablePresentationCuePort cuePort,
+            TableOpeningPresentationPort openingPort,
+            boolean presentInitialOpening,
+            ActionTokenIssuer tokenIssuer,
+            Clock clock,
+            TableActorConfig config,
+            TableAggregate aggregate,
+            RuleState initialRuleState,
+            long lastEventSequence) {
         this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
         this.config = Objects.requireNonNull(config, "config");
         Objects.requireNonNull(outbox, "outbox");
@@ -99,6 +135,7 @@ public final class TableActor
         automation = new TableAutomationRoster(aggregate.participants());
         ruleTasks = new TableRuleTaskLauncher(
                 Objects.requireNonNull(ruleExecutor, "ruleExecutor"),
+                Objects.requireNonNull(automationExecutor, "automationExecutor"),
                 provider,
                 aggregate.participants(),
                 config,

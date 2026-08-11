@@ -35,6 +35,7 @@ final class MatchActorFactory {
     private final Executor actorDispatcher;
     private final Executor ioExecutor;
     private final FairRuleExecutor rules;
+    private final FairRuleExecutor automation;
     private final TaskScheduler deadlines;
     private final TableActorRegistry actors;
     private final JdbcMatchRepository matches;
@@ -48,6 +49,7 @@ final class MatchActorFactory {
             Executor actorDispatcher,
             Executor ioExecutor,
             FairRuleExecutor rules,
+            FairRuleExecutor automation,
             TaskScheduler deadlines,
             TableActorRegistry actors,
             JdbcMatchRepository matches,
@@ -59,6 +61,7 @@ final class MatchActorFactory {
         this.actorDispatcher = Objects.requireNonNull(actorDispatcher, "actorDispatcher");
         this.ioExecutor = Objects.requireNonNull(ioExecutor, "ioExecutor");
         this.rules = Objects.requireNonNull(rules, "rules");
+        this.automation = Objects.requireNonNull(automation, "automation");
         this.deadlines = Objects.requireNonNull(deadlines, "deadlines");
         this.actors = Objects.requireNonNull(actors, "actors");
         this.matches = Objects.requireNonNull(matches, "matches");
@@ -134,6 +137,7 @@ final class MatchActorFactory {
                 new TableActor(
                         actorDispatcher,
                         rules,
+                        automation,
                         provider,
                         outbox,
                         deadlines,

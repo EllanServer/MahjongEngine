@@ -14,17 +14,20 @@ import top.ellan.mahjong.spi.RuleState;
 
 /** Launches serialized pure-provider work on the bounded fair rule pool. */
 final class TableRuleTaskLauncher {
-    private final FairRuleExecutor executor;
+    private final FairRuleExecutor rules;
+    private final FairRuleExecutor automation;
     private final RuleId ruleId;
     private final RuleComputationEngine computations;
 
     TableRuleTaskLauncher(
-            FairRuleExecutor executor,
+            FairRuleExecutor rules,
+            FairRuleExecutor automation,
             RulePackProvider provider,
             List<TableParticipant> participants,
             TableActorConfig limits,
             RuleId ruleId) {
-        this.executor = executor;
+        this.rules = rules;
+        this.automation = automation;
         this.ruleId = ruleId;
         computations = new RuleComputationEngine(provider, participants, limits);
     }
@@ -35,7 +38,7 @@ final class TableRuleTaskLauncher {
             List<PlayerId> automatedPlayers,
             Consumer<RuleTaskCompletion> completion) {
         List<PlayerId> automationSnapshot = List.copyOf(automatedPlayers);
-        executor.submit(
+        executorFor(automationSnapshot).submit(
                         ruleId,
                         () -> computations.frameOnly(
                                 state, expectedRevision, automationSnapshot))
@@ -61,7 +64,7 @@ final class TableRuleTaskLauncher {
             Optional<ScheduledActionTrigger> scheduledTrigger,
             Consumer<RuleTaskCompletion> completion) {
         List<PlayerId> automationSnapshot = List.copyOf(automatedPlayers);
-        executor.submit(
+        executorFor(automationSnapshot).submit(
                         ruleId,
                         () -> computations.transition(
                                 state,
@@ -78,5 +81,9 @@ final class TableRuleTaskLauncher {
                         scheduledTrigger,
                         computed,
                         failure)));
+    }
+
+    private FairRuleExecutor executorFor(List<PlayerId> automatedPlayers) {
+        return automatedPlayers.isEmpty() ? rules : automation;
     }
 }

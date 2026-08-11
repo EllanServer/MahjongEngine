@@ -158,7 +158,6 @@ final class PrivateNodeRenderer implements AutoCloseable {
             NodeKey key,
             long expectedGeneration,
             PrivateItemNode item) {
-        remove(player, key);
         Location anchor = anchors.location(key.tableId())
                 .orElseThrow(
                         () -> new IllegalStateException("No anchor for table " + key.tableId()));
@@ -166,6 +165,16 @@ final class PrivateNodeRenderer implements AutoCloseable {
                 anchor,
                 selections.presentedTransform(key.tableId(), key.viewer(), item));
         String asset = PrivatePresentationAssets.itemAsset(item);
+        ActiveItem active = state.activeItem(key);
+        if (active != null
+                && PrivatePresentationAssets.itemAsset(active.node()).equals(asset)) {
+            displays.teleport(player, location, active.display().entityID());
+            state.putActiveItem(
+                    key, new ActiveItem(expectedGeneration, active.display(), item));
+            removeIfStale(player, key, expectedGeneration);
+            return;
+        }
+        remove(player, key);
         BukkitItemDefinition definition = CraftEngineItems.byId(asset);
         if (definition == null) {
             throw new IllegalStateException("Missing CraftEngine item " + asset);
@@ -175,8 +184,8 @@ final class PrivateNodeRenderer implements AutoCloseable {
         display.item(stack);
         display.spawn(player);
         ActiveItem replaced =
-                state.putActiveItem(key, new ActiveItem(expectedGeneration, display));
-        if (replaced != null) {
+                state.putActiveItem(key, new ActiveItem(expectedGeneration, display, item));
+        if (replaced != null && replaced.display() != display) {
             displays.destroyItem(player, replaced.display());
         }
         removeIfStale(player, key, expectedGeneration);
@@ -187,18 +196,36 @@ final class PrivateNodeRenderer implements AutoCloseable {
             NodeKey key,
             long expectedGeneration,
             ActionLabelNode label) {
-        remove(player, key);
         Location anchor = anchors.location(key.tableId())
                 .orElseThrow(
                         () -> new IllegalStateException("No anchor for table " + key.tableId()));
+        Location location = PrivateSceneGeometry.localToWorld(anchor, label.transform());
+        String content = PrivatePresentationAssets.labelJson(label, player.locale(), messages);
+        ActiveLabel active = state.activeLabel(key);
+        if (active != null
+                && active.content().equals(content)) {
+            displays.teleport(player, location, active.display().entityID());
+            state.putActiveLabel(
+                    key,
+                    new ActiveLabel(
+                            expectedGeneration,
+                            active.display(),
+                            label,
+                            content));
+            removeIfStale(player, key, expectedGeneration);
+            return;
+        }
+        remove(player, key);
         FakeTextDisplay display = displays.createText(
-                PrivateSceneGeometry.localToWorld(anchor, label.transform()));
-        display.name(PrivatePresentationAssets.labelJson(label, player.locale(), messages));
+                location);
+        display.name(content);
         display.rgba(0, 0, 0, 60);
         display.spawn(player);
         ActiveLabel replaced =
-                state.putActiveLabel(key, new ActiveLabel(expectedGeneration, display));
-        if (replaced != null) {
+                state.putActiveLabel(
+                        key,
+                        new ActiveLabel(expectedGeneration, display, label, content));
+        if (replaced != null && replaced.display() != display) {
             displays.destroyText(player, replaced.display());
         }
         removeIfStale(player, key, expectedGeneration);

@@ -22,6 +22,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.application.concurrent.BoundedDeadlineScheduler;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
@@ -182,17 +183,22 @@ class TableActorTest {
     void trusteeControlReframesOnceAndRunsThroughTheRevisionBoundTimer() throws Exception {
         ThreadPoolExecutor dispatcher = new ThreadPoolExecutor(
                 1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(32));
-        try (dispatcher; FairRuleExecutor rules = new FairRuleExecutor(1, 8, "trustee-rule-test")) {
+        try (dispatcher;
+                FairRuleExecutor rules = new FairRuleExecutor(1, 8, "trustee-rule-test");
+                FairRuleExecutor automation =
+                        new FairRuleExecutor(1, 8, "trustee-automation-test")) {
             MatchId matchId = MatchId.random();
             TaskScheduler neverRuns = (task, delay) -> () -> true;
             PersistenceOutbox outbox = new PersistenceOutbox(
                     matchId, 0, new ImmediateStore(), neverRuns, Clock.systemUTC());
             ManualScheduler deadlines = new ManualScheduler();
             ArrayBlockingQueue<TableProjection> projections = new ArrayBlockingQueue<>(4);
+            AtomicReference<String> automationThread = new AtomicReference<>();
             TableActor actor = new TableActor(
                     dispatcher,
                     rules,
-                    new CounterProvider(),
+                    automation,
+                    new CounterProvider(1, false, automationThread),
                     outbox,
                     deadlines,
                     projections::offer,
@@ -214,6 +220,7 @@ class TableActorTest {
             assertEquals(TableActionCode.ACCEPTED_MEMORY, enabled.code());
             assertTrue(actor.isAutomated(PLAYER));
             assertEquals(0, projections.poll(2, TimeUnit.SECONDS).revision());
+            assertTrue(automationThread.get().startsWith("trustee-automation-test"));
             deadlines.awaitScheduled();
             assertEquals(1, deadlines.pendingCount());
 
@@ -570,18 +577,27 @@ class TableActorTest {
                         Set.of());
         private final int eventCount;
         private final boolean scheduleInitialAction;
+        private final AtomicReference<String> automationThread;
 
         private CounterProvider() {
-            this(1, false);
+            this(1, false, new AtomicReference<>());
         }
 
         private CounterProvider(int eventCount) {
-            this(eventCount, false);
+            this(eventCount, false, new AtomicReference<>());
         }
 
         private CounterProvider(int eventCount, boolean scheduleInitialAction) {
+            this(eventCount, scheduleInitialAction, new AtomicReference<>());
+        }
+
+        private CounterProvider(
+                int eventCount,
+                boolean scheduleInitialAction,
+                AtomicReference<String> automationThread) {
             this.eventCount = eventCount;
             this.scheduleInitialAction = scheduleInitialAction;
+            this.automationThread = automationThread;
         }
 
         @Override
@@ -636,6 +652,7 @@ class TableActorTest {
             if (candidates.isEmpty() || ((CounterState) state).value() != 0) {
                 return Optional.empty();
             }
+            automationThread.set(Thread.currentThread().getName());
             AutomatedPlayerActions candidate = candidates.getFirst();
             if (candidate.legalActions().isEmpty()) {
                 return Optional.empty();

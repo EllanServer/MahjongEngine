@@ -167,6 +167,11 @@ final class PrivateProjectionState {
                 .put(key, label);
     }
 
+    ActiveLabel activeLabel(NodeKey key) {
+        Map<NodeKey, ActiveLabel> labels = activeLabels.get(key.viewer());
+        return labels == null ? null : labels.get(key);
+    }
+
     ActiveLabel removeActiveLabel(NodeKey key) {
         ConcurrentHashMap<NodeKey, ActiveLabel> labels = activeLabels.get(key.viewer());
         if (labels == null) {
@@ -252,9 +257,13 @@ final class PrivateProjectionState {
 
     record DesiredNode(long generation, SceneNode node) {}
 
-    record ActiveItem(long generation, FakeItemDisplay display) {}
+    record ActiveItem(long generation, FakeItemDisplay display, PrivateItemNode node) {}
 
-    record ActiveLabel(long generation, FakeTextDisplay display) {}
+    record ActiveLabel(
+            long generation,
+            FakeTextDisplay display,
+            ActionLabelNode node,
+            String content) {}
 
     record UpsertedNode(NodeKey key, long generation) {}
 

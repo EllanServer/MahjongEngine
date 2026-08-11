@@ -122,8 +122,12 @@ public final class SparrowPrivateProjectionGateway
             Player player = Bukkit.getPlayer(upserted.key().viewer().value());
             if (player != null) {
                 locales.putIfAbsent(upserted.key().viewer(), player.locale());
-                tasks.execute(
+                Object taskKey = node instanceof HudNode
+                        ? new HudRenderKey(upserted.key().viewer())
+                        : upserted.key();
+                tasks.executeLatest(
                         player,
+                        taskKey,
                         () -> renderer.apply(player, upserted.key(), upserted.generation()));
             }
         }
@@ -141,8 +145,12 @@ public final class SparrowPrivateProjectionGateway
                 continue;
             }
             boolean hudChanged = target.node() instanceof HudNode;
-            tasks.execute(
+            Object taskKey = hudChanged
+                    ? new HudRenderKey(target.key().viewer())
+                    : target.key();
+            tasks.executeLatest(
                     player,
+                    taskKey,
                     () -> {
                         renderer.remove(player, target.key());
                         if (hudChanged) {
@@ -177,6 +185,7 @@ public final class SparrowPrivateProjectionGateway
     public void onQuit(PlayerQuitEvent event) {
         PlayerId playerId = new PlayerId(event.getPlayer().getUniqueId());
         locales.remove(playerId);
+        tasks.forget(playerId.value());
         renderer.onQuit(playerId);
         cameras.onQuit(playerId);
     }
@@ -234,6 +243,7 @@ public final class SparrowPrivateProjectionGateway
     public void close() {
         cameras.close();
         renderer.close();
+        tasks.clear();
         locales.clear();
         state.clear();
     }
@@ -241,4 +251,6 @@ public final class SparrowPrivateProjectionGateway
     private boolean cameraViewing(PlayerId viewer) {
         return cameras != null && cameras.viewing(viewer);
     }
+
+    private record HudRenderKey(PlayerId viewer) {}
 }

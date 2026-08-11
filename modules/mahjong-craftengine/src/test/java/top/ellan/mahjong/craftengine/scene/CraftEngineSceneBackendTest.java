@@ -10,6 +10,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.application.interaction.InteractionHandle;
 import top.ellan.mahjong.application.interaction.InteractionRouter;
@@ -177,6 +179,61 @@ class CraftEngineSceneBackendTest {
 
         scheduler.runUntilIdle(REGION, 4);
         assertEquals(1, interactions.routeCount());
+    }
+
+    @Test
+    void interactionTokensWaitForAsynchronousFurnitureCompletion() {
+        ManualRegionScheduler scheduler = new ManualRegionScheduler();
+        RecordingGateway gateway = new RecordingGateway();
+        CompletableFuture<Void> movement = new CompletableFuture<>();
+        gateway.delayNextUpsert = movement;
+        InteractionRouter interactions = new InteractionRouter(new TableActorRegistry());
+        CraftEngineSceneBackend backend =
+                backend(gateway, scheduler, interactions, ignored -> {});
+        TableId table = TableId.random();
+        PlayerId player = new PlayerId(UUID.randomUUID());
+
+        backend.submit(withBinding(
+                diff(table, 1),
+                new InteractionHandle(UUID.randomUUID()),
+                player,
+                1));
+        backend.onCraftEngineReloaded();
+        scheduler.runOneTick(REGION);
+
+        assertEquals(0, interactions.routeCount());
+        movement.complete(null);
+        assertEquals(1, interactions.routeCount());
+    }
+
+    @Test
+    void newerDesiredNodeWaitsForItsInFlightMutationAndThenAppliesLatest() {
+        ManualRegionScheduler scheduler = new ManualRegionScheduler();
+        RecordingGateway gateway = new RecordingGateway();
+        CompletableFuture<Void> movement = new CompletableFuture<>();
+        gateway.delayNextUpsert = movement;
+        CraftEngineSceneBackend backend = backend(gateway, scheduler, ignored -> {});
+        TableId table = TableId.random();
+        SceneNodeId nodeId = new SceneNodeId("tile/0");
+        SceneNode newest = new FurnitureNode(
+                nodeId,
+                SceneVisibility.publicToAll(),
+                "mahjong:tile/back",
+                new SceneTransform(7, 0, 0, 0, 0, 0, 1));
+
+        backend.submit(diff(table, 1));
+        backend.onCraftEngineReloaded();
+        scheduler.runOneTick(REGION);
+        backend.submit(new SceneDiff(
+                table, 1, 2, List.of(), List.of(newest), List.of()));
+        scheduler.runOneTick(REGION);
+
+        assertEquals(1, gateway.upserted.getOrDefault(table, 0));
+        movement.complete(null);
+        scheduler.runUntilIdle(REGION, 4);
+
+        assertEquals(2, gateway.upserted.getOrDefault(table, 0));
+        assertEquals(newest, gateway.live.getOrDefault(table, Map.of()).get(nodeId));
     }
 
     @Test
@@ -362,9 +419,10 @@ class CraftEngineSceneBackendTest {
         private final Map<TableId, Map<SceneNodeId, SceneNode>> live = new HashMap<>();
         private TableId broken;
         private Runnable duringFirstUpsert;
+        private CompletableFuture<Void> delayNextUpsert;
 
         @Override
-        public void upsert(TableId tableId, SceneNode node) {
+        public CompletionStage<Void> upsert(TableId tableId, SceneNode node) {
             if (tableId.equals(broken)) {
                 throw new IllegalStateException("isolated CE failure");
             }
@@ -374,12 +432,21 @@ class CraftEngineSceneBackendTest {
             if (callback != null) {
                 callback.run();
             }
-            live.computeIfAbsent(tableId, ignored -> new HashMap<>()).put(node.id(), node);
+            Runnable commit = () -> live.computeIfAbsent(tableId, ignored -> new HashMap<>())
+                    .put(node.id(), node);
+            CompletableFuture<Void> delayed = delayNextUpsert;
+            delayNextUpsert = null;
+            if (delayed != null) {
+                return delayed.thenRun(commit);
+            }
+            commit.run();
+            return CompletableFuture.completedFuture(null);
         }
 
         @Override
-        public void remove(TableId tableId, SceneNodeId nodeId) {
+        public CompletionStage<Void> remove(TableId tableId, SceneNodeId nodeId) {
             live.computeIfAbsent(tableId, ignored -> new HashMap<>()).remove(nodeId);
+            return CompletableFuture.completedFuture(null);
         }
     }
 }

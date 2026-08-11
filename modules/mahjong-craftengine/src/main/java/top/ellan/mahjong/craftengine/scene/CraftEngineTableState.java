@@ -15,6 +15,7 @@ final class CraftEngineTableState {
     final Map<SceneNodeId, SceneNode> actual = new LinkedHashMap<>();
     final Set<SceneNodeId> dirty = new LinkedHashSet<>();
     final Set<SceneNodeId> forced = new LinkedHashSet<>();
+    final Set<SceneNodeId> inFlight = new LinkedHashSet<>();
     List<InteractionRouteBinding> bindings = List.of();
     long desiredRevision = -1;
     long transientGeneration = -1;

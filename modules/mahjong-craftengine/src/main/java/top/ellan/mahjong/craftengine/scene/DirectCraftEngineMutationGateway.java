@@ -1,10 +1,14 @@
 package top.ellan.mahjong.craftengine.scene;
 
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import net.momirealms.craftengine.bukkit.api.CraftEngineFurniture;
 import net.momirealms.craftengine.bukkit.entity.furniture.BukkitFurniture;
+import net.momirealms.craftengine.bukkit.world.BukkitWorld;
 import net.momirealms.craftengine.core.util.Key;
+import net.momirealms.craftengine.core.world.WorldPosition;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Entity;
@@ -51,18 +55,21 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
     }
 
     @Override
-    public void upsert(TableId tableId, SceneNode node) {
+    public CompletionStage<Void> upsert(TableId tableId, SceneNode node) {
         Objects.requireNonNull(tableId, "tableId");
         Objects.requireNonNull(node, "node");
         if (!node.worldBacked()) {
             removeWorldEntity(new NodeKey(tableId, node.id()));
             privateProjection.upsert(tableId, node);
-            return;
+            return CompletableFuture.completedFuture(null);
         }
         NodeKey key = new NodeKey(tableId, node.id());
-        if (node instanceof FurnitureNode furniture && updateVariant(key, furniture)) {
-            privateProjection.remove(tableId, node.id());
-            return;
+        if (node instanceof FurnitureNode furniture) {
+            CompletionStage<Void> update = updateFurniture(key, furniture);
+            if (update != null) {
+                privateProjection.remove(tableId, node.id());
+                return update;
+            }
         }
         removeWorldEntity(key);
         privateProjection.remove(tableId, node.id());
@@ -103,14 +110,16 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
                     interactionKey, PersistentDataType.STRING, handle.value().toString());
         }
         worldEntities.put(key, new WorldFurniture(entity, node));
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void remove(TableId tableId, SceneNodeId nodeId) {
+    public CompletionStage<Void> remove(TableId tableId, SceneNodeId nodeId) {
         Objects.requireNonNull(tableId, "tableId");
         Objects.requireNonNull(nodeId, "nodeId");
         removeWorldEntity(new NodeKey(tableId, nodeId));
         privateProjection.remove(tableId, nodeId);
+        return CompletableFuture.completedFuture(null);
     }
 
     public NamespacedKey managedKey() {
@@ -144,31 +153,57 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
         }
     }
 
-    private boolean updateVariant(NodeKey key, FurnitureNode desired) {
+    private CompletionStage<Void> updateFurniture(NodeKey key, FurnitureNode desired) {
         WorldFurniture existing = worldEntities.get(key);
         if (existing == null
                 || !(existing.node() instanceof FurnitureNode previous)
                 || !previous.assetId().equals(desired.assetId())
-                || !previous.transform().equals(desired.transform())
-                || !previous.visibility().equals(desired.visibility())
-                || previous.variant().equals(desired.variant())) {
-            return false;
+                || !previous.visibility().equals(desired.visibility())) {
+            return null;
         }
         Entity entity = existing.entity();
         if (!entity.isValid()) {
-            return false;
+            return null;
         }
         BukkitFurniture furniture = CraftEngineFurniture.getLoadedFurnitureByMetaEntity(entity);
         if (furniture == null) {
-            return false;
+            return null;
         }
-        boolean changed = furniture.setVariant(desired.variant(), true);
-        if (!changed && !furniture.currentVariant().name().equals(desired.variant())) {
-            throw new IllegalStateException(
-                    "CraftEngine refused furniture variant " + desired.variant());
+        boolean variantChanged = !previous.variant().equals(desired.variant());
+        boolean transformChanged = !previous.transform().equals(desired.transform());
+        if (!variantChanged && !transformChanged) {
+            return null;
         }
-        worldEntities.put(key, new WorldFurniture(entity, desired));
-        return true;
+        if (variantChanged) {
+            boolean changed = furniture.setVariant(desired.variant(), true);
+            if (!changed && !furniture.currentVariant().name().equals(desired.variant())) {
+                throw new IllegalStateException(
+                        "CraftEngine refused furniture variant " + desired.variant());
+            }
+        }
+        if (!transformChanged) {
+            worldEntities.put(key, new WorldFurniture(entity, desired));
+            return CompletableFuture.completedFuture(null);
+        }
+        Location anchor = anchors.location(key.tableId())
+                .orElseThrow(() -> new IllegalStateException("No anchor for table " + key.tableId()));
+        Location target = localToWorld(anchor, desired.transform());
+        org.bukkit.World targetWorld = Objects.requireNonNull(target.getWorld(), "target world");
+        WorldPosition targetPosition = new WorldPosition(
+                new BukkitWorld(targetWorld),
+                target.getX(),
+                target.getY(),
+                target.getZ(),
+                target.getPitch(),
+                target.getYaw());
+        return furniture.moveTo(targetPosition, true).thenAccept(moved -> {
+            if (!Boolean.TRUE.equals(moved)) {
+                throw new IllegalStateException("CraftEngine refused furniture move");
+            }
+            if (!worldEntities.replace(key, existing, new WorldFurniture(entity, desired))) {
+                throw new IllegalStateException("Furniture changed while its move was in flight");
+            }
+        });
     }
 
     private static Location localToWorld(Location anchor, SceneTransform transform) {

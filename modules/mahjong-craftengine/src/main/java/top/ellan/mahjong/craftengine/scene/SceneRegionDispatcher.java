@@ -155,7 +155,11 @@ final class SceneRegionDispatcher {
             }
             // The gateway call is the expensive part; never hold the region lock for it so
             // other tables and submit/markReady stay responsive during the apply window.
-            boolean succeeded = mutations.apply(tableId, table, mutation);
+            boolean succeeded = mutations.apply(
+                    tableId,
+                    table,
+                    mutation,
+                    () -> markReady(tableId, table));
             synchronized (region) {
                 synchronized (table) {
                     table.tickMutations =

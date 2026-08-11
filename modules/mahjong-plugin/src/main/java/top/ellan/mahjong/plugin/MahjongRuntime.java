@@ -69,6 +69,7 @@ public final class MahjongRuntime implements AutoCloseable {
     private final Clock clock = Clock.systemUTC();
     private final BoundedPlatformExecutors executors;
     private final FairRuleExecutor ruleExecutor;
+    private final FairRuleExecutor automationExecutor;
     private final BoundedDeadlineScheduler deadlines;
     private final TableActorRegistry actors = new TableActorRegistry();
     private final LiveTableDirectory liveTables = new LiveTableDirectory();
@@ -97,9 +98,11 @@ public final class MahjongRuntime implements AutoCloseable {
                 executors.io(),
                 () -> Optional.ofNullable(services.get())
                         .flatMap(current -> current.database().playerRecords()));
-        ruleExecutor =
-                new FairRuleExecutor(
-                        Math.max(2, Math.min(processors, 8)), 1_024, "mahjong-rule");
+        int ruleWorkers = Math.max(2, Math.min(Math.max(1, processors / 2), 8));
+        int automationWorkers = Math.max(1, Math.min(Math.max(1, processors / 4), 2));
+        ruleExecutor = new FairRuleExecutor(ruleWorkers, 1_024, "mahjong-rule");
+        automationExecutor =
+                new FairRuleExecutor(automationWorkers, 1_024, "mahjong-automation");
         deadlines =
                 new BoundedDeadlineScheduler(8_192, executors.actor(), "mahjong-deadline");
         platform =
@@ -374,6 +377,7 @@ public final class MahjongRuntime implements AutoCloseable {
                         executors.actor(),
                         executors.io(),
                         ruleExecutor,
+                        automationExecutor,
                         deadlines,
                         actors,
                         database.matches().orElseThrow(),
@@ -478,6 +482,7 @@ public final class MahjongRuntime implements AutoCloseable {
         dialogs.close();
         platform.close();
         deadlines.close();
+        automationExecutor.close();
         ruleExecutor.close();
         RuntimeServices current = services.getAndSet(null);
         if (current != null) {
