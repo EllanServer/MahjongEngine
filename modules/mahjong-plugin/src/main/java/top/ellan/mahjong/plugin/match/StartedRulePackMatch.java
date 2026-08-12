@@ -5,17 +5,23 @@ import java.util.Objects;
 import top.ellan.mahjong.application.table.actor.TableActor;
 import top.ellan.mahjong.domain.match.MatchBinding;
 import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.domain.table.TableAnchor;
 import top.ellan.mahjong.domain.table.TableParticipant;
 
 /** Live actor plus immutable durable identity. */
 public record StartedRulePackMatch(
         MatchBinding binding,
         TableId tableId,
+        TableAnchor anchor,
         List<TableParticipant> participants,
         TableActor actor) {
     public StartedRulePackMatch {
         Objects.requireNonNull(binding, "binding");
         Objects.requireNonNull(tableId, "tableId");
+        Objects.requireNonNull(anchor, "anchor");
+        if (!tableId.equals(anchor.tableId())) {
+            throw new IllegalArgumentException("Match and anchor table ids differ");
+        }
         participants = List.copyOf(Objects.requireNonNull(participants, "participants"));
         Objects.requireNonNull(actor, "actor");
     }

@@ -137,6 +137,56 @@ public final class JdbcTableLobbyRepository implements LobbyRepositoryPort {
         }
     }
 
+    /** One connection and one transaction for the normal terminal-match reuse path. */
+    @Override
+    public Optional<TableLobby> resetForReuse(
+            TableId tableId, Set<PlayerId> departedPlayers, Instant updatedAt)
+            throws SQLException {
+        Objects.requireNonNull(tableId, "tableId");
+        departedPlayers = Set.copyOf(
+                Objects.requireNonNull(departedPlayers, "departedPlayers"));
+        Objects.requireNonNull(updatedAt, "updatedAt");
+        try (Connection connection = connections.open()) {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                Optional<Header> header = findHeader(connection, tableId);
+                if (header.isEmpty()) {
+                    connection.rollback();
+                    return Optional.empty();
+                }
+                Optional<TableLobby> reusable =
+                        readLobby(connection, header.orElseThrow())
+                                .recoveredOffline()
+                                .resetForReuse(departedPlayers);
+                if (reusable.isEmpty()) {
+                    connection.rollback();
+                    return Optional.empty();
+                }
+                TableLobby lobby = reusable.orElseThrow();
+                try (PreparedStatement update = connection.prepareStatement(
+                        "UPDATE table_lobby SET owner_id = ?, rule_id = ?, profile_id = ?, "
+                                + "configuration_payload = ?, seat_count = ?, revision = ?, "
+                                + "phase = ?, updated_at = ? WHERE table_id = ? AND revision < ?")) {
+                    bindHeader(update, lobby, updatedAt, false);
+                    update.setLong(10, lobby.revision());
+                    if (update.executeUpdate() != 1) {
+                        throw new PersistenceConflictException(
+                                "lobby changed during match completion");
+                    }
+                }
+                replaceMembers(connection, lobby);
+                connection.commit();
+                return reusable;
+            } catch (SQLException | RuntimeException failure) {
+                connection.rollback();
+                throw failure;
+            } finally {
+                connection.setAutoCommit(previousAutoCommit);
+            }
+        }
+    }
+
     @Override
     public void delete(TableId tableId) throws SQLException {
         Objects.requireNonNull(tableId, "tableId");

@@ -89,7 +89,7 @@ public final class JdbcMatchRepository {
                 false);
     }
 
-    /** Atomically replaces a durable lobby with the pinned initial match boundary. */
+    /** Atomically verifies the reusable lobby shell while creating the pinned match boundary. */
     public void createRecoverableMatchFromLobby(
             MatchInstanceRecord match,
             List<TableParticipant> participants,
@@ -146,7 +146,7 @@ public final class JdbcMatchRepository {
                             anchor.orElseThrow());
                 }
                 if (consumeLobby
-                    && !LobbySqlTransactions.delete(connection, match.tableId())) {
+                    && !LobbySqlTransactions.exists(connection, match.tableId())) {
                     throw new PersistenceConflictException(
                             "lobby disappeared before match activation");
                 }
@@ -161,6 +161,22 @@ public final class JdbcMatchRepository {
     public Optional<MatchInstanceRecord> find(MatchId matchId) throws SQLException {
         try (Connection connection = connections.open()) {
             return MatchIdentitySql.find(connection, matchId);
+        }
+    }
+
+    /** O(1) activation-failure probe backed by the table/status index. */
+    public boolean hasRecoverableMatch(TableId tableId) throws SQLException {
+        Objects.requireNonNull(tableId, "tableId");
+        String sql = "SELECT 1 FROM match_instance WHERE table_id = ? AND status IN "
+                + "('STARTING','ACTIVE','PAUSED_PERSISTENCE','BLOCKED_RULE_PACK',"
+                + "'NEEDS_ADMIN_REVIEW')";
+        try (Connection connection = connections.open();
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, tableId.toString());
+            statement.setMaxRows(1);
+            try (ResultSet rows = statement.executeQuery()) {
+                return rows.next();
+            }
         }
     }
 

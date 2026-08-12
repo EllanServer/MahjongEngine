@@ -179,7 +179,7 @@ public final class MahjongDialogService
             actions.add(button(player, "mahjongpaper.action.leave", "Leave table",
                     NamedTextColor.RED, callback(ignored -> confirmLeave(player, hosted.tableId()))));
         }
-        if (player.hasPermission("mahjongpaper.admin")) {
+        if (owner || player.hasPermission("mahjongpaper.admin")) {
             actions.add(button(player, "mahjongpaper.dialog.button.remove", "Remove table",
                     NamedTextColor.RED, callback(ignored -> confirmRemove(player, hosted.tableId()))));
         }
@@ -202,6 +202,10 @@ public final class MahjongDialogService
                 NamedTextColor.GOLD, callback(ignored -> openSettlement(player, Optional.of(match.tableId())))));
         boolean seatedHuman = match.participants().stream().anyMatch(participant ->
                 participant.playerId().equals(id(player)) && participant.role() == ParticipantRole.PLAYER);
+        boolean spectator = match.participants().stream().anyMatch(participant ->
+                participant.playerId().equals(id(player))
+                        && participant.role() == ParticipantRole.SPECTATOR);
+        boolean departing = runtime.isDeparting(match.tableId(), id(player));
         if (seatedHuman) {
             boolean automated = runtime.automationEnabled(id(player));
             actions.add(button(player, automated ? "mahjongpaper.dialog.button.automation_off"
@@ -210,6 +214,16 @@ public final class MahjongDialogService
                     automated ? NamedTextColor.AQUA : NamedTextColor.YELLOW,
                     callback(ignored -> matchAction(player,
                             runtime.setAutomation(id(player), !automated), match.tableId()))));
+        }
+        if (seatedHuman && !departing) {
+            actions.add(button(player, "mahjongpaper.action.leave", "Leave after match",
+                    NamedTextColor.RED,
+                    callback(ignored -> confirmLiveLeave(player, match.tableId()))));
+        } else if (spectator && !departing) {
+            actions.add(button(player, "mahjongpaper.dialog.button.unspectate", "Stop spectating",
+                    NamedTextColor.RED,
+                    callback(ignored -> lobbyAction(
+                            player, runtime.unspectate(id(player)), match.tableId(), false))));
         }
         nextHandAction(projection, id(player)).ifPresent(action -> actions.add(button(player,
                 "mahjongpaper.action.start_next_hand", "Next hand", NamedTextColor.GREEN,
@@ -282,6 +296,19 @@ public final class MahjongDialogService
                         callback(ignored -> openTable(player, Optional.of(tableId))))));
     }
 
+    private void confirmLiveLeave(Player player, TableId tableId) {
+        show(player, DialogUi.confirmation(
+                title(player, "mahjongpaper.dialog.live_leave.title", "Leave this match?"),
+                textComponent(player, "mahjongpaper.dialog.live_leave.body",
+                        "Trustee will finish this match for you; your seat is released when it ends.",
+                        NamedTextColor.YELLOW),
+                button(player, "mahjongpaper.dialog.button.confirm", "Confirm", NamedTextColor.RED,
+                        callback(ignored -> lobbyAction(
+                                player, runtime.leave(id(player)), tableId, false))),
+                button(player, "mahjongpaper.dialog.button.cancel", "Cancel", NamedTextColor.GRAY,
+                        callback(ignored -> openTable(player, Optional.of(tableId))))));
+    }
+
     private void confirmRemove(Player player, TableId tableId) {
         show(player, DialogUi.confirmation(
                 title(player, "mahjongpaper.dialog.remove.title", "Remove table?"),
@@ -289,15 +316,26 @@ public final class MahjongDialogService
                         "This permanently closes table %s and cannot be undone.", NamedTextColor.RED,
                         shortId(tableId)),
                 button(player, "mahjongpaper.dialog.button.confirm", "Confirm", NamedTextColor.RED,
-                        callback(ignored -> runtime.remove(tableId).whenComplete((value, failure) -> {
-                            if (failure == null) {
-                                forget(tableId);
-                                tell(player, "mahjongpaper.command.table_removed", "Removed table %s.",
-                                        NamedTextColor.GREEN, tableId);
-                            } else {
-                                failure(player, failure);
+                        callback(ignored -> {
+                            CompletionStage<Void> removal;
+                            try {
+                                removal = player.hasPermission("mahjongpaper.admin")
+                                        ? runtime.remove(tableId)
+                                        : runtime.removeOwnedLobby(tableId, id(player));
+                            } catch (RuntimeException rejected) {
+                                failure(player, rejected);
+                                return;
                             }
-                        }))),
+                            removal.whenComplete((value, failure) -> {
+                                if (failure == null) {
+                                    forget(tableId);
+                                    tell(player, "mahjongpaper.command.table_removed", "Removed table %s.",
+                                            NamedTextColor.GREEN, tableId);
+                                } else {
+                                    failure(player, failure);
+                                }
+                            });
+                        })),
                 button(player, "mahjongpaper.dialog.button.cancel", "Cancel", NamedTextColor.GRAY,
                         callback(ignored -> openTable(player, Optional.of(tableId))))));
     }

@@ -119,7 +119,7 @@ public final class MatchRecoveryService {
                 .thenCompose(
                         ignored ->
                                 coordinator.recover(
-                                        match.binding().matchId(), CompetitionRef.none()))
+                                        match.binding().matchId(), CompetitionRef.none(), anchor))
                 .thenCompose(
                         startedMatch -> {
                             if (liveTables.registerRecovered(startedMatch)) {

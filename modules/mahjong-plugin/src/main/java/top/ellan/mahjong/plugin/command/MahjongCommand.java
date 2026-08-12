@@ -140,8 +140,8 @@ public final class MahjongCommand implements BasicCommand {
                     help(
                             "remove",
                             "/mahjong remove <table-id>",
-                            "Admin: permanently remove the specified table.",
-                            true));
+                            "Remove your own waiting table; admins may remove any table.",
+                            false));
 
     private final CommandSupport support;
     private final Map<String, SubcommandHandler> handlers;

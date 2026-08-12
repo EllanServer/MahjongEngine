@@ -17,6 +17,8 @@ import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
 import top.ellan.mahjong.application.projection.TableProjection;
 import top.ellan.mahjong.application.security.ActionTokenIssuer;
+import top.ellan.mahjong.application.table.MatchCompletion;
+import top.ellan.mahjong.application.table.MatchCompletionPort;
 import top.ellan.mahjong.application.table.TableActionCode;
 import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.application.table.TableActorSnapshot;
@@ -42,6 +44,7 @@ final class TableActorStateMachine {
     private final TableScheduledActionController scheduledActions;
     private final TablePresentationCuePublisher presentationCues;
     private final TableOpeningPublisher openings;
+    private final MatchCompletionPort completions;
     private final Map<UUID, AuthorizedAction> actionCatalog = new HashMap<>();
     private TableAggregate aggregate;
     private RuleState ruleState;
@@ -56,6 +59,7 @@ final class TableActorStateMachine {
             TablePresentationCuePort cuePort,
             TableOpeningPresentationPort openingPort,
             boolean presentInitialOpening,
+            MatchCompletionPort completions,
             ActionTokenIssuer tokenIssuer,
             Clock clock,
             TableAggregate aggregate,
@@ -65,6 +69,7 @@ final class TableActorStateMachine {
         this.outbox = outbox;
         authorization = new ProjectionAuthorizationService(tokenIssuer);
         transitionWriter = new AcceptedTransitionWriter(clock);
+        this.completions = Objects.requireNonNull(completions, "completions");
         projections = new TableProjectionPublisher(projector);
         this.aggregate = aggregate;
         ruleState = initialRuleState;
@@ -300,6 +305,25 @@ final class TableActorStateMachine {
         completeResponse(
                 completion,
                 result(TableActionCode.ACCEPTED_MEMORY, "accepted-memory-first"));
+        if (transition.disposition() == TransitionDisposition.MATCH_ENDED) {
+            publishCompletionAfterPersistence();
+        }
+    }
+
+    private void publishCompletionAfterPersistence() {
+        MatchCompletion completion =
+                new MatchCompletion(aggregate.tableId(), matchBinding(), aggregate.revision());
+        outbox.awaitDrained()
+                .whenComplete(
+                        (ignored, failure) -> {
+                            if (failure == null) {
+                                try {
+                                    completions.completed(completion);
+                                } catch (RuntimeException ignoredCallbackFailure) {
+                                    // A lifecycle adapter must not corrupt the already committed match.
+                                }
+                            }
+                        });
     }
 
     private void installFrame(RuleFrame frame, boolean ruleInFlight) {

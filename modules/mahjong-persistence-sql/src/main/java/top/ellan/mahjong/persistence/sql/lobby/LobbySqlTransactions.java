@@ -22,6 +22,20 @@ public final class LobbySqlTransactions {
         }
     }
 
+    /** Verifies that the reusable table shell still exists before match activation commits. */
+    public static boolean exists(Connection connection, TableId tableId) throws SQLException {
+        Objects.requireNonNull(connection, "connection");
+        Objects.requireNonNull(tableId, "tableId");
+        try (PreparedStatement select =
+                connection.prepareStatement(
+                        "SELECT 1 FROM table_lobby WHERE table_id = ?")) {
+            select.setString(1, tableId.toString());
+            try (java.sql.ResultSet row = select.executeQuery()) {
+                return row.next();
+            }
+        }
+    }
+
     static void deleteMembers(Connection connection, TableId tableId)
             throws SQLException {
         try (PreparedStatement delete =

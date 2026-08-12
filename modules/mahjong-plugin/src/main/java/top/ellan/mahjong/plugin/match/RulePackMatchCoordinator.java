@@ -16,9 +16,11 @@ import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
 import top.ellan.mahjong.application.table.TableActorRegistry;
 import top.ellan.mahjong.application.table.TableActionEndpoint;
+import top.ellan.mahjong.application.table.MatchCompletionPort;
 import top.ellan.mahjong.domain.match.CompetitionRef;
 import top.ellan.mahjong.domain.match.MatchId;
 import top.ellan.mahjong.domain.table.TableLifecycle;
+import top.ellan.mahjong.domain.table.TableAnchor;
 import top.ellan.mahjong.persistence.sql.event.JdbcEventStore;
 import top.ellan.mahjong.persistence.sql.match.JdbcMatchRepository;
 import top.ellan.mahjong.persistence.sql.match.MatchInstanceRecord;
@@ -55,6 +57,7 @@ public final class RulePackMatchCoordinator {
             SceneProjectionPort projector,
             TablePresentationCuePort presentationCues,
             TableOpeningPresentationPort openingPresentations,
+            MatchCompletionPort completions,
             Clock clock) {
         this.ioExecutor = Objects.requireNonNull(ioExecutor, "ioExecutor");
         this.rules = Objects.requireNonNull(rules, "rules");
@@ -75,6 +78,7 @@ public final class RulePackMatchCoordinator {
                         projector,
                         presentationCues,
                         openingPresentations,
+                        completions,
                         clock);
     }
 
@@ -131,9 +135,10 @@ public final class RulePackMatchCoordinator {
     }
 
     public CompletionStage<StartedRulePackMatch> recover(
-            MatchId matchId, CompetitionRef competitionRef) {
+            MatchId matchId, CompetitionRef competitionRef, TableAnchor anchor) {
         Objects.requireNonNull(matchId, "matchId");
         Objects.requireNonNull(competitionRef, "competitionRef");
+        Objects.requireNonNull(anchor, "anchor");
         CompletionStage<VerifiedInput> verified =
                 CompletableFuture.supplyAsync(
                                 () -> loadRecoveryInput(matchId),
@@ -153,7 +158,7 @@ public final class RulePackMatchCoordinator {
                                                                         input.data()))
                                                 .thenApply(result -> new VerifiedInput(input, result)));
         return markRulePackBlockedOnFailure(matchId, verified)
-                .thenCompose(input -> restoreActor(input, competitionRef));
+                .thenCompose(input -> restoreActor(input, competitionRef, anchor));
     }
 
     private RecoveryInput loadRecoveryInput(MatchId matchId) {
@@ -189,6 +194,7 @@ public final class RulePackMatchCoordinator {
                         ignored ->
                                 actorFactory.createOrMarkReview(
                                         command.tableId(),
+                                        command.anchor(),
                                         command.participants(),
                                         command.competitionRef(),
                                         provider,
@@ -226,7 +232,7 @@ public final class RulePackMatchCoordinator {
     }
 
     private CompletionStage<StartedRulePackMatch> restoreActor(
-            VerifiedInput input, CompetitionRef competitionRef) {
+            VerifiedInput input, CompetitionRef competitionRef, TableAnchor anchor) {
         MatchRecoveryData data = input.recovery().data();
         if (data.participants().isEmpty()) {
             return CompletableFuture.supplyAsync(
@@ -240,6 +246,7 @@ public final class RulePackMatchCoordinator {
                         ignored ->
                                 actorFactory.createOrMarkReview(
                                         data.match().tableId(),
+                                        anchor,
                                         data.participants(),
                                         competitionRef,
                                         input.recovery().provider(),

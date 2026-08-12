@@ -3,6 +3,7 @@ package top.ellan.mahjong.plugin.command.handler;
 import java.util.List;
 import java.util.Set;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.plugin.command.CommandSupport;
 import top.ellan.mahjong.plugin.command.SubcommandHandler;
@@ -22,22 +23,41 @@ public final class TableRemoveHandler implements SubcommandHandler {
 
     @Override
     public void execute(CommandSender sender, String[] arguments) {
-        support.requireAdmin(sender);
         if (arguments.length != 2) {
             throw CommandSupport.usage("/mahjong remove <table-id>");
         }
         TableId tableId = TableId.parse(arguments[1]);
+        java.util.concurrent.CompletionStage<Void> removal;
+        if (sender.hasPermission("mahjongpaper.admin")) {
+            removal = support.runtime().remove(tableId);
+        } else {
+            Player player = support.requirePlayer(sender);
+            removal = support.runtime().removeOwnedLobby(
+                    tableId, new top.ellan.mahjong.spi.PlayerId(player.getUniqueId()));
+        }
         support.complete(
                 sender,
-                support.runtime().remove(tableId),
+                removal,
                 ignored -> CommandSupport.message(
                         "mahjongpaper.command.table_removed", "Removed table %s.", tableId));
     }
 
     @Override
     public List<String> complete(CommandSender sender, String[] arguments) {
-        return arguments.length == 2 && sender.hasPermission("mahjongpaper.admin")
-                ? CommandSupport.filter(arguments[1], support.tableIds())
-                : List.of();
+        if (arguments.length != 2) {
+            return List.of();
+        }
+        if (sender.hasPermission("mahjongpaper.admin")) {
+            return CommandSupport.filter(arguments[1], support.tableIds());
+        }
+        if (!(sender instanceof Player player)) {
+            return List.of();
+        }
+        var owned = support.runtime().lobbyTables()
+                .findByPlayer(new top.ellan.mahjong.spi.PlayerId(player.getUniqueId()))
+                .filter(lobby -> lobby.state().ownerId().value().equals(player.getUniqueId()))
+                .map(lobby -> List.of(lobby.tableId().toString()))
+                .orElseGet(List::of);
+        return CommandSupport.filter(arguments[1], owned);
     }
 }

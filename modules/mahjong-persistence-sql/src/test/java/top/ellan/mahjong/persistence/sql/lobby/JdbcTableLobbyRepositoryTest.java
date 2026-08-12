@@ -64,7 +64,7 @@ class JdbcTableLobbyRepositoryTest {
     }
 
     @Test
-    void matchActivationConsumesLobbyInTheSameTransaction() throws Exception {
+    void matchActivationRetainsReusableLobbyShellInTheSameTransaction() throws Exception {
         TableLobby lobby = readyLobby();
         TableAnchor anchor = anchor(lobby.tableId());
         lobbies.create(lobby, anchor);
@@ -73,7 +73,10 @@ class JdbcTableLobbyRepositoryTest {
         matches.createRecoverableMatchFromLobby(
                 match, lobby.matchParticipants(), snapshot(), anchor);
 
-        assertTrue(lobbies.find(lobby.tableId()).isEmpty());
+        TableLobby reusable = lobbies.find(lobby.tableId()).orElseThrow();
+        assertEquals(lobby.ownerId(), reusable.ownerId());
+        assertEquals(lobby.configuration(), reusable.configuration());
+        assertFalse(reusable.readyToStart());
         assertTrue(matches.find(match.binding().matchId()).isPresent());
     }
 
@@ -91,6 +94,24 @@ class JdbcTableLobbyRepositoryTest {
                 org.junit.jupiter.api.Assertions.assertDoesNotThrow(
                                 () -> matches.find(match.binding().matchId()))
                         .isEmpty());
+    }
+
+    @Test
+    void completedMatchResetsReusableLobbyInOneRepositoryOperation() throws Exception {
+        TableLobby lobby = readyLobby();
+        lobbies.create(lobby, anchor(lobby.tableId()));
+
+        TableLobby reusable =
+                lobbies.resetForReuse(
+                                lobby.tableId(),
+                                Set.of(player(1)),
+                                Instant.parse("2026-08-09T00:00:02Z"))
+                        .orElseThrow();
+
+        assertEquals(player(2), reusable.ownerId());
+        assertTrue(reusable.seats().getFirst().occupant().isEmpty());
+        assertFalse(reusable.readyToStart());
+        assertEquals(reusable, lobbies.find(lobby.tableId()).orElseThrow());
     }
 
     private static TableLobby readyLobby() {

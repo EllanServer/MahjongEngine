@@ -109,6 +109,10 @@ public final class LobbyTableDirectory implements LobbyStateObserver {
         return List.copyOf(snapshot);
     }
 
+    public int size() {
+        return lobbies.size();
+    }
+
     public synchronized Optional<HostedLobby> remove(TableId tableId) {
         Objects.requireNonNull(tableId, "tableId");
         HostedLobby removed = lobbies.remove(tableId);

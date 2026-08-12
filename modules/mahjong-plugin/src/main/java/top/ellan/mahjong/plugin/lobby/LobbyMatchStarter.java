@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
@@ -76,7 +77,8 @@ public final class LobbyMatchStarter implements LobbyStartPort {
                         lobby.configuration(),
                         CompetitionRef.none(),
                         hosted.anchor());
-        coordinator.createFromLobby(command, lobbyActor)
+        persistReusableShell(lobby, current)
+                .thenCompose(ignored -> coordinator.createFromLobby(command, lobbyActor))
                 .whenComplete(
                         (started, failure) -> {
                             if (failure == null) {
@@ -85,6 +87,23 @@ public final class LobbyMatchStarter implements LobbyStartPort {
                                 activationFailed(hosted, unwrap(failure), current);
                             }
                         });
+    }
+
+    private CompletionStage<Void> persistReusableShell(
+            TableLobby lobby, LobbyRuntimeServices services) {
+        Optional<LobbyRepositoryPort> repository = services.lobbies();
+        if (repository.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return CompletableFuture.runAsync(
+                () -> {
+                    try {
+                        repository.orElseThrow().save(lobby, Instant.now(clock));
+                    } catch (Exception failure) {
+                        throw new java.util.concurrent.CompletionException(failure);
+                    }
+                },
+                ioExecutor);
     }
 
     private void activationSucceeded(
@@ -130,7 +149,14 @@ public final class LobbyMatchStarter implements LobbyStartPort {
         CompletableFuture.supplyAsync(
                         () -> {
                             try {
-                                return repository.orElseThrow().find(lobby.tableId()).isPresent();
+                                boolean lobbyExists =
+                                        repository.orElseThrow().find(lobby.tableId()).isPresent();
+                                boolean matchBoundaryExists =
+                                        services.matches().isPresent()
+                                                && services.matches()
+                                                        .orElseThrow()
+                                                        .hasRecoverableMatch(lobby.tableId());
+                                return lobbyExists && !matchBoundaryExists;
                             } catch (Exception lookupFailure) {
                                 activationFailure.addSuppressed(lookupFailure);
                                 return false;
@@ -138,8 +164,8 @@ public final class LobbyMatchStarter implements LobbyStartPort {
                         },
                         ioExecutor)
                 .thenAccept(
-                        durableLobbyExists -> {
-                            if (durableLobbyExists) {
+                        lobbyMayResume -> {
+                            if (lobbyMayResume) {
                                 lobby.actor().startFailed("match-start-failed");
                             } else {
                                 hosts.failClosed(lobby, "durable lobby was consumed");

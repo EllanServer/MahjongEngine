@@ -58,7 +58,7 @@ public final class LobbyActionHandler implements SubcommandHandler {
                     }
                     case "leave" -> {
                         requireLength(arguments, 1, "/mahjong leave");
-                        yield support.runtime().lobbyUseCases().leave(actor);
+                        yield support.runtime().leave(actor);
                     }
                     case "spectate" -> {
                         requireLength(arguments, 2, "/mahjong spectate <table-id>");
@@ -68,7 +68,7 @@ public final class LobbyActionHandler implements SubcommandHandler {
                     }
                     case "unspectate" -> {
                         requireLength(arguments, 1, "/mahjong unspectate");
-                        yield support.runtime().lobbyUseCases().unspectate(actor);
+                        yield support.runtime().unspectate(actor);
                     }
                     case "ready" -> {
                         requireLength(arguments, 1, "/mahjong ready");

@@ -89,6 +89,12 @@ public final class SqlSchemaMigrator {
         ensureIndex(connection, tables, "match_instance", "idx_match_instance_status", "status");
         ensureIndex(
                 connection, tables, "match_instance", "idx_match_instance_rule", "rule_id, status");
+        ensureIndex(
+                connection,
+                tables,
+                "match_instance",
+                "idx_match_instance_table_status",
+                "table_id, status");
         // MySQL creates the foreign-key index implicitly, H2 does not; created_at has no index at
         // all even though the rank-system lookup orders by it.
         ensureIndex(connection, tables, "rank_ledger", "idx_rank_ledger_match", "match_id");

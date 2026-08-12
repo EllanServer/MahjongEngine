@@ -19,6 +19,7 @@ import top.ellan.mahjong.application.persistence.PersistenceOutbox;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
 import top.ellan.mahjong.application.projection.TableProjection;
 import top.ellan.mahjong.application.security.ActionTokenIssuer;
+import top.ellan.mahjong.application.table.MatchCompletionPort;
 import top.ellan.mahjong.application.table.TableActionCode;
 import top.ellan.mahjong.application.table.TableActionEndpoint;
 import top.ellan.mahjong.application.table.TableActionResult;
@@ -68,6 +69,44 @@ public final class TableActor
             TableAggregate aggregate,
             RuleState initialRuleState,
             long lastEventSequence) {
+        this(
+                dispatcher,
+                ruleExecutor,
+                automationExecutor,
+                provider,
+                outbox,
+                deadlineScheduler,
+                projector,
+                cuePort,
+                openingPort,
+                presentInitialOpening,
+                MatchCompletionPort.NONE,
+                tokenIssuer,
+                clock,
+                config,
+                aggregate,
+                initialRuleState,
+                lastEventSequence);
+    }
+
+    public TableActor(
+            Executor dispatcher,
+            FairRuleExecutor ruleExecutor,
+            FairRuleExecutor automationExecutor,
+            RulePackProvider provider,
+            PersistenceOutbox outbox,
+            TaskScheduler deadlineScheduler,
+            SceneProjectionPort projector,
+            TablePresentationCuePort cuePort,
+            TableOpeningPresentationPort openingPort,
+            boolean presentInitialOpening,
+            MatchCompletionPort completionPort,
+            ActionTokenIssuer tokenIssuer,
+            Clock clock,
+            TableActorConfig config,
+            TableAggregate aggregate,
+            RuleState initialRuleState,
+            long lastEventSequence) {
         this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
         this.config = Objects.requireNonNull(config, "config");
         Objects.requireNonNull(outbox, "outbox");
@@ -91,6 +130,7 @@ public final class TableActor
                 Objects.requireNonNull(cuePort, "cuePort"),
                 Objects.requireNonNull(openingPort, "openingPort"),
                 presentInitialOpening,
+                Objects.requireNonNull(completionPort, "completionPort"),
                 tokenIssuer,
                 clock,
                 aggregate,

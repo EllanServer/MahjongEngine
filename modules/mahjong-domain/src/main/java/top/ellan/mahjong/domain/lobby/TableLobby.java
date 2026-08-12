@@ -267,6 +267,70 @@ public record TableLobby(
                 createdAt);
     }
 
+    /**
+     * Reopens the durable table shell after a completed match.
+     *
+     * <p>Explicit departures vacate their seats, retained humans must ready again, deterministic
+     * bots remain ready, and ownership moves to the first retained human when necessary. An empty
+     * human roster returns {@link Optional#empty()} so the physical table cannot become orphaned.
+     */
+    public Optional<TableLobby> resetForReuse(Set<PlayerId> departedPlayers) {
+        departedPlayers = Set.copyOf(Objects.requireNonNull(departedPlayers, "departedPlayers"));
+        ArrayList<LobbySeat> resetSeats = new ArrayList<>(seats.size());
+        for (LobbySeat seat : seats) {
+            if (seat.occupant().isEmpty()
+                    || departedPlayers.contains(seat.occupant().orElseThrow())) {
+                resetSeats.add(LobbySeat.empty(seat.seatId()));
+                continue;
+            }
+            PlayerId occupant = seat.occupant().orElseThrow();
+            resetSeats.add(
+                    isBotSeat(seat)
+                            ? LobbySeat.empty(seat.seatId()).occupiedByReadyBot(occupant)
+                            : new LobbySeat(
+                                    seat.seatId(),
+                                    Optional.of(occupant),
+                                    false,
+                                    SeatPresence.OFFLINE));
+        }
+        LinkedHashSet<PlayerId> resetSpectators = new LinkedHashSet<>(spectators);
+        resetSpectators.removeAll(departedPlayers);
+        PlayerId nextOwner = retainedHuman(resetSeats, ownerId).orElseGet(
+                () -> firstRetainedHuman(resetSeats).orElse(null));
+        if (nextOwner == null) {
+            return Optional.empty();
+        }
+        return Optional.of(
+                new TableLobby(
+                        tableId,
+                        revision + 1,
+                        nextOwner,
+                        ruleId,
+                        profileId,
+                        configuration,
+                        resetSeats,
+                        resetSpectators,
+                        LobbyPhase.WAITING,
+                        createdAt));
+    }
+
+    private Optional<PlayerId> retainedHuman(
+            List<LobbySeat> candidateSeats, PlayerId candidate) {
+        return candidateSeats.stream()
+                .filter(seat -> seat.occupant().filter(candidate::equals).isPresent())
+                .filter(seat -> !LobbyBotIdentity.occupies(this, seat))
+                .map(seat -> candidate)
+                .findFirst();
+    }
+
+    private Optional<PlayerId> firstRetainedHuman(List<LobbySeat> candidateSeats) {
+        return candidateSeats.stream()
+                .filter(seat -> seat.occupant().isPresent())
+                .filter(seat -> !LobbyBotIdentity.occupies(this, seat))
+                .map(seat -> seat.occupant().orElseThrow())
+                .findFirst();
+    }
+
     private static String requireConfigurationText(String value, String field) {
         value = Objects.requireNonNull(value, "configuration " + field);
         if (value.length() > 4_096 || value.indexOf('\0') >= 0) {

@@ -40,6 +40,13 @@ public final class MatchPersistenceCleanup {
                 throw new CompletionException(failure);
             }
         });
+        database.lobbies().ifPresent(lobbies -> {
+            try {
+                lobbies.delete(match.tableId());
+            } catch (Exception failure) {
+                throw new CompletionException(failure);
+            }
+        });
         database.anchors().ifPresent(anchors -> {
             try {
                 anchors.delete(match.tableId());

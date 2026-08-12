@@ -3,6 +3,7 @@ package top.ellan.mahjong.domain.lobby;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -75,6 +76,32 @@ class TableLobbyTest {
                                 0,
                                 0,
                                 0));
+    }
+
+    @Test
+    void completedMatchResetsReadinessAndTransfersDepartedOwner() {
+        TableLobby lobby = readyLobby();
+
+        TableLobby reopened = lobby.resetForReuse(Set.of(player(1))).orElseThrow();
+
+        assertTrue(reopened.seats().getFirst().occupant().isEmpty());
+        assertEquals(player(2), reopened.ownerId());
+        reopened.seats().stream()
+                .filter(seat -> seat.occupant().isPresent())
+                .forEach(
+                        seat -> {
+                            assertFalse(seat.ready());
+                            assertEquals(SeatPresence.OFFLINE, seat.presence());
+                        });
+    }
+
+    @Test
+    void completedMatchDoesNotLeaveABotOnlyTableWithoutAnOwner() {
+        TableLobby lobby = readyLobby();
+
+        assertTrue(
+                lobby.resetForReuse(Set.of(player(1), player(2), player(3), player(4)))
+                        .isEmpty());
     }
 
     @Test

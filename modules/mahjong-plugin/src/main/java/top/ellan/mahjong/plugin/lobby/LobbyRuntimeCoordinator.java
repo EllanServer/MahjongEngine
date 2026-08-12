@@ -27,13 +27,14 @@ import top.ellan.mahjong.application.lobby.usecase.CreateLobbyRequest;
 import top.ellan.mahjong.application.lobby.usecase.LobbySeatInteractionService;
 import top.ellan.mahjong.application.lobby.usecase.LobbyUseCases;
 import top.ellan.mahjong.craftengine.scene.CraftEngineSceneBackend;
+import top.ellan.mahjong.domain.lobby.TableLobby;
 import top.ellan.mahjong.domain.table.TableAnchor;
 import top.ellan.mahjong.domain.table.TableId;
-import top.ellan.mahjong.domain.lobby.TableLobby;
 import top.ellan.mahjong.persistence.sql.match.MatchInstanceRecord;
 import top.ellan.mahjong.platform.paper.anchor.PaperTableAnchorService;
 import top.ellan.mahjong.plugin.table.LiveTableDirectory;
 import top.ellan.mahjong.presentation.projection.LatestSceneProjector;
+import top.ellan.mahjong.spi.PlayerId;
 
 /** Facade for pre-match lifecycle; the plugin composition root only delegates to this component. */
 public final class LobbyRuntimeCoordinator implements AutoCloseable {
@@ -178,6 +179,52 @@ public final class LobbyRuntimeCoordinator implements AutoCloseable {
                                                 () -> deleteDurable(current, tableId),
                                                 ioExecutor));
         return Optional.of(removed);
+    }
+
+    /** Rehydrates the retained durable lobby shell after a terminal match has drained. */
+    public CompletionStage<Optional<HostedLobby>> reopenAfterMatch(
+            TableId tableId, TableAnchor anchor, Set<PlayerId> departed) {
+        Objects.requireNonNull(tableId, "tableId");
+        Objects.requireNonNull(anchor, "anchor");
+        departed = Set.copyOf(Objects.requireNonNull(departed, "departed"));
+        LobbyRuntimeServices current = requireBound();
+        Optional<LobbyRepositoryPort> repository = current.lobbies();
+        if (repository.isEmpty()) {
+            return CompletableFuture.completedFuture(Optional.empty());
+        }
+        Set<PlayerId> departedCopy = departed;
+        return CompletableFuture.supplyAsync(
+                        () -> prepareReusableLobby(
+                                current, repository.orElseThrow(), tableId, departedCopy),
+                        ioExecutor)
+                .thenApply(
+                        reusable ->
+                                reusable.map(
+                                        lobby ->
+                                                hosts.host(
+                                                        lobby,
+                                                        anchor,
+                                                        repository,
+                                                        starter,
+                                                        false)));
+    }
+
+    private Optional<TableLobby> prepareReusableLobby(
+            LobbyRuntimeServices services,
+            LobbyRepositoryPort repository,
+            TableId tableId,
+            Set<PlayerId> departed) {
+        try {
+            Optional<TableLobby> reusable =
+                    repository.resetForReuse(tableId, departed, Instant.now(clock));
+            if (reusable.isEmpty()) {
+                deleteDurable(services, tableId);
+                return Optional.empty();
+            }
+            return reusable;
+        } catch (Exception failure) {
+            throw new CompletionException(failure);
+        }
     }
 
     public CompletionStage<Void> recover() {

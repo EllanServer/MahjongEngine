@@ -18,11 +18,13 @@ import top.ellan.mahjong.application.security.SecureActionTokenIssuer;
 import top.ellan.mahjong.application.table.TableActorConfig;
 import top.ellan.mahjong.application.table.TableActorRegistry;
 import top.ellan.mahjong.application.table.TableActionEndpoint;
+import top.ellan.mahjong.application.table.MatchCompletionPort;
 import top.ellan.mahjong.application.table.actor.TableActor;
 import top.ellan.mahjong.domain.match.CompetitionRef;
 import top.ellan.mahjong.domain.match.MatchBinding;
 import top.ellan.mahjong.domain.table.TableAggregate;
 import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.domain.table.TableAnchor;
 import top.ellan.mahjong.domain.table.TableLifecycle;
 import top.ellan.mahjong.domain.table.TableParticipant;
 import top.ellan.mahjong.persistence.sql.event.JdbcEventStore;
@@ -44,6 +46,7 @@ final class MatchActorFactory {
     private final TablePresentationCuePort presentationCues;
     private final TableOpeningPresentationPort openingPresentations;
     private final Clock clock;
+    private final MatchCompletionPort completions;
 
     MatchActorFactory(
             Executor actorDispatcher,
@@ -57,6 +60,7 @@ final class MatchActorFactory {
             SceneProjectionPort projector,
             TablePresentationCuePort presentationCues,
             TableOpeningPresentationPort openingPresentations,
+            MatchCompletionPort completions,
             Clock clock) {
         this.actorDispatcher = Objects.requireNonNull(actorDispatcher, "actorDispatcher");
         this.ioExecutor = Objects.requireNonNull(ioExecutor, "ioExecutor");
@@ -70,11 +74,13 @@ final class MatchActorFactory {
         this.presentationCues = Objects.requireNonNull(presentationCues, "presentationCues");
         this.openingPresentations = Objects.requireNonNull(
                 openingPresentations, "openingPresentations");
+        this.completions = Objects.requireNonNull(completions, "completions");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     CompletionStage<StartedRulePackMatch> createOrMarkReview(
             TableId tableId,
+            TableAnchor anchor,
             List<TableParticipant> participants,
             CompetitionRef competitionRef,
             RulePackProvider provider,
@@ -91,6 +97,7 @@ final class MatchActorFactory {
                         TableActor actor =
                                 createActor(
                                         tableId,
+                                        anchor,
                                         participants,
                                         competitionRef,
                                         provider,
@@ -101,7 +108,7 @@ final class MatchActorFactory {
                                         eventSequence,
                                         replacedEndpoint,
                                         presentInitialOpening);
-                        return new StartedRulePackMatch(binding, tableId, participants, actor);
+                        return new StartedRulePackMatch(binding, tableId, anchor, participants, actor);
                     } catch (RuntimeException failure) {
                         markReview(binding, failure);
                         throw failure;
@@ -112,6 +119,7 @@ final class MatchActorFactory {
 
     private TableActor createActor(
             TableId tableId,
+            TableAnchor anchor,
             List<TableParticipant> participants,
             CompetitionRef competitionRef,
             RulePackProvider provider,
@@ -145,6 +153,7 @@ final class MatchActorFactory {
                         presentationCues,
                         openingPresentations,
                         presentInitialOpening,
+                        completions,
                         new SecureActionTokenIssuer(),
                         clock,
                         TableActorConfig.DEFAULT,
