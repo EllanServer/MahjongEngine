@@ -6,6 +6,11 @@ import java.util.Objects;
 /**
  * Deterministic, public opening metadata for one hand. Rules own the dice and wall break; the
  * platform may animate the declared rolls without learning a rule implementation.
+ *
+ * @param handSequence zero-based sequence of the hand within the match
+ * @param rolls immutable physical dice rolls declared by the rule pack
+ * @param openDoorSeat seat at whose wall the opening begins
+ * @param breakStackOffset one-based stack offset at which the wall is opened
  */
 public record RuleOpeningPresentation(
         long handSequence,

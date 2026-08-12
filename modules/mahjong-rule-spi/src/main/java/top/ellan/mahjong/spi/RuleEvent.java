@@ -3,7 +3,12 @@ package top.ellan.mahjong.spi;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/** Canonical event summary persisted by the core. */
+/**
+ * Canonical event summary persisted by the core.
+ *
+ * @param type stable event type identifier
+ * @param canonicalPayload bounded canonical event payload
+ */
 public record RuleEvent(String type, byte[] canonicalPayload) {
     private static final Pattern VALID_TYPE = Pattern.compile("[a-z][a-z0-9._-]{0,63}");
 

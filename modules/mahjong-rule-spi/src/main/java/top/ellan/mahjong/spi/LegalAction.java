@@ -3,7 +3,13 @@ package top.ellan.mahjong.spi;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/** A legal action candidate generated solely from rule state. */
+/**
+ * A legal action candidate generated solely from rule state.
+ *
+ * @param key stable key distinguishing this candidate in the current state
+ * @param action opaque rule action submitted when the candidate is selected
+ * @param actionPresentation client presentation metadata for the candidate
+ */
 public record LegalAction(
         String key,
         RuleAction action,

@@ -3,7 +3,11 @@ package top.ellan.mahjong.spi;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/** Stable profile name within one rule family. */
+/**
+ * Stable profile name within one rule family.
+ *
+ * @param value normalized profile identifier
+ */
 public record ProfileId(String value) implements Comparable<ProfileId> {
     private static final Pattern VALID = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
 

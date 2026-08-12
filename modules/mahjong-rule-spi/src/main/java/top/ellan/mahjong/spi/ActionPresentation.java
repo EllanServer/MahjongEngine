@@ -4,7 +4,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
-/** Strongly typed action rendering data; rule payloads remain opaque to the core. */
+/**
+ * Strongly typed action rendering data; rule payloads remain opaque to the core.
+ *
+ * @param labelKey translation key used to label the action
+ * @param placement client presentation area in which the action is offered
+ * @param targetTile tile targeted by a hand-tile action, when applicable
+ * @param emphasized whether the client should visually emphasize the action
+ */
 public record ActionPresentation(
         String labelKey,
         ActionPlacement placement,

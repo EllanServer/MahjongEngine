@@ -4,7 +4,15 @@ import java.util.List;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/** Pure transition result. Rejections must return the unchanged state and no events. */
+/**
+ * Pure transition result. Rejections must return the unchanged state and no events.
+ *
+ * @param nextState immutable rule state after applying the action
+ * @param disposition whether the action was accepted, rejected, or completed the match
+ * @param events canonical events emitted by the accepted transition
+ * @param presentationCues transient client presentation cues emitted by the transition
+ * @param reasonCode stable machine-readable transition reason
+ */
 public record RuleTransition(
         RuleState nextState,
         TransitionDisposition disposition,

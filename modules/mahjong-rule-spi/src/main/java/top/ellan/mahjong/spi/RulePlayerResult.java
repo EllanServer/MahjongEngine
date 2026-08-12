@@ -3,7 +3,16 @@ package top.ellan.mahjong.spi;
 import java.util.Arrays;
 import java.util.Objects;
 
-/** One immutable, provider-authored terminal result row. */
+/**
+ * One immutable, provider-authored terminal result row.
+ *
+ * @param playerId player represented by this result row
+ * @param seatId player's fixed seat in the completed match
+ * @param placement one-based terminal placement
+ * @param score rule-defined terminal score
+ * @param rankingPointsMilli ranking points expressed in thousandths
+ * @param canonicalPayload bounded provider-defined terminal payload
+ */
 public record RulePlayerResult(
         PlayerId playerId,
         SeatId seatId,

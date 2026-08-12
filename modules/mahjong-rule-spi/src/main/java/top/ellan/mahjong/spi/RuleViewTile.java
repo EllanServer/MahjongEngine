@@ -3,7 +3,17 @@ package top.ellan.mahjong.spi;
 import java.util.Objects;
 import java.util.Optional;
 
-/** One physical tile in a public or authorized private view. */
+/**
+ * One physical tile in a public or authorized private view.
+ *
+ * @param instanceId identity of this physical tile instance
+ * @param visualId asset-level face shown by the client
+ * @param owner owning seat when the presentation zone requires one
+ * @param zone presentation zone containing the tile
+ * @param index stable order within the presentation zone
+ * @param faceUp whether the tile face is public to the receiving viewer
+ * @param presentation platform-neutral physical placement hints
+ */
 public record RuleViewTile(
         TileInstanceId instanceId,
         TileVisualId visualId,

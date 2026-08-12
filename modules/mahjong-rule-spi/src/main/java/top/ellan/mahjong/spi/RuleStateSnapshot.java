@@ -4,7 +4,14 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/** Provider-owned, versioned binary snapshot. Java native serialization is forbidden. */
+/**
+ * Provider-owned, versioned binary snapshot. Java native serialization is forbidden.
+ *
+ * @param schemaVersion version of the provider-owned state schema
+ * @param sequence monotonic snapshot sequence within the match
+ * @param payload bounded provider-defined snapshot payload
+ * @param sha256 lowercase SHA-256 of the snapshot payload
+ */
 public record RuleStateSnapshot(int schemaVersion, long sequence, byte[] payload, String sha256) {
     private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
     private static final int MAX_PAYLOAD_BYTES = 8 * 1024 * 1024;

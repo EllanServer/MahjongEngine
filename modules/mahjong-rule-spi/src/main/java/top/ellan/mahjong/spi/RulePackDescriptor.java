@@ -4,7 +4,17 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/** Self-description inspected before a rule pack can be activated. */
+/**
+ * Self-description inspected before a rule pack can be activated.
+ *
+ * @param ruleId stable identifier of the rule family
+ * @param version provider version of this rule pack
+ * @param spiVersion rule SPI version required by the pack
+ * @param requiredCoreVersion core-version constraint declared by the pack
+ * @param stateSchemaVersion version of the provider-owned state schema
+ * @param profiles rule profiles offered by the pack
+ * @param requiredResources logical resource bundles required by the pack
+ */
 public record RulePackDescriptor(
         RuleId ruleId,
         String version,

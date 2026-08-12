@@ -5,7 +5,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** Deterministic input for creating a complete match. */
+/**
+ * Deterministic input for creating a complete match.
+ *
+ * @param profileId rule profile selected for the match
+ * @param seed deterministic source for all rule-pack randomness
+ * @param players fixed player-to-seat assignments
+ * @param configuration validated rule-profile configuration
+ */
 public record MatchSetup(
         ProfileId profileId,
         MatchSeed seed,

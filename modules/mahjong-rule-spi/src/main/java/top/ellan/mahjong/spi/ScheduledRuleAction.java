@@ -10,6 +10,11 @@ import java.util.regex.Pattern;
  * <p>The actor and action are persisted exactly like a player action, so crash replay does not
  * depend on wall-clock timing. The core binds the timer to a state revision and discards stale
  * callbacks after any successful transition.</p>
+ *
+ * @param actor player on whose behalf the action will be submitted
+ * @param action opaque rule action to submit after the delay
+ * @param delay deterministic delay requested by the rule pack
+ * @param reasonCode stable machine-readable scheduling reason
  */
 public record ScheduledRuleAction(
         PlayerId actor, RuleAction action, Duration delay, String reasonCode) {

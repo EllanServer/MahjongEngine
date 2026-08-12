@@ -4,7 +4,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** Information authorized for exactly one viewer. */
+/**
+ * Information authorized for exactly one viewer.
+ *
+ * @param stateRevision revision of the rule state used to build this view
+ * @param viewer player authorized to receive the view
+ * @param seat seat occupied by the authorized viewer
+ * @param tiles tiles visible to the authorized viewer
+ * @param attributes bounded rule-defined private attributes
+ */
 public record PrivateRuleView(
         long stateRevision,
         PlayerId viewer,

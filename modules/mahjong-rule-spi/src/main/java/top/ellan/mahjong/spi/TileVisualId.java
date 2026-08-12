@@ -3,7 +3,11 @@ package top.ellan.mahjong.spi;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/** Asset-level tile face identifier understood by the presentation layer. */
+/**
+ * Asset-level tile face identifier understood by the presentation layer.
+ *
+ * @param value normalized asset-level tile face identifier
+ */
 public record TileVisualId(String value) implements Comparable<TileVisualId> {
     private static final Pattern VALID = Pattern.compile("[a-z0-9][a-z0-9._:/-]{0,95}");
 

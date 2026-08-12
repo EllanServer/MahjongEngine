@@ -3,6 +3,8 @@ package top.ellan.mahjong.spi;
 /**
  * Zero-based clockwise seat index; seat zero is the table-local positive-Z side.
  * The upper bound deliberately supports future variants.
+ *
+ * @param value zero-based clockwise seat index
  */
 public record SeatId(int value) implements Comparable<SeatId> {
     public SeatId {

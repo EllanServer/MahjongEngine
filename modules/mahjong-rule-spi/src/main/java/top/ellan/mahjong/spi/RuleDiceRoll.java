@@ -3,7 +3,11 @@ package top.ellan.mahjong.spi;
 import java.util.List;
 import java.util.Objects;
 
-/** One physical roll of the two dice used to open a Mahjong wall. */
+/**
+ * One physical roll of the two dice used to open a Mahjong wall.
+ *
+ * @param points immutable values of the two dice
+ */
 public record RuleDiceRoll(List<Integer> points) {
     public RuleDiceRoll {
         points = List.copyOf(Objects.requireNonNull(points, "points"));

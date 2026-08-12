@@ -4,7 +4,11 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/** Stable identifier of a rule family. */
+/**
+ * Stable identifier of a rule family.
+ *
+ * @param value normalized rule-family identifier
+ */
 public record RuleId(String value) implements Comparable<RuleId> {
     private static final Pattern VALID = Pattern.compile("[a-z][a-z0-9-]{1,31}");
 

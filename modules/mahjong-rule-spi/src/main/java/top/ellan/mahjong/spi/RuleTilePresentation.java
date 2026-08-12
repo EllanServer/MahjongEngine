@@ -2,7 +2,14 @@ package top.ellan.mahjong.spi;
 
 import java.util.Objects;
 
-/** Compact, platform-neutral placement hints for one projected physical tile. */
+/**
+ * Compact, platform-neutral placement hints for one projected physical tile.
+ *
+ * @param layoutIndex zero-based position within the tile's presentation zone
+ * @param rotation physical rotation requested for the tile
+ * @param stackLevel zero-based vertical layer within the presentation zone
+ * @param emphasized whether the client should visually emphasize the tile
+ */
 public record RuleTilePresentation(
         int layoutIndex,
         RuleTileRotation rotation,

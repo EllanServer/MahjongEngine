@@ -3,7 +3,13 @@ package top.ellan.mahjong.spi;
 import java.util.List;
 import java.util.Objects;
 
-/** Declarative physical wall: reusable geometry consumes this without knowing the rule mode. */
+/**
+ * Declarative physical wall: reusable geometry consumes this without knowing the rule mode.
+ *
+ * @param stackCountsBySide physical stack count for each table side
+ * @param drawStartStack zero-based global stack at which drawing begins
+ * @param direction direction in which the physical wall is consumed
+ */
 public record RuleWallPresentation(
         List<Integer> stackCountsBySide,
         int drawStartStack,

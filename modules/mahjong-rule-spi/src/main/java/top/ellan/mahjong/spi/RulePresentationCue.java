@@ -6,6 +6,9 @@ import java.util.Optional;
 /**
  * One transient presentation cue. An empty target broadcasts to table viewers; a present target
  * delivers only to that player.
+ *
+ * @param type presentation effect requested by the rule pack
+ * @param target player receiving the cue, or empty for a table-wide broadcast
  */
 public record RulePresentationCue(
         RulePresentationCueType type,

@@ -3,7 +3,13 @@ package top.ellan.mahjong.spi;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Unforgeable, actor- and revision-bound authority to submit one legal action. */
+/**
+ * Unforgeable, actor- and revision-bound authority to submit one legal action.
+ *
+ * @param value unique opaque token value
+ * @param actor player authorized to submit the action
+ * @param revision rule-state revision against which the token was issued
+ */
 public record ActionToken(UUID value, PlayerId actor, long revision) {
     public ActionToken {
         Objects.requireNonNull(value, "value");

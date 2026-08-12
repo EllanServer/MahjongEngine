@@ -3,7 +3,11 @@ package top.ellan.mahjong.spi;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Platform-neutral identity of a player. */
+/**
+ * Platform-neutral identity of a player.
+ *
+ * @param value stable UUID supplied by the platform
+ */
 public record PlayerId(UUID value) implements Comparable<PlayerId> {
     public PlayerId {
         Objects.requireNonNull(value, "value");

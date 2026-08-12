@@ -9,6 +9,9 @@ import java.util.Objects;
  * <p>The core computes legal actions once per immutable rule state and passes the same values to
  * the rule pack. This keeps automation rule-aware without duplicating hot-path analysis or
  * teaching the core concrete action names.</p>
+ *
+ * @param actor player currently controlled by automation
+ * @param legalActions immutable legal actions available to that player
  */
 public record AutomatedPlayerActions(PlayerId actor, List<LegalAction> legalActions) {
     public AutomatedPlayerActions {
