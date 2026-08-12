@@ -4,12 +4,14 @@ import static net.momirealms.sparrow.reflection.field.matcher.FieldMatchers.fAll
 import static net.momirealms.sparrow.reflection.field.matcher.FieldMatchers.fInstance;
 import static net.momirealms.sparrow.reflection.field.matcher.FieldMatchers.fType;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodType;
+import java.lang.invoke.WrongMethodTypeException;
 import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import net.momirealms.sparrow.reflection.SReflection;
 import net.momirealms.sparrow.reflection.clazz.SparrowClass;
-import net.momirealms.sparrow.reflection.field.SIntField;
 import net.momirealms.sparrow.reflection.field.SparrowField;
 import net.momirealms.sparrow.reflection.remapper.Remapper;
 import org.bukkit.entity.Player;
@@ -59,9 +61,9 @@ final class ClientCameraPacketSender {
             if (packet == null) {
                 throw new IllegalStateException("Camera packet allocation returned null");
             }
-            resolved.entityId().set(packet, entityId);
+            resolved.entityIdSetter().invokeExact(packet, entityId);
             return packet;
-        } catch (ClassCastException | LinkageError incompatible) {
+        } catch (WrongMethodTypeException | ClassCastException | LinkageError incompatible) {
             disable("Camera packet linkage changed", incompatible);
             return null;
         } catch (Throwable failure) {
@@ -86,11 +88,14 @@ final class ClientCameraPacketSender {
                 if (entityId == null) {
                     throw new IllegalStateException("Camera entity id field is unavailable");
                 }
-                SIntField accessor = entityId.asm$int();
-                if (accessor == null) {
-                    throw new IllegalStateException("Camera entity id ASM accessor is unavailable");
+                // Sparrow's ASM accessor is defined as an NMS nestmate. Paper's isolated plugin
+                // loader therefore cannot make its plugin-owned SIntField superclass visible.
+                MethodHandle setter = entityId.unreflectSetter();
+                if (setter == null) {
+                    throw new IllegalStateException("Camera entity id setter is unavailable");
                 }
-                Access resolved = new Access(packetClass, accessor);
+                setter = setter.asType(MethodType.methodType(void.class, Object.class, int.class));
+                Access resolved = new Access(packetClass, setter);
                 access = resolved;
                 return resolved;
             } catch (Throwable failure) {
@@ -107,5 +112,5 @@ final class ClientCameraPacketSender {
         }
     }
 
-    private record Access(Class<?> packetClass, SIntField entityId) {}
+    private record Access(Class<?> packetClass, MethodHandle entityIdSetter) {}
 }
