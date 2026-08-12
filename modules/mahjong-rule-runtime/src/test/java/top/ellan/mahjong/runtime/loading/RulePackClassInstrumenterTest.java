@@ -1,5 +1,6 @@
 package top.ellan.mahjong.runtime.loading;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -29,6 +30,13 @@ class RulePackClassInstrumenterTest {
                 Duration.ofSeconds(1), () -> invokeInt(method)));
 
         assertTrue(RuleExecutionBudget.exceeded(failure));
+    }
+
+    @Test
+    void instrumentationPreservesFramesDuringConstructorArguments() throws Exception {
+        Method method = instrumentedMethod(NestedConstruction.class, "run");
+
+        assertEquals(2, invokeInt(method));
     }
 
     private static Method instrumentedMethod(Class<?> source, String name) throws Exception {
@@ -92,6 +100,14 @@ class RulePackClassInstrumenterTest {
 
         public static int run() {
             return new int[1_000_001].length;
+        }
+    }
+
+    public static final class NestedConstruction {
+        private NestedConstruction() {}
+
+        public static int run() {
+            return new StringBuilder(String.valueOf(1)).append(Integer.toString(2)).length();
         }
     }
 }

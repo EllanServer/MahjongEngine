@@ -57,15 +57,30 @@ final class RulePackClassInstrumenter {
                 }
             }
         });
-        AbstractInsnNode entry = entryPoint(method, original);
-        if (entry != null) {
-            if (method.name.equals("<init>")) {
-                method.instructions.insert(entry, checkpoint());
-            } else {
-                method.instructions.insertBefore(entry, checkpoint());
-            }
+        AbstractInsnNode entry = firstExecutable(original);
+        if (entry != null && !method.name.equals("<init>")) {
+            method.instructions.insertBefore(entry, checkpoint());
         }
+        int pendingConstructions = 0;
         for (AbstractInsnNode instruction : original) {
+            if (instruction instanceof TypeInsnNode allocation
+                    && allocation.getOpcode() == Opcodes.NEW) {
+                pendingConstructions++;
+                continue;
+            }
+            if (instruction instanceof MethodInsnNode invocation
+                    && invocation.name.equals("<init>")) {
+                if (pendingConstructions > 0 && --pendingConstructions == 0) {
+                    method.instructions.insert(instruction, checkpoint());
+                }
+                continue;
+            }
+            // Stack-map frames identify an uninitialized object by the bytecode offset of NEW.
+            // Rewriting an argument expression while that value is live can invalidate the offset,
+            // so resume cooperative checks immediately after its matching constructor returns.
+            if (pendingConstructions > 0) {
+                continue;
+            }
             if (instruction instanceof JumpInsnNode
                     || instruction instanceof LookupSwitchInsnNode
                     || instruction instanceof TableSwitchInsnNode) {
@@ -80,21 +95,6 @@ final class RulePackClassInstrumenter {
                         instruction, multiArrayCheck(method, multiArray.dims));
             }
         }
-    }
-
-    private static AbstractInsnNode entryPoint(
-            MethodNode method, AbstractInsnNode[] instructions) {
-        if (!method.name.equals("<init>")) {
-            return firstExecutable(instructions);
-        }
-        for (AbstractInsnNode instruction : instructions) {
-            if (instruction instanceof MethodInsnNode invocation
-                    && invocation.getOpcode() == Opcodes.INVOKESPECIAL
-                    && invocation.name.equals("<init>")) {
-                return instruction;
-            }
-        }
-        return null;
     }
 
     private static AbstractInsnNode firstExecutable(AbstractInsnNode[] instructions) {
