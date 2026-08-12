@@ -59,7 +59,7 @@ final class RulePackClassInstrumenter {
         });
         AbstractInsnNode entry = firstExecutable(original);
         if (entry != null && !method.name.equals("<init>")) {
-            method.instructions.insertBefore(entry, checkpoint());
+            method.instructions.insertBefore(offsetStart(entry), checkpoint());
         }
         int pendingConstructions = 0;
         for (AbstractInsnNode instruction : original) {
@@ -104,6 +104,14 @@ final class RulePackClassInstrumenter {
             }
         }
         return null;
+    }
+
+    private static AbstractInsnNode offsetStart(AbstractInsnNode instruction) {
+        AbstractInsnNode current = instruction;
+        while (current.getPrevious() != null && current.getPrevious().getOpcode() < 0) {
+            current = current.getPrevious();
+        }
+        return current;
     }
 
     private static AbstractInsnNode firstExecutableAfter(AbstractInsnNode instruction) {
