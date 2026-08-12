@@ -15,7 +15,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import org.bukkit.Location;
-import org.bukkit.entity.Player;
 import top.ellan.mahjong.application.concurrent.BoundedDeadlineScheduler;
 import top.ellan.mahjong.application.history.PlayerMatchHistoryEntry;
 import top.ellan.mahjong.application.history.PlayerRankingPage;
@@ -46,7 +45,6 @@ import top.ellan.mahjong.plugin.i18n.LocalizedMessageCatalog;
 import top.ellan.mahjong.plugin.dialog.MahjongDialogService;
 import top.ellan.mahjong.plugin.dialog.CompositeSceneProjectionPort;
 import top.ellan.mahjong.plugin.platform.CraftEnginePlatformRuntime;
-import top.ellan.mahjong.plugin.placement.TablePlacementFailure;
 import top.ellan.mahjong.plugin.placement.TablePlacementService;
 import top.ellan.mahjong.plugin.protection.ProtectionService;
 import top.ellan.mahjong.plugin.recovery.MatchRecoveryService;
@@ -195,16 +193,7 @@ public final class MahjongRuntime implements AutoCloseable {
     /** Active provider descriptors are the sole source of rule-setting dialog fields. */
     public List<RulePackDescriptor> ruleDescriptors() { return requireServices().rules().activeDescriptors(); }
 
-    public Optional<TablePlacementFailure> validateTableCreation(
-            Player owner, Location location) {
-        requireServices();
-        return placement.validateCreation(owner, location);
-    }
-
-    public Optional<Boolean> canRemoveTable(Player player, TableId tableId) {
-        requireServices();
-        return placement.canRemove(player, tableId);
-    }
+    public TablePlacementService placement() { requireServices(); return placement; }
 
     public CompletionStage<top.ellan.mahjong.application.table.TableActionResult> setAutomation(
             top.ellan.mahjong.spi.PlayerId playerId, boolean enabled) {

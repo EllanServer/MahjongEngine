@@ -69,7 +69,8 @@ public final class TableCreateHandler implements SubcommandHandler {
                         0.0F,
                         0.0F);
         support.runtime()
-                .validateTableCreation(owner, location)
+                .placement()
+                .validateCreation(owner, location)
                 .ifPresent(failure -> {
                     throw placementFailure(failure);
                 });
