@@ -15,6 +15,12 @@ public record RuleMatchResult(String rankSystem, List<RulePlayerResult> players)
     private static final Pattern VALID_RANK_SYSTEM =
             Pattern.compile("[a-z][a-z0-9._-]{0,63}");
 
+    /**
+     * Creates a validated terminal match result.
+     *
+     * @param rankSystem stable identifier of the ranking system used by the rule pack
+     * @param players immutable terminal result rows for all match participants
+     */
     public RuleMatchResult {
         rankSystem = Objects.requireNonNull(rankSystem, "rankSystem");
         List<RulePlayerResult> normalizedPlayers =

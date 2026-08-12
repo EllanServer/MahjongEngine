@@ -21,6 +21,14 @@ public record ScheduledRuleAction(
     private static final Pattern REASON = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
     private static final Duration MAXIMUM_DELAY = Duration.ofHours(1);
 
+    /**
+     * Creates a validated deterministic one-shot action request.
+     *
+     * @param actor player on whose behalf the action will be submitted
+     * @param action opaque rule action to submit after the delay
+     * @param delay deterministic delay requested by the rule pack
+     * @param reasonCode stable machine-readable scheduling reason
+     */
     public ScheduledRuleAction {
         Objects.requireNonNull(actor, "actor");
         Objects.requireNonNull(action, "action");

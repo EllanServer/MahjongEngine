@@ -7,6 +7,11 @@ package top.ellan.mahjong.spi;
  * @param value zero-based clockwise seat index
  */
 public record SeatId(int value) implements Comparable<SeatId> {
+    /**
+     * Creates a validated table-local seat identity.
+     *
+     * @param value zero-based clockwise seat index
+     */
     public SeatId {
         if (value < 0 || value > 7) {
             throw new IllegalArgumentException("Seat must be between 0 and 7: " + value);

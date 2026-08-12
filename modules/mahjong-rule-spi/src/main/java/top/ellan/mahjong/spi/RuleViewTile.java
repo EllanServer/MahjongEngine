@@ -22,6 +22,17 @@ public record RuleViewTile(
         int index,
         boolean faceUp,
         RuleTilePresentation presentation) {
+    /**
+     * Creates a validated projected physical tile.
+     *
+     * @param instanceId identity of this physical tile instance
+     * @param visualId asset-level face shown by the client
+     * @param owner owning seat when the presentation zone requires one
+     * @param zone presentation zone containing the tile
+     * @param index stable order within the presentation zone
+     * @param faceUp whether the tile face is public to the receiving viewer
+     * @param presentation platform-neutral physical placement hints
+     */
     public RuleViewTile {
         Objects.requireNonNull(instanceId, "instanceId");
         Objects.requireNonNull(visualId, "visualId");

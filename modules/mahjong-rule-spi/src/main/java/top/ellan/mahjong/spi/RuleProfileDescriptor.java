@@ -10,6 +10,13 @@ import java.util.Objects;
  * @param configurationSchemaJson JSON schema accepted by the profile
  */
 public record RuleProfileDescriptor(ProfileId id, String displayName, String configurationSchemaJson) {
+    /**
+     * Creates a validated rule-profile descriptor.
+     *
+     * @param id stable profile identifier within the rule family
+     * @param displayName human-readable profile name
+     * @param configurationSchemaJson JSON schema accepted by the profile
+     */
     public RuleProfileDescriptor {
         Objects.requireNonNull(id, "id");
         displayName = Objects.requireNonNull(displayName, "displayName");

@@ -24,6 +24,15 @@ public record RuleTransition(
     private static final int MAX_EVENT_PAYLOAD_BYTES = 8 * 1024 * 1024;
     private static final Pattern REASON = Pattern.compile("[a-z0-9][a-z0-9._-]{0,127}");
 
+    /**
+     * Creates a validated pure transition result.
+     *
+     * @param nextState immutable rule state after applying the action
+     * @param disposition whether the action was accepted, rejected, or completed the match
+     * @param events canonical events emitted by the accepted transition
+     * @param presentationCues transient client presentation cues emitted by the transition
+     * @param reasonCode stable machine-readable transition reason
+     */
     public RuleTransition {
         Objects.requireNonNull(nextState, "nextState");
         Objects.requireNonNull(disposition, "disposition");
@@ -52,7 +61,14 @@ public record RuleTransition(
         }
     }
 
-    /** Source-compatible constructor for providers that do not emit transient feedback. */
+    /**
+     * Creates a transition for providers that do not emit transient feedback.
+     *
+     * @param nextState immutable rule state after applying the action
+     * @param disposition whether the action was accepted, rejected, or completed the match
+     * @param events canonical events emitted by the accepted transition
+     * @param reasonCode stable machine-readable transition reason
+     */
     public RuleTransition(
             RuleState nextState,
             TransitionDisposition disposition,
@@ -61,10 +77,22 @@ public record RuleTransition(
         this(nextState, disposition, events, List.of(), reasonCode);
     }
 
+    /**
+     * Tests whether the transition changed rule state.
+     *
+     * @return {@code true} unless the action was rejected
+     */
     public boolean accepted() {
         return disposition != TransitionDisposition.REJECTED;
     }
 
+    /**
+     * Creates a rejected transition with no events or presentation cues.
+     *
+     * @param unchangedState immutable state returned unchanged
+     * @param reasonCode stable machine-readable rejection reason
+     * @return rejected transition
+     */
     public static RuleTransition rejected(RuleState unchangedState, String reasonCode) {
         return new RuleTransition(
                 unchangedState,

@@ -12,6 +12,12 @@ import java.util.regex.Pattern;
 public record RuleAction(String type, byte[] payload) {
     private static final Pattern VALID_TYPE = Pattern.compile("[a-z][a-z0-9._-]{0,63}");
 
+    /**
+     * Creates a validated opaque rule action.
+     *
+     * @param type stable action type identifier
+     * @param payload bounded rule-defined action payload
+     */
     public RuleAction {
         type = Objects.requireNonNull(type, "type");
         payload = Objects.requireNonNull(payload, "payload");
@@ -24,6 +30,11 @@ public record RuleAction(String type, byte[] payload) {
         payload = payload.clone();
     }
 
+    /**
+     * Returns a defensive copy of the opaque action payload.
+     *
+     * @return cloned action payload
+     */
     @Override
     public byte[] payload() {
         return payload.clone();

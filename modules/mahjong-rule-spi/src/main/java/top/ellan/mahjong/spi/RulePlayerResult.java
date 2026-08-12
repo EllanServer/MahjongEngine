@@ -22,6 +22,16 @@ public record RulePlayerResult(
         byte[] canonicalPayload) {
     private static final int MAX_PAYLOAD_BYTES = 1_048_576;
 
+    /**
+     * Creates a validated terminal player-result row.
+     *
+     * @param playerId player represented by this result row
+     * @param seatId player's fixed seat in the completed match
+     * @param placement one-based terminal placement
+     * @param score rule-defined terminal score
+     * @param rankingPointsMilli ranking points expressed in thousandths
+     * @param canonicalPayload bounded provider-defined terminal payload
+     */
     public RulePlayerResult {
         Objects.requireNonNull(playerId, "playerId");
         Objects.requireNonNull(seatId, "seatId");
@@ -35,6 +45,11 @@ public record RulePlayerResult(
         canonicalPayload = canonicalPayload.clone();
     }
 
+    /**
+     * Returns a defensive copy of the provider-defined terminal payload.
+     *
+     * @return cloned canonical player-result payload
+     */
     @Override
     public byte[] canonicalPayload() {
         return canonicalPayload.clone();

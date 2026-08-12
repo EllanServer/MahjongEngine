@@ -22,6 +22,15 @@ public record PublicRuleView(
     private static final int MAX_TILES = 512;
     private static final int MAX_ATTRIBUTES = 128;
 
+    /**
+     * Creates a bounded view safe to publish to every viewer.
+     *
+     * @param stateRevision monotonically increasing revision of the published rule state
+     * @param phase stable rule-defined identifier for the current phase
+     * @param tiles tiles whose locations are public to every viewer
+     * @param attributes bounded rule-defined public attributes
+     * @param tablePresentation physical table presentation metadata for the client
+     */
     public PublicRuleView {
         if (stateRevision < 0) {
             throw new IllegalArgumentException("Revision must be non-negative");

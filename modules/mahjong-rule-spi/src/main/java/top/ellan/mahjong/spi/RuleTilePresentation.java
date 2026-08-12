@@ -21,6 +21,14 @@ public record RuleTilePresentation(
     private static final RuleTilePresentation[] CLOCKWISE_CACHE = rotationCache(0);
     private static final RuleTilePresentation[] STACKED_CLOCKWISE_CACHE = rotationCache(1);
 
+    /**
+     * Creates validated platform-neutral tile placement hints.
+     *
+     * @param layoutIndex zero-based position within the tile's presentation zone
+     * @param rotation physical rotation requested for the tile
+     * @param stackLevel zero-based vertical layer within the presentation zone
+     * @param emphasized whether the client should visually emphasize the tile
+     */
     public RuleTilePresentation {
         if (layoutIndex < 0 || layoutIndex > MAX_LAYOUT_INDEX) {
             throw new IllegalArgumentException("layoutIndex is outside the supported scene range");
@@ -31,26 +39,47 @@ public record RuleTilePresentation(
         }
     }
 
+    /**
+     * Returns a cached natural tile pose when the index is in the common range.
+     *
+     * @param layoutIndex zero-based position within the presentation zone
+     * @return natural tile presentation
+     */
     public static RuleTilePresentation natural(int layoutIndex) {
         return layoutIndex >= 0 && layoutIndex < NATURAL_CACHE.length
                 ? NATURAL_CACHE[layoutIndex]
                 : new RuleTilePresentation(layoutIndex, RuleTileRotation.NATURAL, 0, false);
     }
 
-    /** Returns the cached physical pose used for a claimed discard in an open meld. */
+    /**
+     * Returns the physical pose used for a claimed discard in an open meld.
+     *
+     * @param layoutIndex zero-based position within the presentation zone
+     * @return clockwise tile presentation
+     */
     public static RuleTilePresentation clockwise(int layoutIndex) {
         return layoutIndex >= 0 && layoutIndex < CLOCKWISE_CACHE.length
                 ? CLOCKWISE_CACHE[layoutIndex]
                 : new RuleTilePresentation(layoutIndex, RuleTileRotation.CLOCKWISE, 0, false);
     }
 
-    /** Returns the cached pose used when an added-kong tile is stacked on the claimed tile. */
+    /**
+     * Returns the pose used when an added-kong tile is stacked on the claimed tile.
+     *
+     * @param layoutIndex zero-based position within the presentation zone
+     * @return stacked clockwise tile presentation
+     */
     public static RuleTilePresentation stackedClockwise(int layoutIndex) {
         return layoutIndex >= 0 && layoutIndex < STACKED_CLOCKWISE_CACHE.length
                 ? STACKED_CLOCKWISE_CACHE[layoutIndex]
                 : new RuleTilePresentation(layoutIndex, RuleTileRotation.CLOCKWISE, 1, false);
     }
 
+    /**
+     * Returns an emphasized copy of this tile presentation.
+     *
+     * @return this instance when already emphasized, otherwise an emphasized copy
+     */
     public RuleTilePresentation withEmphasis() {
         return emphasized
                 ? this

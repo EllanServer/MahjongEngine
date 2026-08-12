@@ -12,6 +12,11 @@ import java.util.regex.Pattern;
 public record RuleId(String value) implements Comparable<RuleId> {
     private static final Pattern VALID = Pattern.compile("[a-z][a-z0-9-]{1,31}");
 
+    /**
+     * Creates a validated rule-family identifier.
+     *
+     * @param value rule-family identifier to normalize
+     */
     public RuleId {
         value = Objects.requireNonNull(value, "value").toLowerCase(Locale.ROOT);
         if (!VALID.matcher(value).matches()) {
@@ -19,6 +24,12 @@ public record RuleId(String value) implements Comparable<RuleId> {
         }
     }
 
+    /**
+     * Creates a rule-family identifier from text.
+     *
+     * @param value rule-family identifier to normalize
+     * @return validated rule identifier
+     */
     public static RuleId of(String value) {
         return new RuleId(value);
     }

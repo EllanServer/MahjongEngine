@@ -17,6 +17,13 @@ public record RuleWallPresentation(
     private static final int MAX_STACKS_PER_SIDE = 32;
     private static final int MAX_TOTAL_STACKS = 128;
 
+    /**
+     * Creates a validated declarative physical wall.
+     *
+     * @param stackCountsBySide physical stack count for each table side
+     * @param drawStartStack zero-based global stack at which drawing begins
+     * @param direction direction in which the physical wall is consumed
+     */
     public RuleWallPresentation {
         stackCountsBySide = List.copyOf(
                 Objects.requireNonNull(stackCountsBySide, "stackCountsBySide"));
@@ -39,6 +46,11 @@ public record RuleWallPresentation(
         }
     }
 
+    /**
+     * Returns the total number of physical stacks in the wall.
+     *
+     * @return total physical stack count
+     */
     public int totalStacks() {
         int total = 0;
         for (int count : stackCountsBySide) {
@@ -47,6 +59,11 @@ public record RuleWallPresentation(
         return total;
     }
 
+    /**
+     * Returns the two-tile stack capacity of the physical wall.
+     *
+     * @return maximum physical tile count
+     */
     public int tileCapacity() {
         return totalStacks() * 2;
     }

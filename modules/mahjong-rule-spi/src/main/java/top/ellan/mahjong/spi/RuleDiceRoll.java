@@ -9,6 +9,11 @@ import java.util.Objects;
  * @param points immutable values of the two dice
  */
 public record RuleDiceRoll(List<Integer> points) {
+    /**
+     * Creates a validated immutable two-die roll.
+     *
+     * @param points immutable values of the two dice
+     */
     public RuleDiceRoll {
         points = List.copyOf(Objects.requireNonNull(points, "points"));
         if (points.size() != 2) {
@@ -21,10 +26,20 @@ public record RuleDiceRoll(List<Integer> points) {
         }
     }
 
+    /**
+     * Returns the sum of both dice.
+     *
+     * @return dice total
+     */
     public int total() {
         return points.get(0) + points.get(1);
     }
 
+    /**
+     * Returns the smaller of the two die values.
+     *
+     * @return smaller die value
+     */
     public int smallerPoint() {
         return Math.min(points.get(0), points.get(1));
     }

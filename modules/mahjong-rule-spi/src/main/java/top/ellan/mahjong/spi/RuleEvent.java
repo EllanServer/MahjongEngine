@@ -12,6 +12,12 @@ import java.util.regex.Pattern;
 public record RuleEvent(String type, byte[] canonicalPayload) {
     private static final Pattern VALID_TYPE = Pattern.compile("[a-z][a-z0-9._-]{0,63}");
 
+    /**
+     * Creates a validated canonical rule event.
+     *
+     * @param type stable event type identifier
+     * @param canonicalPayload bounded canonical event payload
+     */
     public RuleEvent {
         type = Objects.requireNonNull(type, "type");
         canonicalPayload = Objects.requireNonNull(canonicalPayload, "canonicalPayload");
@@ -24,6 +30,11 @@ public record RuleEvent(String type, byte[] canonicalPayload) {
         canonicalPayload = canonicalPayload.clone();
     }
 
+    /**
+     * Returns a defensive copy of the canonical event payload.
+     *
+     * @return cloned canonical event payload
+     */
     @Override
     public byte[] canonicalPayload() {
         return canonicalPayload.clone();

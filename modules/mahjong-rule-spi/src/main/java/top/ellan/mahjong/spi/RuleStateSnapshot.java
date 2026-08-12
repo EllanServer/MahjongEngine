@@ -16,6 +16,14 @@ public record RuleStateSnapshot(int schemaVersion, long sequence, byte[] payload
     private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
     private static final int MAX_PAYLOAD_BYTES = 8 * 1024 * 1024;
 
+    /**
+     * Creates a validated provider-owned state snapshot.
+     *
+     * @param schemaVersion version of the provider-owned state schema
+     * @param sequence monotonic snapshot sequence within the match
+     * @param payload bounded provider-defined snapshot payload
+     * @param sha256 lowercase SHA-256 of the snapshot payload
+     */
     public RuleStateSnapshot {
         if (schemaVersion < 1 || sequence < 0) {
             throw new IllegalArgumentException("Invalid snapshot schema or sequence");
@@ -31,6 +39,11 @@ public record RuleStateSnapshot(int schemaVersion, long sequence, byte[] payload
         }
     }
 
+    /**
+     * Returns a defensive copy of the provider-defined snapshot payload.
+     *
+     * @return cloned snapshot payload
+     */
     @Override
     public byte[] payload() {
         return payload.clone();

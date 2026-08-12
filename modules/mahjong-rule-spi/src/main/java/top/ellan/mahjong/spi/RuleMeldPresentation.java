@@ -28,6 +28,7 @@ public final class RuleMeldPresentation {
      * @param role semantic role of this tile
      * @param ordinaryOrdinal zero-based order among ordinary tiles, or {@code -1} for claimed
      *     and added tiles
+     * @return shared physical placement for the tile
      */
     public static RuleTilePresentation tile(
             int meldIndex,
@@ -49,7 +50,18 @@ public final class RuleMeldPresentation {
                 ordinaryOrdinal);
     }
 
-    /** Primitive-seat overload for allocation-free frame projection hot paths. */
+    /**
+     * Resolves one open-meld tile using primitive seats for allocation-free frame projection.
+     *
+     * @param meldIndex zero-based meld group index for the owning seat
+     * @param baseTileCount distinct horizontal positions in the base meld
+     * @param seatCount active seats around the table
+     * @param ownerSeat zero-based owning seat
+     * @param sourceSeat zero-based seat that supplied the claimed tile
+     * @param role semantic role of this tile
+     * @param ordinaryOrdinal zero-based ordinary-tile order, or {@code -1} otherwise
+     * @return shared physical placement for the tile
+     */
     public static RuleTilePresentation tile(
             int meldIndex,
             int baseTileCount,

@@ -11,6 +11,11 @@ import java.util.regex.Pattern;
 public record TileVisualId(String value) implements Comparable<TileVisualId> {
     private static final Pattern VALID = Pattern.compile("[a-z0-9][a-z0-9._:/-]{0,95}");
 
+    /**
+     * Creates a validated asset-level tile face identifier.
+     *
+     * @param value normalized asset-level tile face identifier
+     */
     public TileVisualId {
         value = Objects.requireNonNull(value, "value");
         if (!VALID.matcher(value).matches()) {

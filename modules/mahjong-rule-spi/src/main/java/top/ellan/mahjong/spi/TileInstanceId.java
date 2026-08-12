@@ -6,6 +6,11 @@ package top.ellan.mahjong.spi;
  * @param value non-negative match-local tile identity
  */
 public record TileInstanceId(long value) implements Comparable<TileInstanceId> {
+    /**
+     * Creates a validated physical tile identity.
+     *
+     * @param value non-negative match-local tile identity
+     */
     public TileInstanceId {
         if (value < 0) {
             throw new IllegalArgumentException("Tile instance id must be non-negative");

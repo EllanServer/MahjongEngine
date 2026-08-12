@@ -22,6 +22,15 @@ public record PrivateRuleView(
     private static final int MAX_TILES = 512;
     private static final int MAX_ATTRIBUTES = 128;
 
+    /**
+     * Creates a bounded view authorized for exactly one viewer.
+     *
+     * @param stateRevision revision of the rule state used to build this view
+     * @param viewer player authorized to receive the view
+     * @param seat seat occupied by the authorized viewer
+     * @param tiles tiles visible to the authorized viewer
+     * @param attributes bounded rule-defined private attributes
+     */
     public PrivateRuleView {
         if (stateRevision < 0) {
             throw new IllegalArgumentException("Revision must be non-negative");

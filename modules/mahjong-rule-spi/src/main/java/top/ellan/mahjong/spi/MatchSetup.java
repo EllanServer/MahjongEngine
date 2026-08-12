@@ -18,6 +18,14 @@ public record MatchSetup(
         MatchSeed seed,
         List<MatchPlayer> players,
         Map<String, String> configuration) {
+    /**
+     * Creates validated deterministic match input.
+     *
+     * @param profileId rule profile selected for the match
+     * @param seed deterministic source for all rule-pack randomness
+     * @param players fixed player-to-seat assignments
+     * @param configuration validated rule-profile configuration
+     */
     public MatchSetup {
         Objects.requireNonNull(profileId, "profileId");
         Objects.requireNonNull(seed, "seed");

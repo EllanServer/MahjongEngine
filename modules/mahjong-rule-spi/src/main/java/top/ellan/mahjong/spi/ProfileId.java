@@ -11,6 +11,11 @@ import java.util.regex.Pattern;
 public record ProfileId(String value) implements Comparable<ProfileId> {
     private static final Pattern VALID = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
 
+    /**
+     * Creates a validated profile identifier.
+     *
+     * @param value normalized profile identifier
+     */
     public ProfileId {
         value = Objects.requireNonNull(value, "value");
         if (!VALID.matcher(value).matches()) {

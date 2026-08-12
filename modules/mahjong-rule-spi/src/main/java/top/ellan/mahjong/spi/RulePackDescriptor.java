@@ -26,6 +26,17 @@ public record RulePackDescriptor(
     private static final int MAX_PROFILES = 64;
     private static final int MAX_REQUIRED_RESOURCES = 128;
 
+    /**
+     * Creates a validated rule-pack self-description.
+     *
+     * @param ruleId stable identifier of the rule family
+     * @param version provider version of this rule pack
+     * @param spiVersion rule SPI version required by the pack
+     * @param requiredCoreVersion core-version constraint declared by the pack
+     * @param stateSchemaVersion version of the provider-owned state schema
+     * @param profiles rule profiles offered by the pack
+     * @param requiredResources logical resource bundles required by the pack
+     */
     public RulePackDescriptor {
         Objects.requireNonNull(ruleId, "ruleId");
         version = Objects.requireNonNull(version, "version");

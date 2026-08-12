@@ -11,6 +11,13 @@ import java.util.UUID;
  * @param revision rule-state revision against which the token was issued
  */
 public record ActionToken(UUID value, PlayerId actor, long revision) {
+    /**
+     * Creates a validated action authorization token.
+     *
+     * @param value unique opaque token value
+     * @param actor player authorized to submit the action
+     * @param revision rule-state revision against which the token was issued
+     */
     public ActionToken {
         Objects.requireNonNull(value, "value");
         Objects.requireNonNull(actor, "actor");

@@ -17,6 +17,14 @@ public record RuleOpeningPresentation(
         List<RuleDiceRoll> rolls,
         SeatId openDoorSeat,
         int breakStackOffset) {
+    /**
+     * Creates validated public opening metadata for one hand.
+     *
+     * @param handSequence zero-based sequence of the hand within the match
+     * @param rolls immutable physical dice rolls declared by the rule pack
+     * @param openDoorSeat seat at whose wall the opening begins
+     * @param breakStackOffset one-based stack offset at which the wall is opened
+     */
     public RuleOpeningPresentation {
         if (handSequence < 0) {
             throw new IllegalArgumentException("handSequence must be non-negative");

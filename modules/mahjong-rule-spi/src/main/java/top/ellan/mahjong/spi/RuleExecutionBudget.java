@@ -15,6 +15,14 @@ public final class RuleExecutionBudget {
 
     private RuleExecutionBudget() {}
 
+    /**
+     * Runs one provider operation inside a bounded execution scope.
+     *
+     * @param <T> operation result type
+     * @param timeout maximum execution time for the scope
+     * @param operation provider operation to execute
+     * @return value returned by the provider operation
+     */
     public static <T> T call(Duration timeout, Supplier<T> operation) {
         Objects.requireNonNull(timeout, "timeout");
         Objects.requireNonNull(operation, "operation");
@@ -58,7 +66,11 @@ public final class RuleExecutionBudget {
         checkpointNow(state);
     }
 
-    /** Injected before every one-dimensional array allocation. */
+    /**
+     * Reserves a one-dimensional allocation against the active budget.
+     *
+     * @param length requested array length
+     */
     public static void checkArrayLength(int length) {
         State state = CURRENT.get();
         if (state != null && length >= 0) {
@@ -66,26 +78,54 @@ public final class RuleExecutionBudget {
         }
     }
 
-    /** Injected before two-dimensional array allocation. */
+    /**
+     * Reserves a two-dimensional allocation against the active budget.
+     *
+     * @param first first dimension length
+     * @param second second dimension length
+     */
     public static void checkMultiArray(int first, int second) {
         reserveMulti(first, second, 1, 1);
     }
 
-    /** Injected before three-dimensional array allocation. */
+    /**
+     * Reserves a three-dimensional allocation against the active budget.
+     *
+     * @param first first dimension length
+     * @param second second dimension length
+     * @param third third dimension length
+     */
     public static void checkMultiArray(int first, int second, int third) {
         reserveMulti(first, second, third, 1);
     }
 
-    /** Injected before four-dimensional array allocation. */
+    /**
+     * Reserves a four-dimensional allocation against the active budget.
+     *
+     * @param first first dimension length
+     * @param second second dimension length
+     * @param third third dimension length
+     * @param fourth fourth dimension length
+     */
     public static void checkMultiArray(int first, int second, int third, int fourth) {
         reserveMulti(first, second, third, fourth);
     }
 
+    /**
+     * Tests whether a failure represents an exhausted execution budget.
+     *
+     * @param failure failure thrown while invoking provider code
+     * @return {@code true} when the execution budget was exceeded
+     */
     public static boolean exceeded(Throwable failure) {
         return failure instanceof LimitExceeded;
     }
 
-    /** Injected at every rule-pack exception handler so a budget signal cannot be swallowed. */
+    /**
+     * Rethrows an execution-budget signal before provider code can swallow it.
+     *
+     * @param failure failure caught by instrumented provider code
+     */
     public static void rethrowIfExceeded(Throwable failure) {
         if (failure instanceof LimitExceeded) {
             throw LIMIT_EXCEEDED;

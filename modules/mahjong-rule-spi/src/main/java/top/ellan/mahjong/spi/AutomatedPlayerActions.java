@@ -14,6 +14,12 @@ import java.util.Objects;
  * @param legalActions immutable legal actions available to that player
  */
 public record AutomatedPlayerActions(PlayerId actor, List<LegalAction> legalActions) {
+    /**
+     * Creates a validated automation candidate for one player.
+     *
+     * @param actor player currently controlled by automation
+     * @param legalActions immutable legal actions available to that player
+     */
     public AutomatedPlayerActions {
         Objects.requireNonNull(actor, "actor");
         legalActions = List.copyOf(Objects.requireNonNull(legalActions, "legalActions"));

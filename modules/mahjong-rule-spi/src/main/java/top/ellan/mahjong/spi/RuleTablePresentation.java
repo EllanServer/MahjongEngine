@@ -22,6 +22,16 @@ public record RuleTablePresentation(
         Optional<SeatId> currentSeat,
         Optional<TileInstanceId> lastDiscard,
         Optional<RuleOpeningPresentation> opening) {
+    /**
+     * Creates table metadata without optional wall-opening presentation.
+     *
+     * @param seatCount number of seats present at the table
+     * @param wall physical wall layout exposed by the rule pack
+     * @param discardsPerRow maximum number of discards in one river row
+     * @param dealerSeat current dealer, when the rule pack has assigned one
+     * @param currentSeat seat whose turn is currently active, when applicable
+     * @param lastDiscard most recently discarded tile, when one is available
+     */
     public RuleTablePresentation(
             int seatCount,
             RuleWallPresentation wall,
@@ -39,6 +49,17 @@ public record RuleTablePresentation(
                 Optional.empty());
     }
 
+    /**
+     * Creates validated table-wide geometry metadata.
+     *
+     * @param seatCount number of seats present at the table
+     * @param wall physical wall layout exposed by the rule pack
+     * @param discardsPerRow maximum number of discards in one river row
+     * @param dealerSeat current dealer, when the rule pack has assigned one
+     * @param currentSeat seat whose turn is currently active, when applicable
+     * @param lastDiscard most recently discarded tile, when one is available
+     * @param opening physical wall-opening metadata, when the rule exposes it
+     */
     public RuleTablePresentation {
         if (seatCount < 2 || seatCount > 4) {
             throw new IllegalArgumentException("seatCount must be between two and four");

@@ -16,6 +16,13 @@ public record LegalAction(
         ActionPresentation actionPresentation) {
     private static final Pattern VALID_KEY = Pattern.compile("[a-z0-9][a-z0-9._:-]{0,95}");
 
+    /**
+     * Creates a validated legal-action candidate.
+     *
+     * @param key stable key distinguishing this candidate in the current state
+     * @param action opaque rule action submitted when the candidate is selected
+     * @param actionPresentation client presentation metadata for the candidate
+     */
     public LegalAction {
         key = Objects.requireNonNull(key, "key");
         Objects.requireNonNull(action, "action");
