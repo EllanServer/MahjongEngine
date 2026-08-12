@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
@@ -20,6 +21,7 @@ import top.ellan.mahjong.application.table.TableActionCode;
 import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.application.table.TableActorRegistry;
 import top.ellan.mahjong.domain.lobby.LobbyPhase;
+import top.ellan.mahjong.domain.match.MatchBinding;
 import top.ellan.mahjong.domain.table.ParticipantRole;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.plugin.MahjongPaperPlugin;
@@ -159,6 +161,57 @@ public final class TableLifecycleCoordinator implements MatchCompletionPort {
 
     public boolean isDeparting(TableId tableId, PlayerId playerId) {
         return liveTables.isDeparting(tableId, playerId);
+    }
+
+    /** Force-closes one explicitly addressed match, then reopens its retained lobby shell. */
+    public CompletionStage<Void> forceEnd(TableId tableId, Set<PlayerId> departedPlayers) {
+        StartedRulePackMatch match =
+                liveTables
+                        .find(Objects.requireNonNull(tableId, "tableId"))
+                        .orElseThrow(() -> new IllegalArgumentException("Unknown live table"));
+        return forceEnd(tableId, match.binding(), departedPlayers);
+    }
+
+    /** Force-closes only the expected match generation, never a reused table's newer match. */
+    public CompletionStage<Void> forceEnd(
+            TableId tableId, MatchBinding binding, Set<PlayerId> departedPlayers) {
+        Objects.requireNonNull(tableId, "tableId");
+        Objects.requireNonNull(binding, "binding");
+        departedPlayers = Set.copyOf(
+                Objects.requireNonNull(departedPlayers, "departedPlayers"));
+        RuntimeServices current = services.get();
+        if (current == null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Mahjong runtime is unavailable"));
+        }
+        StartedRulePackMatch match =
+                liveTables
+                        .removeExact(tableId, binding)
+                        .orElseThrow(
+                                () ->
+                                        new IllegalArgumentException(
+                                                "Unknown live table generation"));
+        actors.remove(tableId, match.actor());
+        Set<PlayerId> departed = departedPlayers;
+        return match.actor()
+                .closeAndDrain()
+                .thenCompose(
+                        ignored ->
+                                CompletableFuture.runAsync(
+                                        () ->
+                                                MatchPersistenceCleanup.closeMatchRecord(
+                                                        current.database(),
+                                                        match,
+                                                        Instant.now(clock)),
+                                        ioExecutor))
+                .thenCompose(
+                        ignored ->
+                                lobbies.reopenAfterMatch(
+                                        match.tableId(), match.anchor(), departed))
+                .whenComplete(
+                        (reopened, failure) ->
+                                finishRecycle(current, match, reopened, failure))
+                .thenApply(ignored -> null);
     }
 
     @Override

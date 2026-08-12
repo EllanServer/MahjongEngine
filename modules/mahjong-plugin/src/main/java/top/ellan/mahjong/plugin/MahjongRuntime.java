@@ -149,7 +149,8 @@ public final class MahjongRuntime implements AutoCloseable {
                         executors.io(),
                         clock,
                         plugin.getLogger(),
-                        tableLifecycle::reconcileRecoveredMatch);
+                        gameRooms.recoveryBoundary(tableLifecycle::reconcileRecoveredMatch));
+        gameRooms.bindMatchBoundary(liveTables, platform, tableLifecycle, deadlines);
         platform.start(lobbyRuntime.seatInteractions(), automation, dialogs);
     }
 
@@ -199,6 +200,7 @@ public final class MahjongRuntime implements AutoCloseable {
 
     public TablePlacementService placement() { requireServices(); return placement; }
     public GameRoomRuntime gameRooms() { requireServices(); return gameRooms; }
+    public TableLifecycleCoordinator lifecycle() { requireServices(); return tableLifecycle; }
 
     public CompletionStage<top.ellan.mahjong.application.table.TableActionResult> setAutomation(
             top.ellan.mahjong.spi.PlayerId playerId, boolean enabled) {

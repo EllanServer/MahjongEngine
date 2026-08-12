@@ -142,6 +142,18 @@ public final class LiveTableDirectory {
         return Optional.ofNullable(removed);
     }
 
+    /** Removes only the exact addressed match generation. */
+    public synchronized Optional<StartedRulePackMatch> removeExact(
+            TableId tableId, MatchBinding binding) {
+        Objects.requireNonNull(tableId, "tableId");
+        Objects.requireNonNull(binding, "binding");
+        StartedRulePackMatch current = tables.get(tableId);
+        if (current == null || !current.binding().equals(binding)) {
+            return Optional.empty();
+        }
+        return remove(tableId);
+    }
+
     /** Removes only the exact completed generation and returns its deferred departures. */
     public synchronized Optional<Removed> removeCompleted(
             TableId tableId, MatchBinding binding) {

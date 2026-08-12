@@ -55,4 +55,21 @@ public final class MatchPersistenceCleanup {
             }
         });
     }
+
+    /** Marks an abruptly ended match closed while retaining its reusable lobby and anchor. */
+    public static void closeMatchRecord(
+            DatabaseRuntime database, StartedRulePackMatch match, Instant closedAt) {
+        Objects.requireNonNull(database, "database");
+        Objects.requireNonNull(match, "match");
+        Objects.requireNonNull(closedAt, "closedAt");
+        database.matches().ifPresent(
+                matches -> {
+                    try {
+                        matches.updateStatus(
+                                match.binding().matchId(), TableLifecycle.CLOSED, closedAt);
+                    } catch (SQLException failure) {
+                        throw new CompletionException(failure);
+                    }
+                });
+    }
 }

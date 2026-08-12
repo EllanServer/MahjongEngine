@@ -22,6 +22,7 @@ import top.ellan.mahjong.plugin.command.handler.LobbyActionHandler;
 import top.ellan.mahjong.plugin.command.handler.GameRoomCommandHandler;
 import top.ellan.mahjong.plugin.command.handler.MatchAutomationHandler;
 import top.ellan.mahjong.plugin.command.handler.MatchRefereeHandler;
+import top.ellan.mahjong.plugin.command.handler.OperationsCommandHandler;
 import top.ellan.mahjong.plugin.command.handler.PlayerRecordHandler;
 import top.ellan.mahjong.plugin.command.handler.RulePackAdminHandler;
 import top.ellan.mahjong.plugin.command.handler.TableCreateHandler;
@@ -140,6 +141,11 @@ public final class MahjongCommand implements BasicCommand {
                             true,
                             "gameroom"),
                     help(
+                            "ops",
+                            "/mahjong ops <status|force-end|remove|reload-rooms> [...]",
+                            "Admin: operate one explicit table or reload the room index; never lists all tables.",
+                            true),
+                    help(
                             "referee",
                             "/mahjong referee <table-id> <operation> <seat> [ruling]",
                             "Admin: submit an official Sichuan referee ruling for a live table.",
@@ -165,6 +171,7 @@ public final class MahjongCommand implements BasicCommand {
         register(routes, new PlayerRecordHandler(support));
         register(routes, new TableRemoveHandler(support));
         register(routes, new GameRoomCommandHandler(support));
+        register(routes, new OperationsCommandHandler(support));
         register(routes, new RulePackAdminHandler(support));
         validateHelpCoverage(routes.keySet());
         handlers = Map.copyOf(routes);

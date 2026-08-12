@@ -5,12 +5,18 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
+import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.plugin.MahjongPaperPlugin;
 import top.ellan.mahjong.plugin.config.PluginConfiguration;
 import top.ellan.mahjong.plugin.i18n.LocalizedMessageCatalog;
+import top.ellan.mahjong.plugin.match.StartedRulePackMatch;
+import top.ellan.mahjong.plugin.platform.CraftEnginePlatformRuntime;
+import top.ellan.mahjong.plugin.table.LiveTableDirectory;
+import top.ellan.mahjong.plugin.table.TableLifecycleCoordinator;
 
 /** Restart-scoped game-room composition with no periodic scan or global player lookup. */
 public final class GameRoomRuntime implements AutoCloseable {
@@ -18,14 +24,18 @@ public final class GameRoomRuntime implements AutoCloseable {
     private final GameRoomRegistry registry;
     private final GameRoomSelectionService selections = new GameRoomSelectionService();
     private final GameRoomWandListener wand;
+    private final MahjongPaperPlugin plugin;
+    private final LocalizedMessageCatalog messages;
+    private GameRoomExitController exits;
 
     public GameRoomRuntime(
             MahjongPaperPlugin plugin,
             PluginConfiguration.GameRoomSettings settings,
             java.util.concurrent.Executor ioExecutor,
             LocalizedMessageCatalog messages) {
-        Objects.requireNonNull(plugin, "plugin");
+        this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.settings = Objects.requireNonNull(settings, "settings");
+        this.messages = Objects.requireNonNull(messages, "messages");
         Path file = plugin.getDataFolder().toPath().resolve(settings.file());
         registry = new GameRoomRegistry(file, ioExecutor);
         wand = new GameRoomWandListener(plugin, selections, messages);
@@ -81,6 +91,46 @@ public final class GameRoomRuntime implements AutoCloseable {
         return wand.createWand(locale);
     }
 
+    public synchronized void bindMatchBoundary(
+            LiveTableDirectory liveTables,
+            CraftEnginePlatformRuntime platform,
+            TableLifecycleCoordinator lifecycle,
+            TaskScheduler scheduler) {
+        if (exits != null) {
+            throw new IllegalStateException("Game-room match boundary already bound");
+        }
+        if (!settings.enabled()) {
+            return;
+        }
+        exits =
+                new GameRoomExitController(
+                        plugin,
+                        settings,
+                        registry,
+                        liveTables,
+                        platform,
+                        lifecycle,
+                        scheduler,
+                        messages);
+        plugin.getServer().getPluginManager().registerEvents(exits, plugin);
+    }
+
+    /** Composes startup recovery without inspecting players outside the recovered match roster. */
+    public Consumer<StartedRulePackMatch> recoveryBoundary(
+            Consumer<StartedRulePackMatch> presenceReconciliation) {
+        Objects.requireNonNull(presenceReconciliation, "presenceReconciliation");
+        return match -> {
+            presenceReconciliation.accept(match);
+            GameRoomExitController current;
+            synchronized (this) {
+                current = exits;
+            }
+            if (current != null) {
+                current.reconcileRecoveredMatch(match);
+            }
+        };
+    }
+
     private GameRoom fromSelection(
             String id,
             String name,
@@ -126,7 +176,11 @@ public final class GameRoomRuntime implements AutoCloseable {
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
+        if (exits != null) {
+            exits.close();
+            exits = null;
+        }
         selections.close();
     }
 
