@@ -56,8 +56,11 @@ final class HumanDecisionDeadlineController {
             return Optional.empty();
         }
         pause();
+        if (!enabled) {
+            return Optional.empty();
+        }
         current = next;
-        if (!enabled || next.decisions().isEmpty()) {
+        if (next.decisions().isEmpty()) {
             return Optional.empty();
         }
         try {

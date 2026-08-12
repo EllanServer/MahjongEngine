@@ -19,7 +19,6 @@ import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -744,32 +743,48 @@ class TableActorTest {
 
     private static final class ManualScheduler implements TaskScheduler {
         private final ArrayDeque<Scheduled> tasks = new ArrayDeque<>();
-        private final CountDownLatch scheduled = new CountDownLatch(1);
 
         @Override
         public top.ellan.mahjong.application.concurrent.Cancellable schedule(
                 Runnable task, Duration delay) {
             Scheduled scheduled = new Scheduled(task);
-            tasks.addLast(scheduled);
-            this.scheduled.countDown();
+            synchronized (tasks) {
+                tasks.addLast(scheduled);
+                tasks.notifyAll();
+            }
             return () -> {
-                scheduled.cancelled = true;
-                return tasks.remove(scheduled);
+                synchronized (tasks) {
+                    scheduled.cancelled = true;
+                    return tasks.remove(scheduled);
+                }
             };
         }
 
         int pendingCount() {
-            return tasks.size();
+            synchronized (tasks) {
+                return tasks.size();
+            }
         }
 
         void awaitScheduled() throws InterruptedException {
-            if (!scheduled.await(2, TimeUnit.SECONDS)) {
-                throw new AssertionError("scheduled rule action was not registered");
+            long remaining = TimeUnit.SECONDS.toNanos(2);
+            long started = System.nanoTime();
+            synchronized (tasks) {
+                while (tasks.isEmpty() && remaining > 0) {
+                    TimeUnit.NANOSECONDS.timedWait(tasks, remaining);
+                    remaining = TimeUnit.SECONDS.toNanos(2) - (System.nanoTime() - started);
+                }
+                if (tasks.isEmpty()) {
+                    throw new AssertionError("scheduled rule action was not registered");
+                }
             }
         }
 
         void runNext() {
-            Scheduled scheduled = tasks.removeFirst();
+            Scheduled scheduled;
+            synchronized (tasks) {
+                scheduled = tasks.removeFirst();
+            }
             if (!scheduled.cancelled) {
                 scheduled.task.run();
             }

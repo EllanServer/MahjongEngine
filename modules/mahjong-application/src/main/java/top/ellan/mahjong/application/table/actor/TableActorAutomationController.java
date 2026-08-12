@@ -140,7 +140,7 @@ final class TableActorAutomationController {
                             computed.frame(),
                             state.revision(),
                             Set.copyOf(roster.automatedPlayers()),
-                            true)
+                            computed.frame().scheduledAction().isEmpty())
                     .ifPresent(state::block);
         }
         return false;

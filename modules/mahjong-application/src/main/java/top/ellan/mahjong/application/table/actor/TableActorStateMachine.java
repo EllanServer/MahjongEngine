@@ -331,15 +331,15 @@ final class TableActorStateMachine {
         AuthorizedProjection authorized = authorization.authorize(aggregate, frame);
         actionCatalog.clear();
         actionCatalog.putAll(authorized.actionCatalog());
+        Optional<String> schedulingFailure =
+                scheduledActions.install(
+                        frame.scheduledAction(),
+                        aggregate.revision(),
+                        aggregate.lifecycle().acceptsRuleActions() && !ruleInFlight);
         recordProjectionFailure(projections.install(authorized.projection()));
         openings.publishIfChanged(
                 aggregate.revision(), frame.publicView().tablePresentation().opening());
-        scheduledActions
-                .install(
-                        frame.scheduledAction(),
-                        aggregate.revision(),
-                        aggregate.lifecycle().acceptsRuleActions() && !ruleInFlight)
-                .ifPresent(this::block);
+        schedulingFailure.ifPresent(this::block);
     }
 
     private void republishLifecycle() {
