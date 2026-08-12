@@ -38,6 +38,13 @@ public final class RulePackTck {
 
     private RulePackTck() {}
 
+    /**
+     * Verifies an official provider against deterministic, immutable, and bounded SPI contracts.
+     *
+     * @param provider rule-pack provider under verification
+     * @param testCase deterministic fixture and guaranteed-illegal actions
+     * @return successful verification summary
+     */
     public static RulePackTckReport verify(
             RulePackProvider provider, RulePackTckCase testCase) {
         Objects.requireNonNull(provider, "provider");
