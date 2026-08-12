@@ -1,11 +1,8 @@
 package top.ellan.mahjong.craftengine.privateview;
 
-import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
-import net.kyori.adventure.text.Component;
 import net.momirealms.craftengine.bukkit.api.CraftEngineItems;
 import net.momirealms.craftengine.bukkit.item.BukkitItemDefinition;
 import net.momirealms.sparrow.heart.feature.entity.display.FakeItemDisplay;
@@ -36,6 +33,8 @@ final class PrivateNodeRenderer implements AutoCloseable {
     private final SparrowDisplayGateway displays;
     private final Predicate<PlayerId> cameraViewing;
     private final PlayerTextResolver messages;
+    private final HudTextFormatter hudText;
+    private final ViewerHudBars hudBars = new ViewerHudBars();
     private final HandTileSelectionController selections;
 
     PrivateNodeRenderer(
@@ -52,6 +51,7 @@ final class PrivateNodeRenderer implements AutoCloseable {
         this.displays = displays;
         this.cameraViewing = cameraViewing;
         this.messages = messages;
+        hudText = new HudTextFormatter(messages);
         selections = new HandTileSelectionController(tasks, this::moveHandTile, selectionRaise);
     }
 
@@ -95,14 +95,12 @@ final class PrivateNodeRenderer implements AutoCloseable {
     }
 
     void refreshHud(Player player, PlayerId viewer) {
-        String text = state.desiredNodes(viewer).values().stream()
+        java.util.List<HudNode> nodes = state.desiredNodes(viewer).values().stream()
                 .map(DesiredNode::node)
                 .filter(HudNode.class::isInstance)
                 .map(HudNode.class::cast)
-                .sorted(Comparator.comparing(HudNode::contentKey))
-                .map(node -> node.contentKey() + '=' + node.contentValue())
-                .collect(Collectors.joining("  "));
-        player.sendActionBar(Component.text(text));
+                .toList();
+        hudBars.refresh(player, viewer, hudText.format(player.locale(), nodes));
     }
 
     void showSelection(
@@ -130,6 +128,7 @@ final class PrivateNodeRenderer implements AutoCloseable {
     void onQuit(PlayerId viewer) {
         state.forgetActivity(viewer);
         selections.onQuit(viewer);
+        hudBars.forget(viewer);
     }
 
     @Override
@@ -151,6 +150,7 @@ final class PrivateNodeRenderer implements AutoCloseable {
             }
         }
         selections.clear();
+        hudBars.close(tasks);
     }
 
     private void applyItem(

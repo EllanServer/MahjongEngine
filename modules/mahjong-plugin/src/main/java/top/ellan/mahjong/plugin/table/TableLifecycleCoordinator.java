@@ -219,8 +219,8 @@ public final class TableLifecycleCoordinator implements MatchCompletionPort {
             MatchPersistenceCleanup.releaseRulePackLease(
                     current.rules(), match, match.tableId());
         }
-        dialogs.forget(match.tableId());
         if (failure != null) {
+            dialogs.forget(match.tableId());
             platform.removeTable(match.tableId());
             plugin.getLogger().log(
                     Level.WARNING,
@@ -229,9 +229,11 @@ public final class TableLifecycleCoordinator implements MatchCompletionPort {
             return;
         }
         if (reopened.isEmpty()) {
+            dialogs.forget(match.tableId());
             platform.removeTable(match.tableId());
             return;
         }
+        dialogs.matchRecycled(match.tableId());
         reconcileReopenedPresence(reopened.orElseThrow());
     }
 

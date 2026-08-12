@@ -22,6 +22,13 @@ import top.ellan.mahjong.spi.TileInstanceId;
 
 /** Projects secret hand faces, authorized HUD values and the optional private camera. */
 public final class PrivateSceneProjector {
+    private static final Set<String> PUBLIC_HUD_KEYS = Set.of(
+            "round",
+            "roundWind",
+            "handNumber",
+            "currentPlayer",
+            "wall",
+            "wallRemaining");
     private final double overheadHeight;
     private final boolean overheadEnabled;
 
@@ -65,7 +72,34 @@ public final class PrivateSceneProjector {
         nodes.put(
                 phaseId,
                 new HudNode(phaseId, visibility, "phase", projection.publicView().phase()));
-        addAttributes(nodes, visibility, "shared", "public", projection.publicView().attributes());
+        SceneNodeId capacityId = SceneNodeId.trusted("hud/shared/wall-capacity");
+        nodes.put(
+                capacityId,
+                new HudNode(
+                        capacityId,
+                        visibility,
+                        "meta:wallCapacity",
+                        Integer.toString(projection.publicView()
+                                .tablePresentation()
+                                .wall()
+                                .tileCapacity())));
+        projection.publicView().tablePresentation().currentSeat().ifPresent(currentSeat -> {
+            SceneNodeId currentSeatId = SceneNodeId.trusted("hud/shared/current-seat");
+            nodes.put(
+                    currentSeatId,
+                    new HudNode(
+                            currentSeatId,
+                            visibility,
+                            "meta:currentSeat",
+                            Integer.toString(currentSeat.value())));
+        });
+        addAttributes(
+                nodes,
+                visibility,
+                "shared",
+                "public",
+                projection.publicView().attributes(),
+                PUBLIC_HUD_KEYS);
     }
 
     private void projectViewer(
@@ -94,7 +128,6 @@ public final class PrivateSceneProjector {
                             layout.privateTile(tile, counts.count(tile))));
         }
 
-        addAttributes(nodes, visibility, viewerKey, "private", privateView.attributes());
         if (overheadEnabled && projection.lifecycle().acceptsRuleActions()) {
             SceneNodeId cameraId = SceneNodeId.trusted("camera/" + viewerKey + "/river");
             nodes.put(
@@ -112,13 +145,17 @@ public final class PrivateSceneProjector {
             SceneVisibility visibility,
             String viewerKey,
             String namespace,
-            Map<String, String> attributes) {
+            Map<String, String> attributes,
+            Set<String> includedKeys) {
         if (attributes.size() > 64) {
             throw new IllegalArgumentException("rule view exposes too many HUD attributes");
         }
         String[] keys = attributes.keySet().toArray(String[]::new);
         Arrays.sort(keys);
         for (String key : keys) {
+            if (!includedKeys.contains(key)) {
+                continue;
+            }
             SceneNodeId id = SceneNodeIdentity.hud(viewerKey, namespace, key);
             String contentKey = namespace + ':' + key;
             if (nodes.putIfAbsent(

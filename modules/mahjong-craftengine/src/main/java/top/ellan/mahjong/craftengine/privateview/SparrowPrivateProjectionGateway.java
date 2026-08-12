@@ -192,7 +192,15 @@ public final class SparrowPrivateProjectionGateway
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onLocaleChange(PlayerLocaleChangeEvent event) {
-        locales.put(new PlayerId(event.getPlayer().getUniqueId()), event.locale());
+        Player player = event.getPlayer();
+        PlayerId viewer = new PlayerId(player.getUniqueId());
+        locales.put(viewer, event.locale());
+        tasks.execute(
+                player,
+                () -> {
+                    renderer.restoreActionLabels(player, viewer);
+                    renderer.refreshHud(player, viewer);
+                });
     }
 
     /** Locale snapshot used by the render worker; never calls Bukkit off-thread. */

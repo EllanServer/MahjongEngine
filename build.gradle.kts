@@ -61,6 +61,17 @@ val architectureCheck =
                     "mahjong-rule-runtime",
                     "mahjong-presentation",
                 )
+            val globalScanPrimitives =
+                listOf(
+                    "getOnlinePlayers(",
+                    "Bukkit.getWorlds(",
+                    ".getEntities(",
+                    ".getEntitiesByClass(",
+                    ".getLivingEntities(",
+                    ".getNearbyEntities(",
+                    ".getNearbyPlayers(",
+                    "liveTables.list(",
+                )
             production.files.sorted().forEach { source ->
                 val relative = source.relativeTo(projectDir).invariantSeparatorsPath
                 val module = relative.substringAfter("modules/").substringBefore('/')
@@ -78,6 +89,10 @@ val architectureCheck =
                         ).any(text::contains)
                 ) {
                     violations += "$relative uses a forbidden concurrency primitive"
+                }
+                globalScanPrimitives.filter(text::contains).forEach { forbidden ->
+                    violations +=
+                        "$relative uses global scan primitive $forbidden; address one table and its participants instead"
                 }
                 if (module in coreModules) {
                     listOf(

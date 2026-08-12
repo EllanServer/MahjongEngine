@@ -109,10 +109,10 @@ final class DialogContent {
     }
 
     Component attribute(
-            Player player, StartedRulePackMatch match, String key, String value) {
+            Player player, java.util.List<TableParticipant> participants, String key, String value) {
         return Component.text(attributeName(player, key) + ": ", NamedTextColor.GRAY)
                 .append(Component.text(
-                        attributeValue(player, match, key, value), NamedTextColor.WHITE));
+                        attributeValue(player, participants, key, value), NamedTextColor.WHITE));
     }
 
     Component text(
@@ -130,9 +130,9 @@ final class DialogContent {
         return online == null ? playerId.value().toString().substring(0, 8) : online.getName();
     }
 
-    private String replacePlayerIds(StartedRulePackMatch match, String value) {
+    private String replacePlayerIds(java.util.List<TableParticipant> participants, String value) {
         String rendered = value;
-        for (TableParticipant participant : match.participants()) {
+        for (TableParticipant participant : participants) {
             rendered = rendered.replace(participant.playerId().value().toString(),
                     playerName(participant.playerId()));
         }
@@ -196,8 +196,8 @@ final class DialogContent {
     }
 
     private String attributeValue(
-            Player player, StartedRulePackMatch match, String key, String value) {
-        String rendered = replacePlayerIds(match, value);
+            Player player, java.util.List<TableParticipant> participants, String key, String value) {
+        String rendered = replacePlayerIds(participants, value);
         return switch (key) {
             case "profile" -> {
                 try {

@@ -202,10 +202,10 @@ class SceneGraphTest {
                 .filter(node -> node.visibility().viewers().size() > 1)
                 .toList();
 
-        // Phase plus three public attributes are shared by all four seats; each seat still gets its
-        // own private attribute. Duplicating the public part per seat would produce 16 + 4 nodes.
-        assertEquals(8, huds.size());
-        assertEquals(4, shared.size());
+        // Phase, wall capacity, current seat, round and wall are shared once for all four seats.
+        // Scores and other detailed attributes belong to settlement, not the continuous HUD.
+        assertEquals(5, huds.size());
+        assertEquals(5, shared.size());
         for (HudNode node : shared) {
             assertEquals(4, node.visibility().viewers().size());
             assertFalse(node.visibility().isPublic());

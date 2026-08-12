@@ -7,12 +7,9 @@ import io.papermc.paper.registry.data.dialog.action.DialogActionCallback;
 import io.papermc.paper.registry.data.dialog.input.DialogInput;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import net.kyori.adventure.audience.Audience;
@@ -29,7 +26,6 @@ import top.ellan.mahjong.domain.lobby.LobbySeat;
 import top.ellan.mahjong.domain.lobby.TableLobby;
 import top.ellan.mahjong.domain.table.ParticipantRole;
 import top.ellan.mahjong.domain.table.TableId;
-import top.ellan.mahjong.domain.table.TableLifecycle;
 import top.ellan.mahjong.plugin.MahjongPaperPlugin;
 import top.ellan.mahjong.plugin.MahjongRuntime;
 import top.ellan.mahjong.plugin.i18n.LocalizedMessageCatalog;
@@ -44,15 +40,12 @@ import top.ellan.mahjong.spi.SeatId;
 /** Native Dialog controller for table management, rule configuration, and settlement review. */
 public final class MahjongDialogService
         implements TableDialogPort, SceneProjectionPort, AutoCloseable {
-    private static final int SETTLEMENT_PAGE_SIZE = 9;
     private final MahjongPaperPlugin plugin;
     private final MahjongRuntime runtime;
     private final DialogContent content;
     private final LobbySetupDialogs setupDialogs;
     private final TableLifecycleDialogs lifecycleDialogs;
-    private final ConcurrentHashMap<TableId, String> observedPhases = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<TableId, TableProjection> settlements =
-            new ConcurrentHashMap<>();
+    private final SettlementDialogs settlementDialogs;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public MahjongDialogService(
@@ -64,6 +57,7 @@ public final class MahjongDialogService
         content = new DialogContent(plugin, Objects.requireNonNull(messages, "messages"));
         setupDialogs = new LobbySetupDialogs(this, runtime);
         lifecycleDialogs = new TableLifecycleDialogs(this, runtime);
+        settlementDialogs = new SettlementDialogs(this, plugin, runtime, content);
     }
 
     @Override
@@ -93,54 +87,20 @@ public final class MahjongDialogService
     }
 
     public void openSettlement(Player player, Optional<TableId> requested) {
-        TableId tableId = requested.orElseGet(() -> currentTable(player).orElse(null));
-        StartedRulePackMatch match = tableId == null
-                ? null
-                : runtime.liveTables().find(tableId).orElse(null);
-        if (match == null) {
-            tell(player, "mahjongpaper.dialog.settlement.unavailable",
-                    "No live match is available for settlement review.", NamedTextColor.RED);
-            return;
-        }
-        TableProjection projection = settlements.get(tableId);
-        if (projection == null) {
-            projection = match.actor().latestProjection().orElse(null);
-        }
-        if (projection == null) {
-            tell(player, "mahjongpaper.dialog.settlement.unavailable",
-                    "Settlement data is not available yet.", NamedTextColor.RED);
-            return;
-        }
-        show(player, settlementDialog(player, match, projection, 0));
+        settlementDialogs.open(player, requested);
     }
 
     @Override
     public void publish(TableProjection projection) {
-        if (closed.get() || projection.lifecycle() == TableLifecycle.LOBBY) {
-            return;
-        }
-        String phase = projection.publicView().phase().toUpperCase(Locale.ROOT);
-        String previous = observedPhases.put(projection.tableId(), phase);
-        if (!boundary(phase) || previous == null || boundary(previous)) {
-            return;
-        }
-        settlements.put(projection.tableId(), projection);
-        List<PlayerId> viewers = runtime.liveTables().find(projection.tableId())
-                .map(match -> match.participants().stream()
-                        .filter(participant -> participant.role() != ParticipantRole.BOT)
-                        .map(participant -> participant.playerId()).toList())
-                .orElseGet(() -> List.copyOf(projection.privateViews().keySet()));
-        for (PlayerId playerId : viewers) {
-            Player player = plugin.getServer().getPlayer(playerId.value());
-            if (player != null) {
-                showLater(player, () -> openSettlement(player, Optional.of(projection.tableId())));
-            }
-        }
+        settlementDialogs.publish(projection);
     }
 
     public void forget(TableId tableId) {
-        observedPhases.remove(tableId);
-        settlements.remove(tableId);
+        settlementDialogs.forget(tableId);
+    }
+
+    public void matchRecycled(TableId tableId) {
+        settlementDialogs.matchRecycled(tableId);
     }
 
     private Dialog lobbyDialog(Player player, HostedLobby hosted) {
@@ -172,6 +132,11 @@ public final class MahjongDialogService
                 NamedTextColor.AQUA, callback(ignored -> openSeats(player, hosted.tableId()))));
         actions.add(button(player, "mahjongpaper.dialog.button.rules", "Rule settings",
                 NamedTextColor.GOLD, callback(ignored -> openRules(player, hosted.tableId()))));
+        if (settlementDialogs.available(hosted.tableId(), viewer)) {
+            actions.add(button(player, "mahjongpaper.dialog.button.settlement", "Settlement details",
+                    NamedTextColor.GOLD,
+                    callback(ignored -> openSettlement(player, Optional.of(hosted.tableId())))));
+        }
         if (owner) {
             actions.add(button(player, "mahjongpaper.action.start", "Start match",
                     NamedTextColor.GREEN, callback(ignored -> lobbyAction(player,
@@ -242,52 +207,6 @@ public final class MahjongDialogService
                 body, List.of(), actions, 2, closeButton(player));
     }
 
-    private Dialog settlementDialog(
-            Player player, StartedRulePackMatch match, TableProjection projection, int requestedPage) {
-        List<Map.Entry<String, String>> entries = projection.publicView().attributes().entrySet()
-                .stream().sorted(Map.Entry.comparingByKey()).toList();
-        int pages = Math.max(1, (entries.size() + SETTLEMENT_PAGE_SIZE - 1) / SETTLEMENT_PAGE_SIZE);
-        int page = Math.max(0, Math.min(requestedPage, pages - 1));
-        int start = page * SETTLEMENT_PAGE_SIZE;
-        int end = Math.min(start + SETTLEMENT_PAGE_SIZE, entries.size());
-        Component body = labeled(player, "mahjongpaper.dialog.attribute.phase", "Phase",
-                content.semanticValue(player, projection.publicView().phase()), NamedTextColor.WHITE);
-        for (int index = start; index < end; index++) {
-            Map.Entry<String, String> entry = entries.get(index);
-            body = body.appendNewline().append(
-                    content.attribute(player, match, entry.getKey(), entry.getValue()));
-        }
-        if (entries.isEmpty()) {
-            body = body.appendNewline().append(textComponent(player,
-                    "mahjongpaper.dialog.settlement.empty", "No settlement fields are available yet.",
-                    NamedTextColor.GRAY));
-        }
-        body = body.appendNewline().append(textComponent(player,
-                "mahjongpaper.dialog.settlement.page", "Page %s/%s", NamedTextColor.DARK_GRAY,
-                page + 1, pages));
-        List<ActionButton> actions = new ArrayList<>();
-        if (page > 0) {
-            int previous = page - 1;
-            actions.add(button(player, "mahjongpaper.dialog.button.previous", "Previous",
-                    NamedTextColor.YELLOW, callback(ignored -> show(player,
-                            settlementDialog(player, match, projection, previous)))));
-        }
-        if (page + 1 < pages) {
-            int next = page + 1;
-            actions.add(button(player, "mahjongpaper.dialog.button.next", "Next",
-                    NamedTextColor.YELLOW, callback(ignored -> show(player,
-                            settlementDialog(player, match, projection, next)))));
-        }
-        nextHandAction(projection, id(player)).ifPresent(action -> actions.add(button(player,
-                "mahjongpaper.action.start_next_hand", "Next hand", NamedTextColor.GREEN,
-                callback(ignored -> matchAction(player,
-                        match.actor().submit(id(player), action.token()), match.tableId())))));
-        actions.add(backButton(player, ignored -> openTable(player, Optional.of(match.tableId()))));
-        return DialogUi.multi(title(player, "mahjongpaper.dialog.settlement.title",
-                        "Settlement · %s", shortId(match.tableId())), body, List.of(), actions, 2,
-                closeButton(player));
-    }
-
     private void confirmLeave(Player player, TableId tableId) {
         show(player, DialogUi.confirmation(
                 title(player, "mahjongpaper.dialog.leave.title", "Leave table?"),
@@ -311,7 +230,7 @@ public final class MahjongDialogService
         });
     }
 
-    private void matchAction(Player player, CompletionStage<TableActionResult> stage, TableId tableId) {
+    void matchAction(Player player, CompletionStage<TableActionResult> stage, TableId tableId) {
         complete(player, stage, result -> {
             openTable(player, Optional.of(tableId));
             return null;
@@ -350,7 +269,7 @@ public final class MahjongDialogService
         return content.matchBody(player, match, projection);
     }
 
-    private Optional<AuthorizedAction> nextHandAction(TableProjection projection, PlayerId player) {
+    Optional<AuthorizedAction> nextHandAction(TableProjection projection, PlayerId player) {
         if (projection == null) {
             return Optional.empty();
         }
@@ -359,7 +278,7 @@ public final class MahjongDialogService
                 .findFirst();
     }
 
-    private Optional<TableId> currentTable(Player player) {
+    Optional<TableId> currentTable(Player player) {
         PlayerId playerId = id(player);
         return runtime.lobbyTables().findByPlayer(playerId).map(HostedLobby::tableId)
                 .or(() -> runtime.liveTables().findByPlayer(playerId)
@@ -374,7 +293,7 @@ public final class MahjongDialogService
         });
     }
 
-    private void showLater(Player player, Runnable action) {
+    void showLater(Player player, Runnable action) {
         if (!closed.get()) {
             player.getScheduler().run(plugin, ignored -> action.run(), null);
         }
@@ -465,15 +384,6 @@ public final class MahjongDialogService
         return new PlayerId(player.getUniqueId());
     }
 
-    private static boolean boundary(String phase) {
-        return phase.contains("BETWEEN_HAND") || phase.contains("BETWEEN_ROUND")
-                || phase.equals("ENDED") || phase.equals("FINISHED");
-    }
-
-    private static String configurationText(Map<String, String> configuration) {
-        return DialogContent.configurationText(configuration);
-    }
-
     private static String shortId(TableId tableId) {
         return DialogContent.shortId(tableId);
     }
@@ -482,15 +392,14 @@ public final class MahjongDialogService
         return DialogContent.pretty(value);
     }
 
-    private static String humanize(String value) {
-        return DialogContent.humanize(value);
+    boolean isClosed() {
+        return closed.get();
     }
 
     @Override
     public void close() {
         if (closed.compareAndSet(false, true)) {
-            observedPhases.clear();
-            settlements.clear();
+            settlementDialogs.close();
         }
     }
 }
