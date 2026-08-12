@@ -135,6 +135,52 @@ public final class CommandSupport {
                 });
     }
 
+    /** Active provider profiles, with official defaults available during early startup. */
+    public List<String> profileIds(RuleId ruleId) {
+        Objects.requireNonNull(ruleId, "ruleId");
+        try {
+            List<String> active =
+                    runtime.ruleDescriptors().stream()
+                            .filter(descriptor -> descriptor.ruleId().equals(ruleId))
+                            .flatMap(descriptor -> descriptor.profiles().stream())
+                            .map(profile -> profile.id().value())
+                            .distinct()
+                            .sorted()
+                            .toList();
+            if (!active.isEmpty()) {
+                return active;
+            }
+        } catch (IllegalStateException ignored) {
+            // Completion can run while the asynchronous rule registry is still starting.
+        }
+        try {
+            return List.of(defaultProfile(ruleId).value());
+        } catch (IllegalArgumentException unsupported) {
+            return List.of();
+        }
+    }
+
+    /** Completion-safe overload: an unfinished or invalid rule token simply has no profiles. */
+    public List<String> profileIds(String rawRuleId) {
+        try {
+            return profileIds(ruleId(rawRuleId));
+        } catch (IllegalArgumentException invalidRuleId) {
+            return List.of();
+        }
+    }
+
+    /** Stable snapshot used by all table-id completions. */
+    public List<String> tableIds() {
+        return java.util.stream.Stream.concat(
+                        runtime.lobbyTables().list().stream()
+                                .map(lobby -> lobby.tableId().toString()),
+                        runtime.liveTables().list().stream()
+                                .map(match -> match.tableId().toString()))
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
     public static List<String> filter(String prefix, List<String> values) {
         String normalized = prefix.toLowerCase(Locale.ROOT);
         return values.stream().filter(value -> value.startsWith(normalized)).toList();

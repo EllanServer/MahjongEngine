@@ -127,6 +127,15 @@ public final class LobbyActionHandler implements SubcommandHandler {
         if (arguments.length == 2 && "mode".equalsIgnoreCase(arguments[0])) {
             return CommandSupport.filter(arguments[1], List.of("riichi", "mcr", "sichuan"));
         }
+        if (arguments.length == 3 && "mode".equalsIgnoreCase(arguments[0])) {
+            return CommandSupport.filter(
+                    arguments[2], support.profileIds(arguments[1]));
+        }
+        if (arguments.length == 2
+                && ("join".equalsIgnoreCase(arguments[0])
+                        || "spectate".equalsIgnoreCase(arguments[0]))) {
+            return CommandSupport.filter(arguments[1], support.tableIds());
+        }
         if (arguments.length == 3 && "join".equalsIgnoreCase(arguments[0])) {
             return CommandSupport.filter(
                     arguments[2], List.of("east", "south", "west", "north"));

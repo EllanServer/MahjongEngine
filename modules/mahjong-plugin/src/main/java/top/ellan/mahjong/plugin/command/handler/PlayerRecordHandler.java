@@ -194,11 +194,21 @@ public final class PlayerRecordHandler implements SubcommandHandler {
 
     @Override
     public List<String> complete(CommandSender sender, String[] arguments) {
-        if (("rank".equalsIgnoreCase(arguments[0])
-                        || "ranking".equalsIgnoreCase(arguments[0]))
+        String root = arguments[0].toLowerCase(Locale.ROOT);
+        if ((root.equals("rank") || root.equals("ranking"))
                 && arguments.length == 2) {
             return CommandSupport.filter(arguments[1], RULE_IDS);
         }
+        if (arguments.length == 2 && root.equals("history")) {
+            return CommandSupport.filter(arguments[1], pageSuggestions());
+        }
+        if (arguments.length == 3 && (root.equals("rank") || root.equals("ranking"))) {
+            return CommandSupport.filter(arguments[2], pageSuggestions());
+        }
         return List.of();
+    }
+
+    private static List<String> pageSuggestions() {
+        return List.of("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
     }
 }

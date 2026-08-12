@@ -95,4 +95,26 @@ class LocalizedMessageCatalogTest {
                                 Locale.ENGLISH,
                                 "action.declare_missing:suit.wan"));
     }
+
+    @Test
+    void localizesRuleProfilesAndRuntimeStateValues() {
+        assertEquals(
+                "立直麻将",
+                messages.resolve(
+                        Locale.SIMPLIFIED_CHINESE,
+                        "mahjongpaper.rule.riichi",
+                        "missing"));
+        assertEquals(
+                "等待出牌",
+                messages.resolve(
+                        Locale.SIMPLIFIED_CHINESE,
+                        "mahjongpaper.value.awaiting_discard",
+                        "missing"));
+        assertEquals(
+                "雀魂ルール",
+                messages.resolve(
+                        Locale.JAPANESE,
+                        "mahjongpaper.profile.mahjong-soul",
+                        "missing"));
+    }
 }

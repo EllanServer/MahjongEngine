@@ -145,7 +145,6 @@ public final class MahjongCommand implements BasicCommand {
 
     private final CommandSupport support;
     private final Map<String, SubcommandHandler> handlers;
-    private final List<String> rootSuggestions;
 
     public MahjongCommand(MahjongPaperPlugin plugin, MahjongRuntime runtime) {
         support = new CommandSupport(plugin, runtime);
@@ -161,9 +160,6 @@ public final class MahjongCommand implements BasicCommand {
         register(routes, new RulePackAdminHandler(support));
         validateHelpCoverage(routes.keySet());
         handlers = Map.copyOf(routes);
-        LinkedHashSet<String> suggestions = new LinkedHashSet<>(routes.keySet());
-        suggestions.add("help");
-        rootSuggestions = suggestions.stream().sorted().toList();
     }
 
     @Override
@@ -330,8 +326,11 @@ public final class MahjongCommand implements BasicCommand {
     }
 
     private List<String> onTabComplete(CommandSender sender, String[] arguments) {
+        if (arguments.length == 0) {
+            return rootSuggestions(sender);
+        }
         if (arguments.length == 1) {
-            return CommandSupport.filter(arguments[0], rootSuggestions);
+            return CommandSupport.filter(arguments[0], rootSuggestions(sender));
         }
         if (arguments.length == 2 && "help".equalsIgnoreCase(arguments[0])) {
             List<String> pages = new ArrayList<>();
@@ -342,6 +341,13 @@ public final class MahjongCommand implements BasicCommand {
         }
         SubcommandHandler handler = handlers.get(arguments[0].toLowerCase(Locale.ROOT));
         return handler == null ? List.of() : handler.complete(sender, arguments);
+    }
+
+    private static List<String> rootSuggestions(CommandSender sender) {
+        return HELP_ENTRIES.stream()
+                .filter(entry -> !entry.adminOnly() || sender.hasPermission("mahjongpaper.admin"))
+                .map(HelpEntry::canonicalName)
+                .toList();
     }
 
     private static void register(
@@ -365,6 +371,7 @@ public final class MahjongCommand implements BasicCommand {
             names.add(alias);
         }
         return new HelpEntry(
+                canonicalName,
                 Set.copyOf(names),
                 usage,
                 "mahjongpaper.command.help.description." + canonicalName,
@@ -387,12 +394,14 @@ public final class MahjongCommand implements BasicCommand {
     }
 
     private record HelpEntry(
+            String canonicalName,
             Set<String> names,
             String usage,
             String translationKey,
             String fallbackDescription,
             boolean adminOnly) {
         private HelpEntry {
+            canonicalName = Objects.requireNonNull(canonicalName, "canonicalName");
             names = Set.copyOf(names);
             Objects.requireNonNull(usage, "usage");
             Objects.requireNonNull(translationKey, "translationKey");

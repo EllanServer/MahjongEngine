@@ -1,5 +1,6 @@
 package top.ellan.mahjong.plugin.command.handler;
 
+import java.util.List;
 import java.util.Set;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -122,5 +123,12 @@ public final class TableQueryHandler implements SubcommandHandler {
                                         .map(StartedRulePackMatch::tableId))
                 .orElseThrow(() -> CommandSupport.failure(
                         "mahjongpaper.command.not_at_table", "You do not belong to a table."));
+    }
+
+    @Override
+    public List<String> complete(CommandSender sender, String[] arguments) {
+        return arguments.length == 2 && "state".equalsIgnoreCase(arguments[0])
+                ? CommandSupport.filter(arguments[1], support.tableIds())
+                : List.of();
     }
 }

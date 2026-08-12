@@ -37,6 +37,22 @@ public final class TableCreateHandler implements SubcommandHandler {
                     "/mahjong create <riichi|mcr|sichuan> [profile]");
         }
         Player owner = support.requirePlayer(sender);
+        PlayerId ownerId = new PlayerId(owner.getUniqueId());
+        var existingLobby = support.runtime().lobbyTables().findByPlayer(ownerId).orElse(null);
+        if (existingLobby != null) {
+            throw CommandSupport.failure(
+                    "mahjongpaper.command.already_at_lobby",
+                    "You already belong to lobby %s. If it is your retained empty table, an admin must run /mahjong remove %s before you create another.",
+                    existingLobby.tableId(),
+                    existingLobby.tableId());
+        }
+        var existingMatch = support.runtime().liveTables().findByPlayer(ownerId).orElse(null);
+        if (existingMatch != null) {
+            throw CommandSupport.failure(
+                    "mahjongpaper.command.already_at_match",
+                    "You already belong to active match %s; finish or leave it before creating another table.",
+                    existingMatch.tableId());
+        }
         RuleId ruleId = CommandSupport.ruleId(arguments[1]);
         ProfileId profileId =
                 arguments.length == 3
@@ -50,7 +66,7 @@ public final class TableCreateHandler implements SubcommandHandler {
                         Math.floor(source.getX()) + 0.5D,
                         Math.floor(source.getY()) + 0.5D,
                         Math.floor(source.getZ()) + 0.5D,
-                        source.getYaw(),
+                        0.0F,
                         0.0F);
         TableAnchor anchor =
                 new TableAnchor(
@@ -64,7 +80,7 @@ public final class TableCreateHandler implements SubcommandHandler {
         CreateLobbyRequest request =
                 new CreateLobbyRequest(
                         anchor,
-                        new PlayerId(owner.getUniqueId()),
+                        ownerId,
                         ruleId,
                         profileId,
                         Map.of(),
@@ -88,8 +104,13 @@ public final class TableCreateHandler implements SubcommandHandler {
 
     @Override
     public List<String> complete(CommandSender sender, String[] arguments) {
-        return arguments.length == 2
-                ? CommandSupport.filter(arguments[1], RULES)
-                : List.of();
+        if (arguments.length == 2) {
+            return CommandSupport.filter(arguments[1], RULES);
+        }
+        if (arguments.length == 3) {
+            return CommandSupport.filter(
+                    arguments[2], support.profileIds(arguments[1]));
+        }
+        return List.of();
     }
 }

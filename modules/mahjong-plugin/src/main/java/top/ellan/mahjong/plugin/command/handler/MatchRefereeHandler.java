@@ -61,6 +61,12 @@ public final class MatchRefereeHandler implements SubcommandHandler {
 
     @Override
     public List<String> complete(CommandSender sender, String[] arguments) {
+        if (!sender.hasPermission("mahjongpaper.admin")) {
+            return List.of();
+        }
+        if (arguments.length == 2) {
+            return CommandSupport.filter(arguments[1], support.tableIds());
+        }
         if (arguments.length == 3) {
             return CommandSupport.filter(arguments[2], OPERATIONS);
         }

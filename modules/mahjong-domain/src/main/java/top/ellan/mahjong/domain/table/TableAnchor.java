@@ -2,7 +2,7 @@ package top.ellan.mahjong.domain.table;
 
 import java.util.Objects;
 
-/** Platform-neutral location of one physical table. */
+/** Platform-neutral location of one physical table in the fixed v1.5 world frame. */
 public record TableAnchor(
         TableId tableId,
         String worldId,
@@ -23,5 +23,9 @@ public record TableAnchor(
         if (!Float.isFinite(yaw) || !Float.isFinite(pitch)) {
             throw new IllegalArgumentException("table rotation must be finite");
         }
+        // The physical layout uses a fixed world frame: reconstruction must never reintroduce a
+        // creator/view direction and rotate the table or its four independently placed chairs.
+        yaw = 0.0F;
+        pitch = 0.0F;
     }
 }

@@ -55,6 +55,9 @@ public final class RulePackAdminHandler implements SubcommandHandler {
     @Override
     public List<String> complete(CommandSender sender, String[] arguments) {
         if (arguments.length == 2) {
+            if (!sender.hasPermission("mahjongpaper.admin")) {
+                return CommandSupport.filter(arguments[1], List.of("list"));
+            }
             return CommandSupport.filter(
                     arguments[1],
                     List.of(
@@ -68,7 +71,8 @@ public final class RulePackAdminHandler implements SubcommandHandler {
                             "rollback",
                             "gc"));
         }
-        if (arguments.length == 3
+        if (sender.hasPermission("mahjongpaper.admin")
+                && arguments.length == 3
                 && List.of(
                                 "install",
                                 "update",

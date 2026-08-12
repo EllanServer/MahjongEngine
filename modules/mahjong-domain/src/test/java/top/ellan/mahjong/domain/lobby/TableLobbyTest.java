@@ -77,6 +77,22 @@ class TableLobbyTest {
                                 0));
     }
 
+    @Test
+    void tableAnchorKeepsTheFixedV15WorldDirection() {
+        TableAnchor anchor =
+                new TableAnchor(
+                        TableId.random(),
+                        UUID.randomUUID().toString(),
+                        0.5,
+                        64,
+                        0.5,
+                        137.5F,
+                        -24.0F);
+
+        assertEquals(0.0F, anchor.yaw());
+        assertEquals(0.0F, anchor.pitch());
+    }
+
     private static TableLobby readyLobby() {
         ArrayList<LobbySeat> seats = new ArrayList<>();
         for (int index = 0; index < 4; index++) {

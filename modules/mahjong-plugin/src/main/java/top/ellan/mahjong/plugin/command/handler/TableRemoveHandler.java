@@ -1,5 +1,6 @@
 package top.ellan.mahjong.plugin.command.handler;
 
+import java.util.List;
 import java.util.Set;
 import org.bukkit.command.CommandSender;
 import top.ellan.mahjong.domain.table.TableId;
@@ -31,5 +32,12 @@ public final class TableRemoveHandler implements SubcommandHandler {
                 support.runtime().remove(tableId),
                 ignored -> CommandSupport.message(
                         "mahjongpaper.command.table_removed", "Removed table %s.", tableId));
+    }
+
+    @Override
+    public List<String> complete(CommandSender sender, String[] arguments) {
+        return arguments.length == 2 && sender.hasPermission("mahjongpaper.admin")
+                ? CommandSupport.filter(arguments[1], support.tableIds())
+                : List.of();
     }
 }

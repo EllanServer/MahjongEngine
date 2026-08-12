@@ -233,12 +233,11 @@ public final class MahjongDialogService
         int start = page * SETTLEMENT_PAGE_SIZE;
         int end = Math.min(start + SETTLEMENT_PAGE_SIZE, entries.size());
         Component body = labeled(player, "mahjongpaper.dialog.attribute.phase", "Phase",
-                pretty(projection.publicView().phase()), NamedTextColor.WHITE);
+                content.semanticValue(player, projection.publicView().phase()), NamedTextColor.WHITE);
         for (int index = start; index < end; index++) {
             Map.Entry<String, String> entry = entries.get(index);
-            body = body.appendNewline().append(labeled(player,
-                    "mahjongpaper.dialog.attribute." + entry.getKey(), humanize(entry.getKey()),
-                    prettyValue(match, entry.getValue()), NamedTextColor.WHITE));
+            body = body.appendNewline().append(
+                    content.attribute(player, match, entry.getKey(), entry.getValue()));
         }
         if (entries.isEmpty()) {
             body = body.appendNewline().append(textComponent(player,
@@ -443,8 +442,20 @@ public final class MahjongDialogService
                 current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage());
     }
 
-    private String prettyValue(StartedRulePackMatch match, String value) {
-        return content.prettyValue(match, value);
+    String ruleName(Player player, top.ellan.mahjong.spi.RuleId ruleId) {
+        return content.ruleName(player, ruleId);
+    }
+
+    String profileName(
+            Player player, top.ellan.mahjong.spi.ProfileId profileId, String fallback) {
+        return content.profileName(player, profileId, fallback);
+    }
+
+    String ruleProfile(
+            Player player,
+            top.ellan.mahjong.spi.RuleId ruleId,
+            top.ellan.mahjong.spi.ProfileId profileId) {
+        return content.ruleProfile(player, ruleId, profileId);
     }
 
     String seatName(Player player, SeatId seat) {

@@ -1,9 +1,11 @@
 package top.ellan.mahjong.plugin.dialog;
 
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
@@ -17,10 +19,13 @@ import top.ellan.mahjong.plugin.MahjongPaperPlugin;
 import top.ellan.mahjong.plugin.i18n.LocalizedMessageCatalog;
 import top.ellan.mahjong.plugin.match.StartedRulePackMatch;
 import top.ellan.mahjong.spi.PlayerId;
+import top.ellan.mahjong.spi.ProfileId;
+import top.ellan.mahjong.spi.RuleId;
 import top.ellan.mahjong.spi.SeatId;
 
 /** Localized text and compact state formatting shared by every dialog page. */
 final class DialogContent {
+    private static final Pattern VALUE_KEY_UNSAFE = Pattern.compile("[^a-z0-9_.-]");
     private final MahjongPaperPlugin plugin;
     private final LocalizedMessageCatalog messages;
 
@@ -32,10 +37,11 @@ final class DialogContent {
     Component lobbyBody(Player player, TableLobby state) {
         int ready = (int) state.seats().stream().filter(LobbySeat::ready).count();
         Component body = labeled(player, "mahjongpaper.dialog.table.rule", "Rules",
-                state.ruleId() + " / " + state.profileId(), NamedTextColor.WHITE)
+                ruleProfile(player, state.ruleId(), state.profileId()), NamedTextColor.WHITE)
                 .appendNewline().append(labeled(player, "mahjongpaper.dialog.table.seats", "Seats",
                         state.occupiedSeatCount() + "/" + state.seats().size()
-                                + " · " + ready + " ready",
+                                + " · " + t(player, "mahjongpaper.dialog.table.ready_count",
+                                        "%s ready", ready),
                         NamedTextColor.WHITE))
                 .appendNewline().append(labeled(player, "mahjongpaper.dialog.table.spectators",
                         "Spectators", Integer.toString(state.spectators().size()),
@@ -71,18 +77,21 @@ final class DialogContent {
 
     Component matchBody(Player player, StartedRulePackMatch match, TableProjection projection) {
         Component body = labeled(player, "mahjongpaper.dialog.table.rule", "Rules",
-                match.binding().rulePack() + " / " + match.binding().profile(), NamedTextColor.WHITE);
+                ruleProfile(player, match.binding().rulePack().ruleId(), match.binding().profile()),
+                NamedTextColor.WHITE);
         String phase = projection == null ? match.actor().snapshot().lifecycle().name()
                 : projection.publicView().phase();
         body = body.appendNewline().append(labeled(player,
-                "mahjongpaper.dialog.attribute.phase", "Phase", pretty(phase), NamedTextColor.WHITE));
+                "mahjongpaper.dialog.attribute.phase", "Phase", semanticValue(player, phase),
+                NamedTextColor.WHITE));
         for (TableParticipant participant : match.participants().stream()
                 .sorted(Comparator.comparing(value -> value.seat().map(SeatId::value).orElse(99)))
                 .toList()) {
             body = body.appendNewline().append(Component.text(
                     participant.seat().map(seat -> seatName(player, seat)).orElse("•") + " · ",
                     NamedTextColor.GOLD)).append(Component.text(
-                    playerName(participant.playerId()) + " · " + pretty(participant.role().name()),
+                    playerName(participant.playerId()) + " · "
+                            + semanticValue(player, participant.role().name()),
                     participant.role() == ParticipantRole.BOT
                             ? NamedTextColor.YELLOW : NamedTextColor.WHITE));
         }
@@ -97,6 +106,13 @@ final class DialogContent {
             Player player, String key, String fallback, String value, NamedTextColor valueColor) {
         return Component.text(t(player, key, fallback) + ": ", NamedTextColor.GRAY)
                 .append(Component.text(value, valueColor));
+    }
+
+    Component attribute(
+            Player player, StartedRulePackMatch match, String key, String value) {
+        return Component.text(attributeName(player, key) + ": ", NamedTextColor.GRAY)
+                .append(Component.text(
+                        attributeValue(player, match, key, value), NamedTextColor.WHITE));
     }
 
     Component text(
@@ -114,13 +130,113 @@ final class DialogContent {
         return online == null ? playerId.value().toString().substring(0, 8) : online.getName();
     }
 
-    String prettyValue(StartedRulePackMatch match, String value) {
+    private String replacePlayerIds(StartedRulePackMatch match, String value) {
         String rendered = value;
         for (TableParticipant participant : match.participants()) {
             rendered = rendered.replace(participant.playerId().value().toString(),
                     playerName(participant.playerId()));
         }
-        return pretty(rendered);
+        return rendered;
+    }
+
+    String ruleName(Player player, RuleId ruleId) {
+        return t(player, "mahjongpaper.rule." + ruleId.value(), pretty(ruleId.value()));
+    }
+
+    String profileName(Player player, ProfileId profileId, String fallback) {
+        return t(player, "mahjongpaper.profile." + profileId.value(), fallback);
+    }
+
+    String ruleProfile(Player player, RuleId ruleId, ProfileId profileId) {
+        return ruleName(player, ruleId)
+                + " / "
+                + profileName(player, profileId, pretty(profileId.value()));
+    }
+
+    String semanticValue(Player player, String value) {
+        String normalized = VALUE_KEY_UNSAFE
+                .matcher(value.toLowerCase(Locale.ROOT))
+                .replaceAll("_");
+        if (normalized.length() > 96 || normalized.isBlank()) {
+            return pretty(value);
+        }
+        if (normalized.equals("east")
+                || normalized.equals("south")
+                || normalized.equals("west")
+                || normalized.equals("north")) {
+            return t(player, "mahjongpaper.tile." + normalized, pretty(value));
+        }
+        if (normalized.equals("wan")
+                || normalized.equals("tong")
+                || normalized.equals("suo")) {
+            return t(player, "mahjongpaper.suit." + normalized, pretty(value));
+        }
+        return t(player, "mahjongpaper.value." + normalized, pretty(value));
+    }
+
+    private String attributeName(Player player, String key) {
+        String[] segments = key.split("\\.");
+        if (segments.length >= 2 && segments[0].equals("referee")) {
+            String label = t(player, "mahjongpaper.dialog.attribute.referee", "Referee");
+            if (segments.length == 3) {
+                label += " · " + seatValue(player, segments[1]);
+            }
+            return label + " · " + attributeTerm(player, segments[segments.length - 1]);
+        }
+        if (segments.length == 2 && segments[0].equals("missing")) {
+            return t(player, "mahjongpaper.dialog.attribute.missingSuit", "Missing suit")
+                    + " · "
+                    + seatValue(player, segments[1]);
+        }
+        return t(player, "mahjongpaper.dialog.attribute." + key, humanize(key));
+    }
+
+    private String attributeTerm(Player player, String key) {
+        return t(player, "mahjongpaper.dialog.attribute." + key, humanize(key));
+    }
+
+    private String attributeValue(
+            Player player, StartedRulePackMatch match, String key, String value) {
+        String rendered = replacePlayerIds(match, value);
+        return switch (key) {
+            case "profile" -> {
+                try {
+                    ProfileId profileId = new ProfileId(rendered);
+                    yield profileName(player, profileId, pretty(rendered));
+                } catch (IllegalArgumentException invalidProfile) {
+                    yield pretty(rendered);
+                }
+            }
+            case "rule" -> {
+                try {
+                    yield ruleName(player, new RuleId(rendered));
+                } catch (IllegalArgumentException invalidRule) {
+                    yield pretty(rendered);
+                }
+            }
+            case "dealer", "currentSeat", "currentPlayer", "winner", "winners", "winnerOrder",
+                    "tenpai", "nagashi" -> seatValue(player, rendered);
+            default -> semanticValue(player, rendered);
+        };
+    }
+
+    private String seatValue(Player player, String value) {
+        return Arrays.stream(value.split(",", -1))
+                .map(String::trim)
+                .map(token -> seatToken(player, token))
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    private String seatToken(Player player, String token) {
+        try {
+            int seat = Integer.parseInt(token);
+            if (seat >= 0 && seat < 4) {
+                return seatName(player, new SeatId(seat));
+            }
+        } catch (NumberFormatException ignored) {
+            // Named winds are handled by semanticValue below.
+        }
+        return semanticValue(player, token);
     }
 
     String seatName(Player player, SeatId seat) {

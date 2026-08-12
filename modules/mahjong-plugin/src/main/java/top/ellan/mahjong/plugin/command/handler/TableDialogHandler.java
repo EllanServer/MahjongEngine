@@ -42,12 +42,6 @@ public final class TableDialogHandler implements SubcommandHandler {
         if (arguments.length != 2) {
             return List.of();
         }
-        List<String> ids = java.util.stream.Stream.concat(
-                        support.runtime().lobbyTables().list().stream()
-                                .map(lobby -> lobby.tableId().toString()),
-                        support.runtime().liveTables().list().stream()
-                                .map(match -> match.tableId().toString()))
-                .sorted().toList();
-        return CommandSupport.filter(arguments[1], ids);
+        return CommandSupport.filter(arguments[1], support.tableIds());
     }
 }

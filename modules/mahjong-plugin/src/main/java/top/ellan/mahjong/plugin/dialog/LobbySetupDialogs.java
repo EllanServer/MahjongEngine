@@ -93,7 +93,9 @@ final class LobbySetupDialogs {
         if (owner) {
             for (RulePackDescriptor descriptor : runtime.ruleDescriptors()) {
                 for (RuleProfileDescriptor profile : descriptor.profiles()) {
-                    String label = descriptor.ruleId() + " · " + profile.displayName();
+                    String label = host.ruleName(player, descriptor.ruleId())
+                            + " · "
+                            + host.profileName(player, profile.id(), profile.displayName());
                     actions.add(host.button(player, label, NamedTextColor.GOLD,
                             host.callback(ignored -> openRuleEditor(
                                     player, tableId, descriptor, profile))));
@@ -103,7 +105,8 @@ final class LobbySetupDialogs {
         actions.add(host.backButton(player,
                 ignored -> host.openTable(player, Optional.of(tableId))));
         Component body = host.labeled(player, "mahjongpaper.dialog.rules.current", "Current rules",
-                        state.ruleId() + " / " + state.profileId(), NamedTextColor.WHITE)
+                        host.ruleProfile(player, state.ruleId(), state.profileId()),
+                        NamedTextColor.WHITE)
                 .appendNewline().append(Component.text(
                         DialogContent.configurationText(state.configuration()), NamedTextColor.GRAY));
         if (!owner) {
@@ -142,7 +145,9 @@ final class LobbySetupDialogs {
                                 NamedTextColor.WHITE),
                         current.get(field.key())))
                 .toList();
-        Component body = Component.text(profile.displayName(), NamedTextColor.GOLD)
+        Component body = Component.text(
+                        host.profileName(player, profile.id(), profile.displayName()),
+                        NamedTextColor.GOLD)
                 .appendNewline().append(host.textComponent(player,
                         "mahjongpaper.dialog.rules.ready_reset",
                         "Applying settings resets every human ready state.",
@@ -154,7 +159,8 @@ final class LobbySetupDialogs {
                 host.backButton(player, ignored -> openRules(player, tableId)));
         host.show(player, DialogUi.multi(
                 host.title(player, "mahjongpaper.dialog.rules.edit_title", "Edit · %s",
-                        descriptor.ruleId()), body, inputs, actions, 2, host.closeButton(player)));
+                        host.ruleName(player, descriptor.ruleId())), body, inputs, actions, 2,
+                host.closeButton(player)));
     }
 
     private void applyRules(
