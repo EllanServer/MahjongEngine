@@ -4,13 +4,12 @@ import static net.momirealms.sparrow.reflection.field.matcher.FieldMatchers.fAll
 import static net.momirealms.sparrow.reflection.field.matcher.FieldMatchers.fInstance;
 import static net.momirealms.sparrow.reflection.field.matcher.FieldMatchers.fType;
 
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.WrongMethodTypeException;
 import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import net.momirealms.sparrow.reflection.SReflection;
 import net.momirealms.sparrow.reflection.clazz.SparrowClass;
+import net.momirealms.sparrow.reflection.field.SIntField;
 import net.momirealms.sparrow.reflection.field.SparrowField;
 import net.momirealms.sparrow.reflection.remapper.Remapper;
 import org.bukkit.entity.Player;
@@ -60,9 +59,9 @@ final class ClientCameraPacketSender {
             if (packet == null) {
                 throw new IllegalStateException("Camera packet allocation returned null");
             }
-            resolved.entityIdSetter().invoke(packet, entityId);
+            resolved.entityId().set(packet, entityId);
             return packet;
-        } catch (WrongMethodTypeException | ClassCastException | LinkageError incompatible) {
+        } catch (ClassCastException | LinkageError incompatible) {
             disable("Camera packet linkage changed", incompatible);
             return null;
         } catch (Throwable failure) {
@@ -87,11 +86,11 @@ final class ClientCameraPacketSender {
                 if (entityId == null) {
                     throw new IllegalStateException("Camera entity id field is unavailable");
                 }
-                MethodHandle setter = entityId.unreflectSetter();
-                if (setter == null) {
-                    throw new IllegalStateException("Camera entity id setter is unavailable");
+                SIntField accessor = entityId.asm$int();
+                if (accessor == null) {
+                    throw new IllegalStateException("Camera entity id ASM accessor is unavailable");
                 }
-                Access resolved = new Access(packetClass, setter);
+                Access resolved = new Access(packetClass, accessor);
                 access = resolved;
                 return resolved;
             } catch (Throwable failure) {
@@ -108,5 +107,5 @@ final class ClientCameraPacketSender {
         }
     }
 
-    private record Access(Class<?> packetClass, MethodHandle entityIdSetter) {}
+    private record Access(Class<?> packetClass, SIntField entityId) {}
 }
