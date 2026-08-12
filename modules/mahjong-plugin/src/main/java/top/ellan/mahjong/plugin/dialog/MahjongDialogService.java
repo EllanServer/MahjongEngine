@@ -49,6 +49,7 @@ public final class MahjongDialogService
     private final MahjongRuntime runtime;
     private final DialogContent content;
     private final LobbySetupDialogs setupDialogs;
+    private final TableLifecycleDialogs lifecycleDialogs;
     private final ConcurrentHashMap<TableId, String> observedPhases = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<TableId, TableProjection> settlements =
             new ConcurrentHashMap<>();
@@ -62,6 +63,7 @@ public final class MahjongDialogService
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         content = new DialogContent(plugin, Objects.requireNonNull(messages, "messages"));
         setupDialogs = new LobbySetupDialogs(this, runtime);
+        lifecycleDialogs = new TableLifecycleDialogs(this, runtime);
     }
 
     @Override
@@ -181,7 +183,8 @@ public final class MahjongDialogService
         }
         if (owner || player.hasPermission("mahjongpaper.admin")) {
             actions.add(button(player, "mahjongpaper.dialog.button.remove", "Remove table",
-                    NamedTextColor.RED, callback(ignored -> confirmRemove(player, hosted.tableId()))));
+                    NamedTextColor.RED,
+                    callback(ignored -> lifecycleDialogs.confirmRemove(player, hosted.tableId()))));
         }
         return DialogUi.multi(title(player, "mahjongpaper.dialog.table.title", "Table · %s", shortId(hosted.tableId())),
                 lobbyBody(player, state), List.of(), actions, 2, closeButton(player));
@@ -218,7 +221,7 @@ public final class MahjongDialogService
         if (seatedHuman && !departing) {
             actions.add(button(player, "mahjongpaper.action.leave", "Leave after match",
                     NamedTextColor.RED,
-                    callback(ignored -> confirmLiveLeave(player, match.tableId()))));
+                    callback(ignored -> lifecycleDialogs.confirmLiveLeave(player, match.tableId()))));
         } else if (spectator && !departing) {
             actions.add(button(player, "mahjongpaper.dialog.button.unspectate", "Stop spectating",
                     NamedTextColor.RED,
@@ -231,7 +234,8 @@ public final class MahjongDialogService
                         match.actor().submit(id(player), action.token()), match.tableId())))));
         if (player.hasPermission("mahjongpaper.admin")) {
             actions.add(button(player, "mahjongpaper.dialog.button.remove", "Remove table",
-                    NamedTextColor.RED, callback(ignored -> confirmRemove(player, match.tableId()))));
+                    NamedTextColor.RED,
+                    callback(ignored -> lifecycleDialogs.confirmRemove(player, match.tableId()))));
         }
         Component body = matchBody(player, match, projection);
         return DialogUi.multi(title(player, "mahjongpaper.dialog.table.title", "Table · %s", shortId(match.tableId())),
@@ -292,50 +296,6 @@ public final class MahjongDialogService
                 button(player, "mahjongpaper.dialog.button.confirm", "Confirm", NamedTextColor.RED,
                         callback(ignored -> lobbyAction(player,
                                 runtime.lobbyUseCases().leave(id(player)), tableId, false))),
-                button(player, "mahjongpaper.dialog.button.cancel", "Cancel", NamedTextColor.GRAY,
-                        callback(ignored -> openTable(player, Optional.of(tableId))))));
-    }
-
-    private void confirmLiveLeave(Player player, TableId tableId) {
-        show(player, DialogUi.confirmation(
-                title(player, "mahjongpaper.dialog.live_leave.title", "Leave this match?"),
-                textComponent(player, "mahjongpaper.dialog.live_leave.body",
-                        "Trustee will finish this match for you; your seat is released when it ends.",
-                        NamedTextColor.YELLOW),
-                button(player, "mahjongpaper.dialog.button.confirm", "Confirm", NamedTextColor.RED,
-                        callback(ignored -> lobbyAction(
-                                player, runtime.leave(id(player)), tableId, false))),
-                button(player, "mahjongpaper.dialog.button.cancel", "Cancel", NamedTextColor.GRAY,
-                        callback(ignored -> openTable(player, Optional.of(tableId))))));
-    }
-
-    private void confirmRemove(Player player, TableId tableId) {
-        show(player, DialogUi.confirmation(
-                title(player, "mahjongpaper.dialog.remove.title", "Remove table?"),
-                textComponent(player, "mahjongpaper.dialog.remove.body",
-                        "This permanently closes table %s and cannot be undone.", NamedTextColor.RED,
-                        shortId(tableId)),
-                button(player, "mahjongpaper.dialog.button.confirm", "Confirm", NamedTextColor.RED,
-                        callback(ignored -> {
-                            CompletionStage<Void> removal;
-                            try {
-                                removal = player.hasPermission("mahjongpaper.admin")
-                                        ? runtime.remove(tableId)
-                                        : runtime.removeOwnedLobby(tableId, id(player));
-                            } catch (RuntimeException rejected) {
-                                failure(player, rejected);
-                                return;
-                            }
-                            removal.whenComplete((value, failure) -> {
-                                if (failure == null) {
-                                    forget(tableId);
-                                    tell(player, "mahjongpaper.command.table_removed", "Removed table %s.",
-                                            NamedTextColor.GREEN, tableId);
-                                } else {
-                                    failure(player, failure);
-                                }
-                            });
-                        })),
                 button(player, "mahjongpaper.dialog.button.cancel", "Cancel", NamedTextColor.GRAY,
                         callback(ignored -> openTable(player, Optional.of(tableId))))));
     }
@@ -469,7 +429,7 @@ public final class MahjongDialogService
         showLater(player, () -> player.sendMessage(message));
     }
 
-    private void failure(Player player, Throwable failure) {
+    void failure(Player player, Throwable failure) {
         Throwable current = failure;
         while (current.getCause() != null
                 && (current instanceof java.util.concurrent.CompletionException

@@ -13,6 +13,7 @@ final class TableAutomationRoster {
     private final List<TableParticipant> seated;
     private final Set<PlayerId> fixedBots;
     private final Set<PlayerId> trustees = new HashSet<>();
+    private final Set<PlayerId> oneShot = new HashSet<>();
     private volatile Set<PlayerId> publishedTrustees = Set.of();
 
     TableAutomationRoster(List<TableParticipant> participants) {
@@ -38,6 +39,9 @@ final class TableAutomationRoster {
             return new Update(false, false, "seated-human-required");
         }
         boolean changed = enabled ? trustees.add(playerId) : trustees.remove(playerId);
+        if (!enabled) {
+            changed |= oneShot.remove(playerId);
+        }
         if (changed) {
             publishedTrustees = Set.copyOf(trustees);
         }
@@ -49,13 +53,32 @@ final class TableAutomationRoster {
     }
 
     List<PlayerId> automatedPlayers() {
-        if (fixedBots.isEmpty() && trustees.isEmpty()) {
+        if (fixedBots.isEmpty() && trustees.isEmpty() && oneShot.isEmpty()) {
             return List.of();
         }
         return seated.stream()
                 .map(TableParticipant::playerId)
-                .filter(player -> fixedBots.contains(player) || trustees.contains(player))
+                .filter(player ->
+                        fixedBots.contains(player)
+                                || trustees.contains(player)
+                                || oneShot.contains(player))
                 .toList();
+    }
+
+    boolean enableOneShot(PlayerId playerId) {
+        Objects.requireNonNull(playerId, "playerId");
+        boolean human = seated.stream().anyMatch(
+                participant -> participant.playerId().equals(playerId)
+                        && participant.role() == ParticipantRole.PLAYER);
+        return human && !trustees.contains(playerId) && oneShot.add(playerId);
+    }
+
+    boolean completeOneShot(PlayerId playerId) {
+        return oneShot.remove(Objects.requireNonNull(playerId, "playerId"));
+    }
+
+    boolean isOneShot(PlayerId playerId) {
+        return oneShot.contains(Objects.requireNonNull(playerId, "playerId"));
     }
 
     boolean isAutomated(PlayerId playerId) {

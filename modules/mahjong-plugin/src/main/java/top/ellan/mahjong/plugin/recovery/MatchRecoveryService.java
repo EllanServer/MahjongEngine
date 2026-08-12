@@ -11,6 +11,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import top.ellan.mahjong.application.table.TableActorRegistry;
@@ -22,9 +23,10 @@ import top.ellan.mahjong.persistence.sql.match.JdbcMatchRepository;
 import top.ellan.mahjong.persistence.sql.anchor.JdbcTableAnchorRepository;
 import top.ellan.mahjong.persistence.sql.match.MatchInstanceRecord;
 import top.ellan.mahjong.platform.paper.anchor.PaperTableAnchorService;
-import top.ellan.mahjong.plugin.table.LiveTableDirectory;
 import top.ellan.mahjong.plugin.match.RulePackMatchCoordinator;
+import top.ellan.mahjong.plugin.match.StartedRulePackMatch;
 import top.ellan.mahjong.plugin.runtime.FailureSupport;
+import top.ellan.mahjong.plugin.table.LiveTableDirectory;
 
 /** Restores independent matches and isolates every failed table from the remaining runtime. */
 public final class MatchRecoveryService {
@@ -34,6 +36,7 @@ public final class MatchRecoveryService {
     private final Executor ioExecutor;
     private final Clock clock;
     private final Logger logger;
+    private final Consumer<StartedRulePackMatch> recoveredMatch;
 
     public MatchRecoveryService(
             PaperTableAnchorService anchors,
@@ -41,13 +44,15 @@ public final class MatchRecoveryService {
             TableActorRegistry actors,
             Executor ioExecutor,
             Clock clock,
-            Logger logger) {
+            Logger logger,
+            Consumer<StartedRulePackMatch> recoveredMatch) {
         this.anchors = Objects.requireNonNull(anchors, "anchors");
         this.liveTables = Objects.requireNonNull(liveTables, "liveTables");
         this.actors = Objects.requireNonNull(actors, "actors");
         this.ioExecutor = Objects.requireNonNull(ioExecutor, "ioExecutor");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.logger = Objects.requireNonNull(logger, "logger");
+        this.recoveredMatch = Objects.requireNonNull(recoveredMatch, "recoveredMatch");
     }
 
     public CompletionStage<Void> recover(
@@ -123,6 +128,7 @@ public final class MatchRecoveryService {
                 .thenCompose(
                         startedMatch -> {
                             if (liveTables.registerRecovered(startedMatch)) {
+                                recoveredMatch.accept(startedMatch);
                                 return CompletableFuture.completedFuture(null);
                             }
                             actors.remove(startedMatch.tableId(), startedMatch.actor());

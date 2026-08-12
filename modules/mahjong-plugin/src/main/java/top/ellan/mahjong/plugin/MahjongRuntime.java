@@ -2,7 +2,6 @@ package top.ellan.mahjong.plugin;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -15,7 +14,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import top.ellan.mahjong.application.concurrent.BoundedDeadlineScheduler;
 import top.ellan.mahjong.application.history.PlayerMatchHistoryEntry;
@@ -24,12 +22,8 @@ import top.ellan.mahjong.application.lobby.runtime.HostedLobby;
 import top.ellan.mahjong.application.lobby.runtime.LobbyTableDirectory;
 import top.ellan.mahjong.application.lobby.usecase.CreateLobbyRequest;
 import top.ellan.mahjong.application.lobby.usecase.LobbyUseCases;
-import top.ellan.mahjong.application.table.MatchCompletion;
-import top.ellan.mahjong.application.table.TableActionCode;
 import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.application.table.TableActorRegistry;
-import top.ellan.mahjong.domain.lobby.LobbyPhase;
-import top.ellan.mahjong.domain.table.ParticipantRole;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.platform.paper.concurrent.BoundedPlatformExecutors;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackBootstrap;
@@ -43,7 +37,6 @@ import top.ellan.mahjong.plugin.lobby.LobbyRuntimeCoordinator;
 import top.ellan.mahjong.plugin.lobby.LobbyRuntimeServices;
 import top.ellan.mahjong.plugin.match.NewRulePackMatch;
 import top.ellan.mahjong.plugin.match.MatchAutomationService;
-import top.ellan.mahjong.plugin.match.MatchPersistenceCleanup;
 import top.ellan.mahjong.plugin.match.MatchRefereeService;
 import top.ellan.mahjong.plugin.match.RulePackMatchCoordinator;
 import top.ellan.mahjong.plugin.match.StartedRulePackMatch;
@@ -58,6 +51,7 @@ import top.ellan.mahjong.plugin.runtime.FailureSupport;
 import top.ellan.mahjong.plugin.runtime.RuntimeServices;
 import top.ellan.mahjong.plugin.runtime.RuleExecutionPools;
 import top.ellan.mahjong.plugin.table.LiveTableDirectory;
+import top.ellan.mahjong.plugin.table.TableLifecycleCoordinator;
 import top.ellan.mahjong.runtime.admin.RulePackInventory;
 import top.ellan.mahjong.runtime.admin.RulePackVerification;
 import top.ellan.mahjong.spi.PlayerId;
@@ -68,8 +62,6 @@ import top.ellan.mahjong.spi.RulePackDescriptor;
 /** Restart-scoped 2.0 composition root. All concrete setup lives in classified bootstraps. */
 public final class MahjongRuntime implements AutoCloseable {
     private static final Duration SHUTDOWN_TIMEOUT = Duration.ofSeconds(10);
-    private static final Duration MATCH_REUSE_DELAY = Duration.ofSeconds(3);
-
     private final MahjongPaperPlugin plugin;
     private final PluginConfiguration configuration;
     private final Clock clock = Clock.systemUTC();
@@ -85,6 +77,7 @@ public final class MahjongRuntime implements AutoCloseable {
     private final MahjongDialogService dialogs;
     private final CraftEnginePlatformRuntime platform;
     private final LobbyRuntimeCoordinator lobbyRuntime;
+    private final TableLifecycleCoordinator tableLifecycle;
     private final MatchRecoveryService recovery;
     private final AtomicReference<RuntimeServices> services = new AtomicReference<>();
     private final AtomicReference<State> state = new AtomicReference<>(State.STARTING);
@@ -126,6 +119,20 @@ public final class MahjongRuntime implements AutoCloseable {
                         liveTables,
                         clock,
                         plugin.getLogger());
+        tableLifecycle =
+                new TableLifecycleCoordinator(
+                        plugin,
+                        executors.io(),
+                        clock,
+                        deadlines,
+                        actors,
+                        liveTables,
+                        automation,
+                        lobbyRuntime,
+                        platform,
+                        dialogs,
+                        services::get,
+                        closed::get);
         recovery =
                 new MatchRecoveryService(
                         platform.anchorService(),
@@ -133,7 +140,8 @@ public final class MahjongRuntime implements AutoCloseable {
                         actors,
                         executors.io(),
                         clock,
-                        plugin.getLogger());
+                        plugin.getLogger(),
+                        tableLifecycle::reconcileRecoveredMatch);
         platform.start(lobbyRuntime.seatInteractions(), automation, dialogs);
     }
 
@@ -186,53 +194,12 @@ public final class MahjongRuntime implements AutoCloseable {
         return automation.setAutomated(playerId, enabled);
     }
 
-    /** Leaves a lobby immediately or delegates a live seat to automation until match completion. */
     public CompletionStage<TableActionResult> leave(PlayerId playerId) {
-        Objects.requireNonNull(playerId, "playerId");
-        if (lobbyRuntime.directory().findByPlayer(playerId).isPresent()) {
-            return lobbyRuntime.useCases().leave(playerId);
-        }
-        StartedRulePackMatch match = liveTables.findByPlayer(playerId).orElse(null);
-        if (match == null) {
-            return rejectedAction("not-at-table");
-        }
-        ParticipantRole role = roleOf(match, playerId).orElse(null);
-        if (role == ParticipantRole.SPECTATOR) {
-            liveTables.markDeparting(playerId);
-            return acceptedAction(match, "spectator-left");
-        }
-        if (role != ParticipantRole.PLAYER) {
-            return rejectedAction("player-required");
-        }
-        if (match.actor().snapshot().lifecycle().terminal()) {
-            liveTables.markDeparting(playerId);
-            return acceptedAction(match, "leave-after-match");
-        }
-        return automation.setAutomated(playerId, true)
-                .thenApply(
-                        result -> {
-                            if (result.code() != TableActionCode.ACCEPTED_MEMORY) {
-                                return result;
-                            }
-                            liveTables.markDeparting(playerId);
-                            return new TableActionResult(
-                                    TableActionCode.ACCEPTED_MEMORY,
-                                    result.revision(),
-                                    "leave-deferred");
-                        });
+        return tableLifecycle.leave(playerId);
     }
 
     public CompletionStage<TableActionResult> unspectate(PlayerId playerId) {
-        Objects.requireNonNull(playerId, "playerId");
-        if (lobbyRuntime.directory().findByPlayer(playerId).isPresent()) {
-            return lobbyRuntime.useCases().unspectate(playerId);
-        }
-        StartedRulePackMatch match = liveTables.findByPlayer(playerId).orElse(null);
-        if (match == null || roleOf(match, playerId).orElse(null) != ParticipantRole.SPECTATOR) {
-            return rejectedAction("not-spectating");
-        }
-        liveTables.markDeparting(playerId);
-        return acceptedAction(match, "spectator-left");
+        return tableLifecycle.unspectate(playerId);
     }
 
     public boolean automationEnabled(PlayerId playerId) {
@@ -240,7 +207,7 @@ public final class MahjongRuntime implements AutoCloseable {
     }
 
     public boolean isDeparting(TableId tableId, PlayerId playerId) {
-        return liveTables.isDeparting(tableId, playerId);
+        return tableLifecycle.isDeparting(tableId, playerId);
     }
 
     public CompletionStage<TableActionResult> submitReferee(
@@ -287,56 +254,13 @@ public final class MahjongRuntime implements AutoCloseable {
     }
 
     public CompletionStage<Void> remove(TableId tableId) {
-        Objects.requireNonNull(tableId, "tableId");
-        RuntimeServices current = requireServices();
-        Optional<CompletionStage<Void>> lobbyRemoval = lobbyRuntime.remove(tableId);
-        if (lobbyRemoval.isPresent()) {
-            return lobbyRemoval.orElseThrow()
-                    .whenComplete((ignored, failure) -> {
-                        if (failure == null) {
-                            dialogs.forget(tableId);
-                        }
-                    });
-        }
-        StartedRulePackMatch match =
-                liveTables
-                        .remove(tableId)
-                        .orElseThrow(() -> new IllegalArgumentException("Unknown live table"));
-        actors.remove(tableId, match.actor());
-        return match.actor()
-                .closeAndDrain()
-                .whenComplete(
-                        (ignored, failure) -> {
-                            platform.removeTable(tableId);
-                            dialogs.forget(tableId);
-                            MatchPersistenceCleanup.releaseRulePackLease(
-                                    current.rules(), match, tableId);
-                        })
-                .thenCompose(
-                        ignored ->
-                                CompletableFuture.runAsync(
-                                        () -> MatchPersistenceCleanup.closeMatch(
-                                                current.database(), match, Instant.now(clock)),
-                                        executors.io()));
+        return tableLifecycle.remove(tableId, requireServices());
     }
 
     /** Owner-scoped removal; live matches remain an administrative operation. */
     public CompletionStage<Void> removeOwnedLobby(TableId tableId, PlayerId ownerId) {
-        Objects.requireNonNull(tableId, "tableId");
-        Objects.requireNonNull(ownerId, "ownerId");
-        HostedLobby lobby = lobbyRuntime.directory().find(tableId)
-                .filter(candidate -> candidate.state().ownerId().equals(ownerId))
-                .filter(candidate -> candidate.state().phase() == LobbyPhase.WAITING)
-                .orElseThrow(
-                        () -> new IllegalArgumentException(
-                                "Only the owner may remove a waiting lobby"));
-        CompletionStage<Void> removal = lobbyRuntime.remove(lobby.tableId()).orElseThrow();
-        return removal.whenComplete(
-                (ignored, failure) -> {
-                    if (failure == null) {
-                        dialogs.forget(tableId);
-                    }
-                });
+        requireServices();
+        return tableLifecycle.removeOwnedLobby(tableId, ownerId);
     }
 
     public CompletionStage<RulePackInventory> listRules() {
@@ -459,108 +383,8 @@ public final class MahjongRuntime implements AutoCloseable {
                         new CompositeSceneProjectionPort(platform.sceneProjector(), dialogs),
                         platform.presentationCues(),
                         platform.openingPresentations(),
-                        this::matchCompleted,
+                        tableLifecycle,
                         clock));
-    }
-
-    private void matchCompleted(MatchCompletion completion) {
-        if (closed.get()) {
-            return;
-        }
-        try {
-            deadlines.schedule(() -> recycleCompletedMatch(completion), MATCH_REUSE_DELAY);
-        } catch (RuntimeException failure) {
-            plugin.getLogger().log(
-                    Level.WARNING,
-                    "Could not schedule completed table reuse " + completion.tableId(),
-                    failure);
-        }
-    }
-
-    private void recycleCompletedMatch(MatchCompletion completion) {
-        if (closed.get()) {
-            return;
-        }
-        LiveTableDirectory.Removed removed =
-                liveTables.removeCompleted(completion.tableId(), completion.binding()).orElse(null);
-        if (removed == null) {
-            return;
-        }
-        StartedRulePackMatch match = removed.match();
-        actors.remove(match.tableId(), match.actor());
-        RuntimeServices current = services.get();
-        match.actor()
-                .closeAndDrain()
-                .thenCompose(
-                        ignored ->
-                                lobbyRuntime.reopenAfterMatch(
-                                        match.tableId(),
-                                        match.anchor(),
-                                        removed.departedPlayers()))
-                .whenComplete(
-                        (reopened, failure) -> {
-                            if (current != null) {
-                                MatchPersistenceCleanup.releaseRulePackLease(
-                                        current.rules(), match, match.tableId());
-                            }
-                            dialogs.forget(match.tableId());
-                            if (failure != null) {
-                                plugin.getLogger().log(
-                                        Level.WARNING,
-                                        "Completed table could not be reopened " + match.tableId(),
-                                        FailureSupport.unwrap(failure));
-                                return;
-                            }
-                            if (reopened.isEmpty()) {
-                                platform.removeTable(match.tableId());
-                                return;
-                            }
-                            reconcileReopenedPresence(reopened.orElseThrow());
-                        });
-    }
-
-    private void reconcileReopenedPresence(HostedLobby lobby) {
-        try {
-            Bukkit.getGlobalRegionScheduler()
-                    .execute(
-                            plugin,
-                            () ->
-                                    lobby.state().seats().stream()
-                                            .filter(seat -> seat.occupant().isPresent())
-                                            .filter(seat -> !lobby.state().isBotSeat(seat))
-                                            .map(seat -> seat.occupant().orElseThrow())
-                                            .filter(playerId ->
-                                                    plugin.getServer().getPlayer(playerId.value())
-                                                            != null)
-                                            .forEach(
-                                                    playerId ->
-                                                            lobbyRuntime.seatInteractions()
-                                                                    .connected(playerId)));
-        } catch (RuntimeException shuttingDown) {
-            plugin.getLogger().fine("Reopened lobby presence reconciliation was skipped");
-        }
-    }
-
-    private static Optional<ParticipantRole> roleOf(
-            StartedRulePackMatch match, PlayerId playerId) {
-        return match.participants().stream()
-                .filter(participant -> participant.playerId().equals(playerId))
-                .map(top.ellan.mahjong.domain.table.TableParticipant::role)
-                .findFirst();
-    }
-
-    private static CompletionStage<TableActionResult> acceptedAction(
-            StartedRulePackMatch match, String reason) {
-        return CompletableFuture.completedFuture(
-                new TableActionResult(
-                        TableActionCode.ACCEPTED_MEMORY,
-                        match.actor().snapshot().revision(),
-                        reason));
-    }
-
-    private static CompletionStage<TableActionResult> rejectedAction(String reason) {
-        return CompletableFuture.completedFuture(
-                new TableActionResult(TableActionCode.REJECTED_BY_RULES, 0, reason));
     }
 
     private void bindAndRecover(RuntimeServices initialized) {
@@ -579,26 +403,9 @@ public final class MahjongRuntime implements AutoCloseable {
                             initialized.coordinator().orElseThrow())
                     .toCompletableFuture()
                     .join();
-            reconcileRecoveredAutomation();
         } else {
             database.matches().ifPresent(recovery::blockRecoverableMatches);
         }
-    }
-
-    /** One startup pass only; runtime connection changes use O(1) player-to-table routing. */
-    private void reconcileRecoveredAutomation() {
-        liveTables.list().forEach(match -> match.participants().stream()
-                .filter(participant ->
-                        participant.role()
-                                        == top.ellan.mahjong.domain.table.ParticipantRole.PLAYER
-                                && participant.seat().isPresent())
-                .forEach(participant -> {
-                    if (plugin.getServer().getPlayer(participant.playerId().value()) == null) {
-                        automation.disconnected(participant.playerId());
-                    } else {
-                        automation.connected(participant.playerId());
-                    }
-                }));
     }
 
     private void updateReadyState(Optional<RulePackMatchCoordinator> coordinator) {

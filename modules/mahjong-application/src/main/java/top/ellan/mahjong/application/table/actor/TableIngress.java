@@ -4,6 +4,7 @@ package top.ellan.mahjong.application.table.actor;
 sealed interface TableIngress
         permits TableActionEnvelope,
                 ScheduledActionTrigger,
+                HumanDecisionTimeoutTrigger,
                 AutomationControlEnvelope,
                 AuthorityActionEnvelope {
     long ingressOrder();

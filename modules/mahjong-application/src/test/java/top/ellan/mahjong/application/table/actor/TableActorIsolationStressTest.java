@@ -33,6 +33,7 @@ import top.ellan.mahjong.application.security.SecureActionTokenIssuer;
 import top.ellan.mahjong.application.table.TableActionCode;
 import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.application.table.TableActorConfig;
+import top.ellan.mahjong.application.table.MatchCompletionPort;
 import top.ellan.mahjong.domain.match.CompetitionRef;
 import top.ellan.mahjong.domain.match.MatchBinding;
 import top.ellan.mahjong.domain.match.MatchId;
@@ -110,6 +111,7 @@ class TableActorIsolationStressTest {
                         TablePresentationCuePort.NONE,
                         TableOpeningPresentationPort.NONE,
                         true,
+                        MatchCompletionPort.NONE,
                         new SecureActionTokenIssuer(),
                         Clock.systemUTC(),
                         TableActorConfig.DEFAULT,

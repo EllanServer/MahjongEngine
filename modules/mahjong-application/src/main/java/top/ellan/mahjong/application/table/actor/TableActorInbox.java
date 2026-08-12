@@ -32,6 +32,7 @@ final class TableActorInbox {
     private static final int MASK_SCHEDULED = 1 << 1;
     private static final int MASK_AUTOMATION = 1 << 2;
     private static final int MASK_AUTHORITY = 1 << 3;
+    private static final int MASK_HUMAN_DEADLINE = 1 << 4;
 
     private final ArrayBlockingQueue<TableActionEnvelope> actions;
     private final ArrayBlockingQueue<ScheduledActionTrigger> scheduledTriggers =
@@ -40,6 +41,8 @@ final class TableActorInbox {
             new ArrayBlockingQueue<>(AUTOMATION_CONTROL_CAPACITY);
     private final ArrayBlockingQueue<AuthorityActionEnvelope> authorityActions =
             new ArrayBlockingQueue<>(AUTHORITY_ACTION_CAPACITY);
+    private final AtomicReference<HumanDecisionTimeoutTrigger> humanDecisionTimeout =
+            new AtomicReference<>();
     private final AtomicLong ingressOrder = new AtomicLong();
     // Manual padding keeps the producer-hot ingressOrder off the same cache line as the
     // signal slots written by the rule executor and persistence callbacks.
@@ -121,25 +124,45 @@ final class TableActorInbox {
         return true;
     }
 
+    boolean offerHumanDecisionTimeout(
+            long expectedRevision, java.util.List<HumanDecisionTimeout> decisions) {
+        HumanDecisionTimeoutTrigger trigger = new HumanDecisionTimeoutTrigger(
+                ingressOrder.getAndIncrement(), expectedRevision, decisions);
+        boolean accepted = humanDecisionTimeout.compareAndSet(null, trigger);
+        if (accepted) {
+            nonEmptyMask.updateAndGet(mask -> mask | MASK_HUMAN_DEADLINE);
+        }
+        return accepted;
+    }
+
     TableIngress pollIngress() {
         TableActionEnvelope action = actions.peek();
         ScheduledActionTrigger scheduled = scheduledTriggers.peek();
         AutomationControlEnvelope automation = automationControls.peek();
         AuthorityActionEnvelope authority = authorityActions.peek();
+        HumanDecisionTimeoutTrigger humanDeadline = humanDecisionTimeout.get();
         long actionOrder = action == null ? Long.MAX_VALUE : action.ingressOrder();
         long scheduledOrder = scheduled == null ? Long.MAX_VALUE : scheduled.ingressOrder();
         long automationOrder = automation == null ? Long.MAX_VALUE : automation.ingressOrder();
         long authorityOrder = authority == null ? Long.MAX_VALUE : authority.ingressOrder();
+        long humanDeadlineOrder =
+                humanDeadline == null ? Long.MAX_VALUE : humanDeadline.ingressOrder();
         if (actionOrder <= scheduledOrder
                 && actionOrder <= automationOrder
-                && actionOrder <= authorityOrder) {
+                && actionOrder <= authorityOrder
+                && actionOrder <= humanDeadlineOrder) {
             return actions.poll();
         }
-        if (automationOrder <= scheduledOrder && automationOrder <= authorityOrder) {
+        if (automationOrder <= scheduledOrder
+                && automationOrder <= authorityOrder
+                && automationOrder <= humanDeadlineOrder) {
             return automationControls.poll();
         }
-        if (authorityOrder <= scheduledOrder) {
+        if (authorityOrder <= scheduledOrder && authorityOrder <= humanDeadlineOrder) {
             return authorityActions.poll();
+        }
+        if (humanDeadlineOrder <= scheduledOrder) {
+            return humanDecisionTimeout.getAndSet(null);
         }
         return scheduledTriggers.poll();
     }
@@ -158,6 +181,10 @@ final class TableActorInbox {
 
     void clearScheduledTriggers() {
         scheduledTriggers.clear();
+    }
+
+    void clearHumanDecisionTimeouts() {
+        humanDecisionTimeout.set(null);
     }
 
     void requestInitialize() {
@@ -212,7 +239,8 @@ final class TableActorInbox {
         // latched one-shot diagnostics that must not keep the drain loop spinning.
         if ((flags.get() & (FLAG_INITIALIZE | FLAG_CLOSE)) != 0
                 || ruleCompletion.get() != null
-                || outboxHealth.get() != null) {
+                || outboxHealth.get() != null
+                || humanDecisionTimeout.get() != null) {
             return true;
         }
         int mask = nonEmptyMask.get();
@@ -223,7 +251,12 @@ final class TableActorInbox {
         boolean automationEmpty = automationControls.isEmpty();
         boolean authorityEmpty = authorityActions.isEmpty();
         boolean scheduledEmpty = scheduledTriggers.isEmpty();
-        if (actionsEmpty && automationEmpty && authorityEmpty && scheduledEmpty) {
+        boolean humanDeadlineEmpty = humanDecisionTimeout.get() == null;
+        if (actionsEmpty
+                && automationEmpty
+                && authorityEmpty
+                && scheduledEmpty
+                && humanDeadlineEmpty) {
             // A failed CAS means a producer raced us and raised a bit again, so there is work.
             return !nonEmptyMask.compareAndSet(mask, 0);
         }

@@ -42,7 +42,7 @@ public final class TableActor
     private final TableActorInbox inbox;
     private final TableRuleTaskLauncher ruleTasks;
     private final TableActorStateMachine stateMachine;
-    private final TableAutomationRoster automation;
+    private final TableActorAutomationController automation;
     private final TableAuthorityActionController authorityActions;
     private final TableExternalIngressController externalIngress;
     private final AtomicBoolean scheduled = new AtomicBoolean();
@@ -50,44 +50,6 @@ public final class TableActor
     private final TableActorSnapshotPublisher snapshots = new TableActorSnapshotPublisher();
     private final CompletableFuture<Void> shutdownComplete = new CompletableFuture<>();
     private boolean ruleInFlight;
-    private boolean automationRefreshPending;
-
-    public TableActor(
-            Executor dispatcher,
-            FairRuleExecutor ruleExecutor,
-            FairRuleExecutor automationExecutor,
-            RulePackProvider provider,
-            PersistenceOutbox outbox,
-            TaskScheduler deadlineScheduler,
-            SceneProjectionPort projector,
-            TablePresentationCuePort cuePort,
-            TableOpeningPresentationPort openingPort,
-            boolean presentInitialOpening,
-            ActionTokenIssuer tokenIssuer,
-            Clock clock,
-            TableActorConfig config,
-            TableAggregate aggregate,
-            RuleState initialRuleState,
-            long lastEventSequence) {
-        this(
-                dispatcher,
-                ruleExecutor,
-                automationExecutor,
-                provider,
-                outbox,
-                deadlineScheduler,
-                projector,
-                cuePort,
-                openingPort,
-                presentInitialOpening,
-                MatchCompletionPort.NONE,
-                tokenIssuer,
-                clock,
-                config,
-                aggregate,
-                initialRuleState,
-                lastEventSequence);
-    }
 
     public TableActor(
             Executor dispatcher,
@@ -137,7 +99,8 @@ public final class TableActor
                 initialRuleState,
                 lastEventSequence,
                 scheduledActions);
-        automation = new TableAutomationRoster(aggregate.participants());
+        automation = new TableActorAutomationController(
+                aggregate.participants(), deadlineScheduler, inbox, this::scheduleDrain);
         ruleTasks = new TableRuleTaskLauncher(
                 Objects.requireNonNull(ruleExecutor, "ruleExecutor"),
                 Objects.requireNonNull(automationExecutor, "automationExecutor"),
@@ -173,7 +136,7 @@ public final class TableActor
     public CompletionStage<TableActionResult> setAutomated(PlayerId playerId, boolean enabled) {
         return externalIngress.setAutomated(playerId, enabled);
     }
-    public boolean isAutomated(PlayerId playerId) { return automation.isAutomated(Objects.requireNonNull(playerId, "playerId")); }
+    public boolean isAutomated(PlayerId playerId) { return automation.isAutomated(playerId); }
     public TableActorSnapshot snapshot() {
         return snapshots.current();
     }
@@ -227,6 +190,8 @@ public final class TableActor
                     handleAutomationControl(automationControl);
                 } else if (ingress instanceof AuthorityActionEnvelope authorityAction) {
                     handleAuthorityAction(authorityAction);
+                } else if (ingress instanceof HumanDecisionTimeoutTrigger humanTimeout) {
+                    handleHumanDecisionTimeout(humanTimeout);
                 } else {
                     handleScheduledAction((ScheduledActionTrigger) ingress);
                 }
@@ -289,30 +254,16 @@ public final class TableActor
                 Optional.of(trigger));
     }
 
+    private void handleHumanDecisionTimeout(HumanDecisionTimeoutTrigger trigger) {
+        if (automation.acceptTimeout(trigger, stateMachine, closed.get(), ruleInFlight)) {
+            submitFrameComputation();
+        }
+    }
+
     private void handleAutomationControl(AutomationControlEnvelope envelope) {
-        if (closed.get()) {
-            envelope.response().complete(stateMachine.result(TableActionCode.TABLE_CLOSED, "closed"));
-            return;
+        if (automation.control(envelope, stateMachine, closed.get(), ruleInFlight)) {
+            submitFrameComputation();
         }
-        if (!stateMachine.lifecycle().acceptsRuleActions()) {
-            envelope.response().complete(stateMachine.result(TableActionCode.TABLE_BLOCKED, "table-not-active"));
-            return;
-        }
-        TableAutomationRoster.Update update =
-                automation.update(envelope.playerId(), envelope.enabled());
-        if (!update.accepted()) {
-            envelope.response().complete(stateMachine.result(TableActionCode.REJECTED_BY_RULES, update.reasonCode()));
-            return;
-        }
-        if (update.changed()) {
-            stateMachine.pauseScheduledAction();
-            if (ruleInFlight) {
-                automationRefreshPending = true;
-            } else {
-                submitFrameComputation();
-            }
-        }
-        envelope.response().complete(stateMachine.result(TableActionCode.ACCEPTED_MEMORY, update.reasonCode()));
     }
 
     private void submitFrameComputation() {
@@ -341,6 +292,7 @@ public final class TableActor
             Optional<ScheduledActionTrigger> scheduledTrigger) {
         stateMachine.pauseScheduledAction();
         ruleInFlight = true;
+        automation.beforeTransition(actor, action, envelope.isPresent(), scheduledTrigger);
         try {
             ruleTasks.transition(
                     stateMachine.ruleState(),
@@ -356,6 +308,7 @@ public final class TableActor
                     this::signalRuleCompletion);
         } catch (RejectedExecutionException failure) {
             ruleInFlight = false;
+            automation.transitionRejected();
             boolean circuitOpen = failure instanceof RulePackCircuitOpenException;
             String reason = circuitOpen ? "rule-pack-circuit-open" : "rule-pool-saturated";
             TableActionCode code = circuitOpen
@@ -389,6 +342,7 @@ public final class TableActor
     private void handleRuleCompletion(RuleTaskCompletion completion) {
         ruleInFlight = false;
         if (closed.get()) {
+            automation.completionDiscarded();
             TableActionResult closedResult =
                     stateMachine.result(TableActionCode.TABLE_CLOSED, "closed");
             completion.envelope().ifPresent(value -> value.response().complete(closedResult));
@@ -396,12 +350,8 @@ public final class TableActor
             return;
         }
         stateMachine.handleRuleCompletion(completion);
-        if (automationRefreshPending) {
-            automationRefreshPending = false;
-            if (stateMachine.lifecycle().acceptsRuleActions()) {
-                stateMachine.pauseScheduledAction();
-                submitFrameComputation();
-            }
+        if (automation.afterCompletion(completion, stateMachine)) {
+            submitFrameComputation();
         }
     }
 
@@ -413,6 +363,7 @@ public final class TableActor
             stateMachine.recordFailure("scheduled-trigger-overflow");
         }
         stateMachine.close(inbox.duplicateRuleCompletion(), shutdownComplete);
+        automation.clear();
         TableQueuedResponseDrainer.complete(
                 inbox, TableActionCode.TABLE_CLOSED, "closed", stateMachine::result);
     }
@@ -432,4 +383,5 @@ public final class TableActor
         close();
         return shutdownComplete;
     }
+
 }
