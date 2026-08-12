@@ -73,6 +73,7 @@ dependencies {
     implementation("com.h2database:h2:2.4.240")
     implementation("org.mariadb.jdbc:mariadb-java-client:3.5.9")
     implementation("com.mysql:mysql-connector-j:9.7.0")
+    implementation("net.momirealms:antigrieflib:1.0.16")
     implementation("net.momirealms:sparrow-heart:0.72")
     implementation("net.momirealms:sparrow-reflection:0.33")
     implementation("net.momirealms:sparrow-yaml:1.0.7")

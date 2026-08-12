@@ -317,4 +317,11 @@
   "mahjongpaper.dialog.result.owner_required": "只有桌主可以執行此操作",
   "mahjongpaper.dialog.result.seat_occupied": "該座位已被占用",
   "mahjongpaper.dialog.result.already_seated": "你已經入座"
+  ,"mahjongpaper.command.create_failed_invalid_location": "無法在此位置放置牌桌。"
+  ,"mahjongpaper.command.create_failed_too_close": "此位置離牌桌 %s 太近。"
+  ,"mahjongpaper.command.create_failed_blocked": "牌桌空間在 %s, %s, %s 處被方塊阻擋。"
+  ,"mahjongpaper.command.create_failed_height": "此處沒有足夠的垂直空間放置牌桌。"
+  ,"mahjongpaper.command.create_failed_not_in_room": "只能在棋牌室內建立新牌桌。"
+  ,"mahjongpaper.command.create_failed_protected": "領地保護不允許在此處放置牌桌。"
+  ,"mahjongpaper.command.remove_failed_protected": "領地保護不允許你移除牌桌 %s。"
 }

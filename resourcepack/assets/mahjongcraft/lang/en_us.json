@@ -317,4 +317,11 @@
   "mahjongpaper.dialog.result.owner_required": "Only the table owner can do that",
   "mahjongpaper.dialog.result.seat_occupied": "That seat is occupied",
   "mahjongpaper.dialog.result.already_seated": "You are already seated"
+  ,"mahjongpaper.command.create_failed_invalid_location": "A table cannot be placed at this location."
+  ,"mahjongpaper.command.create_failed_too_close": "This location is too close to table %s."
+  ,"mahjongpaper.command.create_failed_blocked": "Table space is blocked at %s, %s, %s."
+  ,"mahjongpaper.command.create_failed_height": "There is not enough vertical space for a table here."
+  ,"mahjongpaper.command.create_failed_not_in_room": "New tables can only be placed inside a game room."
+  ,"mahjongpaper.command.create_failed_protected": "Land protection does not allow a table at this location."
+  ,"mahjongpaper.command.remove_failed_protected": "Land protection does not allow you to remove table %s."
 }

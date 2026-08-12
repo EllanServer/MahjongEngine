@@ -27,6 +27,13 @@ public final class TableRemoveHandler implements SubcommandHandler {
             throw CommandSupport.usage("/mahjong remove <table-id>");
         }
         TableId tableId = TableId.parse(arguments[1]);
+        if (sender instanceof Player player
+                && support.runtime().canRemoveTable(player, tableId).filter(allowed -> !allowed).isPresent()) {
+            throw CommandSupport.failure(
+                    "mahjongpaper.command.remove_failed_protected",
+                    "Land protection does not allow you to remove table %s.",
+                    tableId);
+        }
         java.util.concurrent.CompletionStage<Void> removal;
         if (sender.hasPermission("mahjongpaper.admin")) {
             removal = support.runtime().remove(tableId);

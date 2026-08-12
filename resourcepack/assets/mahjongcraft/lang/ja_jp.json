@@ -317,4 +317,11 @@
   "mahjongpaper.dialog.result.owner_required": "この操作は卓主だけが実行できます",
   "mahjongpaper.dialog.result.seat_occupied": "その座席は使用中です",
   "mahjongpaper.dialog.result.already_seated": "すでに着席しています"
+  ,"mahjongpaper.command.create_failed_invalid_location": "この場所には卓を設置できません。"
+  ,"mahjongpaper.command.create_failed_too_close": "この場所は卓 %s に近すぎます。"
+  ,"mahjongpaper.command.create_failed_blocked": "%s, %s, %s のブロックが卓の設置を妨げています。"
+  ,"mahjongpaper.command.create_failed_height": "卓を設置する高さが足りません。"
+  ,"mahjongpaper.command.create_failed_not_in_room": "新しい卓はゲームルーム内にのみ設置できます。"
+  ,"mahjongpaper.command.create_failed_protected": "保護設定により、この場所には卓を設置できません。"
+  ,"mahjongpaper.command.remove_failed_protected": "保護設定により、卓 %s を撤去できません。"
 }

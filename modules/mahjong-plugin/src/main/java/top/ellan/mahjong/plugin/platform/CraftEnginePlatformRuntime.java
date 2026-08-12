@@ -243,6 +243,17 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                 Objects.requireNonNull(location, "location"));
     }
 
+    /** Returns a nearby table from the bounded chunk index, if one overlaps the proposal. */
+    public Optional<TableId> overlappingTable(
+            Location location, double horizontalDistance, double verticalDistance) {
+        return anchors.overlapping(location, horizontalDistance, verticalDistance);
+    }
+
+    /** Resolves one explicitly addressed table anchor without enumerating tables. */
+    public Optional<Location> tableAnchor(TableId tableId) {
+        return anchors.location(Objects.requireNonNull(tableId, "tableId"));
+    }
+
     public void removeTable(TableId tableId) {
         Objects.requireNonNull(tableId, "tableId");
         openingPresentations.clear(tableId);

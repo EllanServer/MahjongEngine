@@ -8,6 +8,7 @@ MahjongPaper-authored source is offered under the root MIT license. Third-party 
 - H2 Database Engine (MPL-2.0 or EPL-1.0).
 - MariaDB Connector/J (LGPL-2.1-or-later).
 - MySQL Connector/J (GPL-2.0 with the Universal FOSS Exception).
+- AntiGriefLib 1.0.16 (MIT); its license text is packaged under `META-INF/licenses`.
 - Sparrow Heart 0.72 (MIT) and its required Sparrow Reflection/YAML components. Sparrow Reflection and Sparrow YAML are GPL-3.0; their license text is packaged under `META-INF/licenses`.
 - ASM (BSD-3-Clause) and Mapping-IO (Apache-2.0), where pulled by the Sparrow stack; available notices are packaged under `META-INF/licenses`.
 - Shared Mahjong table/tile resource models derived from MahjongCraft and the visual sources listed in `resourcepack/ATTRIBUTION.md`; that attribution is packaged in the plugin JAR.
@@ -20,4 +21,4 @@ Because GPL-covered Sparrow components are included in the executable distributi
 - CraftEngine 26.7 or newer.
 - The signed Riichi, MCR and Sichuan pure rule JARs and their separately signed resource ZIPs. Each rule resource ZIP carries its own sound attribution and terms.
 
-No GB-Mahjong native source/library, `mahjong-utils`, Kotlin runtime, InvSync or AntiGriefLib is distributed by MahjongPaper 2.0.
+No GB-Mahjong native source/library, `mahjong-utils`, Kotlin runtime or InvSync is distributed by MahjongPaper 2.0.
