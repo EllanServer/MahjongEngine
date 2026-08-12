@@ -40,17 +40,8 @@ jobs:
       - name: Compile and test every module
         shell: bash
         run: |
-          set -o pipefail
-          for attempt in 1 2 3; do
-            ./gradlew clean check :mahjong-plugin:shadowJar --no-daemon --stacktrace \
-              2>&1 | tee gradle-verify.log && exit 0
-            status=$?
-            if ! grep -Eqi 'status code 429|too many requests' gradle-verify.log \
-              || [ "$attempt" -eq 3 ]; then
-              exit "$status"
-            fi
-            sleep "$((attempt * 15))"
-          done
+          bash .github/scripts/gradle-with-transient-retry.sh gradle-verify.log -- \
+            ./gradlew clean check :mahjong-plugin:shadowJar --no-daemon --stacktrace
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -65,6 +56,7 @@ jobs:
     needs: wrapper-validation
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         repository:
           - mahjong-mcr-java
@@ -88,19 +80,25 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v6
       - name: Publish the current Rule SDK for the candidate
+        shell: bash
         run: |
           chmod +x ./gradlew
-          ./gradlew \
-            :mahjong-rule-spi:publishAllPublicationsToTestRepository \
-            :mahjong-rule-tck:publishAllPublicationsToTestRepository \
-            --no-daemon --stacktrace
+          bash .github/scripts/gradle-with-transient-retry.sh \
+            "gradle-rule-sdk-${{ matrix.repository }}.log" -- \
+              ./gradlew \
+                :mahjong-rule-spi:publishAllPublicationsToTestRepository \
+                :mahjong-rule-tck:publishAllPublicationsToTestRepository \
+                --no-daemon --stacktrace
       - name: Compile and test the official rule pack
         working-directory: official-rule
+        shell: bash
         run: |
           chmod +x ./gradlew
-          ./gradlew clean check jar \
-            -PmahjongRuleSdkRepo="$GITHUB_WORKSPACE/build/rule-sdk-repository" \
-            --no-daemon --stacktrace
+          bash "$GITHUB_WORKSPACE/.github/scripts/gradle-with-transient-retry.sh" \
+            "$GITHUB_WORKSPACE/gradle-official-${{ matrix.repository }}.log" -- \
+              ./gradlew clean check jar \
+                -PmahjongRuleSdkRepo="$GITHUB_WORKSPACE/build/rule-sdk-repository" \
+                --no-daemon --stacktrace
       - name: Verify the runtime sandbox can load the official artifact
         shell: bash
         run: |
@@ -113,9 +111,18 @@ jobs:
             -print -quit)"
           test -n "$JAR"
           RULE_PACK_ARTIFACT="$GITHUB_WORKSPACE/$JAR" \
-            ./gradlew :mahjong-rule-runtime:test \
-              --tests '*OfficialRulePackCompatibilityTest' \
-              --no-daemon --stacktrace
+            bash .github/scripts/gradle-with-transient-retry.sh \
+              "gradle-runtime-${{ matrix.repository }}.log" -- \
+                ./gradlew :mahjong-rule-runtime:test \
+                  --tests '*OfficialRulePackCompatibilityTest' \
+                  --no-daemon --stacktrace
+      - name: Upload official rule-pack logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: official-rule-${{ matrix.repository }}-logs
+          path: gradle-*-${{ matrix.repository }}.log
+          if-no-files-found: ignore
 
   artifact-contract:
     needs: verify
@@ -130,7 +137,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
       - run: chmod +x ./gradlew
       - name: Build the platform-independent core plugin
-        run: ./gradlew :mahjong-plugin:shadowJar --no-daemon --stacktrace
+        shell: bash
+        run: |
+          bash .github/scripts/gradle-with-transient-retry.sh gradle-artifact.log -- \
+            ./gradlew :mahjong-plugin:shadowJar --no-daemon --stacktrace
       - name: Verify Java 25 and legacy-free artifact
         shell: bash
         run: |

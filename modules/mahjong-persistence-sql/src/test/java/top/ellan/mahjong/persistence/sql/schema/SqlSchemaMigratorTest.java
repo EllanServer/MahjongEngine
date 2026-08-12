@@ -91,6 +91,7 @@ class SqlSchemaMigratorTest {
                 "IDX_MATCH_PARTICIPANT_PLAYER",
                 "IDX_MATCH_INSTANCE_UPDATED",
                 "IDX_MATCH_INSTANCE_STATUS",
+                "IDX_MATCH_INSTANCE_TABLE_STATUS",
                 "IDX_MATCH_INSTANCE_RULE",
                 "IDX_RANK_LEDGER_MATCH",
                 "IDX_RANK_LEDGER_CREATED",

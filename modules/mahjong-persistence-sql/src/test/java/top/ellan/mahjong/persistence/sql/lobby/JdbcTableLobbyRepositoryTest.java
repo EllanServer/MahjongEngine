@@ -114,6 +114,26 @@ class JdbcTableLobbyRepositoryTest {
         assertEquals(reusable, lobbies.find(lobby.tableId()).orElseThrow());
     }
 
+    @Test
+    void recoverableMatchProbeIsScopedToOneTableAndIgnoresTerminalMatches()
+            throws Exception {
+        TableLobby lobby = readyLobby();
+        TableId tableId = lobby.tableId();
+        lobbies.create(lobby, anchor(tableId));
+        MatchInstanceRecord match = match(tableId);
+        matches.createRecoverableMatchFromLobby(
+                match, lobby.matchParticipants(), snapshot(), anchor(tableId));
+
+        assertTrue(matches.hasRecoverableMatch(tableId));
+        assertFalse(matches.hasRecoverableMatch(TableId.random()));
+
+        matches.updateStatus(
+                match.binding().matchId(),
+                TableLifecycle.FINISHED,
+                Instant.parse("2026-08-09T00:00:03Z"));
+        assertFalse(matches.hasRecoverableMatch(tableId));
+    }
+
     private static TableLobby readyLobby() {
         ArrayList<LobbySeat> seats = new ArrayList<>();
         for (int index = 0; index < 4; index++) {

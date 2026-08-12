@@ -22,6 +22,7 @@ import java.util.Set;
 import top.ellan.mahjong.domain.match.MatchId;
 import top.ellan.mahjong.domain.table.ParticipantRole;
 import top.ellan.mahjong.domain.table.TableAnchor;
+import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.domain.table.TableLifecycle;
 import top.ellan.mahjong.domain.table.TableParticipant;
 import top.ellan.mahjong.spi.PlayerId;

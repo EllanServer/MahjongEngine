@@ -50,7 +50,10 @@ jobs:
           [[ "$TAG" = "v$VERSION" ]]
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
       - name: Verify and build once
-        run: ./gradlew clean check :mahjong-plugin:shadowJar --no-daemon --stacktrace
+        shell: bash
+        run: |
+          bash .github/scripts/gradle-with-transient-retry.sh gradle-release.log -- \
+            ./gradlew clean check :mahjong-plugin:shadowJar --no-daemon --stacktrace
         env:
           MAHJONG_RULE_PACK_PUBLIC_KEY_BASE64: ${{ vars.MAHJONG_RULE_PACK_PUBLIC_KEY_BASE64 }}
       - name: Select release artifact
