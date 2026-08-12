@@ -145,6 +145,10 @@ final class RulePackCapabilities {
         if (owner == null) {
             return;
         }
+        if (owner.startsWith("[")) {
+            verifyArrayComponent(owner, member, source);
+            return;
+        }
         boolean outsideRuleBoundary = !owner.startsWith("java/")
                 && !owner.startsWith("top/ellan/mahjong/spi/")
                 && !owner.startsWith("top/ellan/mahjong/rules/");
@@ -158,6 +162,18 @@ final class RulePackCapabilities {
                         && !owner.startsWith("top/ellan/mahjong/rules/");
         if (blocked) {
             throw violation("forbidden capability", source, owner + '.' + member);
+        }
+    }
+
+    private static void verifyArrayComponent(String descriptor, String member, String source) {
+        int component = 0;
+        while (component < descriptor.length() && descriptor.charAt(component) == '[') {
+            component++;
+        }
+        if (component < descriptor.length()
+                && descriptor.charAt(component) == 'L'
+                && descriptor.endsWith(";")) {
+            verifyOwner(descriptor.substring(component + 1, descriptor.length() - 1), member, source);
         }
     }
 

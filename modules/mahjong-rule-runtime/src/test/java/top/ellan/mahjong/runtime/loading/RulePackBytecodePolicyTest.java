@@ -38,6 +38,12 @@ class RulePackBytecodePolicyTest {
     }
 
     @Test
+    void permitsArrayCloneWhenItsComponentTypeIsAllowed() throws Exception {
+        assertDoesNotThrow(
+                () -> RulePackBytecodePolicy.inspectClass(bytecode(ArrayCloneRule.class)));
+    }
+
+    @Test
     void rejectsLibrariesLeakedFromTheServerClasspath() throws Exception {
         RulePackCapabilities.PolicyViolation failure = assertThrows(
                 RulePackCapabilities.PolicyViolation.class,
@@ -77,6 +83,12 @@ class RulePackBytecodePolicyTest {
     static final class ConcurrentCacheRule {
         int evaluate() {
             return new ConcurrentHashMap<String, Integer>().size();
+        }
+    }
+
+    static final class ArrayCloneRule {
+        String[] copy(String[] values) {
+            return values.clone();
         }
     }
 
