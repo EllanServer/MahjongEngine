@@ -119,10 +119,11 @@ class JdbcTableLobbyRepositoryTest {
             throws Exception {
         TableLobby lobby = readyLobby();
         TableId tableId = lobby.tableId();
-        lobbies.create(lobby, anchor(tableId));
+        TableAnchor tableAnchor = anchor(tableId);
+        lobbies.create(lobby, tableAnchor);
         MatchInstanceRecord match = match(tableId);
         matches.createRecoverableMatchFromLobby(
-                match, lobby.matchParticipants(), snapshot(), anchor(tableId));
+                match, lobby.matchParticipants(), snapshot(), tableAnchor);
 
         assertTrue(matches.hasRecoverableMatch(tableId));
         assertFalse(matches.hasRecoverableMatch(TableId.random()));
