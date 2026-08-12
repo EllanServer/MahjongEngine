@@ -7,12 +7,17 @@ import java.util.regex.Pattern;
 /** Provider-owned, versioned binary snapshot. Java native serialization is forbidden. */
 public record RuleStateSnapshot(int schemaVersion, long sequence, byte[] payload, String sha256) {
     private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
+    private static final int MAX_PAYLOAD_BYTES = 8 * 1024 * 1024;
 
     public RuleStateSnapshot {
         if (schemaVersion < 1 || sequence < 0) {
             throw new IllegalArgumentException("Invalid snapshot schema or sequence");
         }
-        payload = Objects.requireNonNull(payload, "payload").clone();
+        payload = Objects.requireNonNull(payload, "payload");
+        if (payload.length > MAX_PAYLOAD_BYTES) {
+            throw new IllegalArgumentException("Rule snapshot exceeds 8 MiB");
+        }
+        payload = payload.clone();
         sha256 = Objects.requireNonNull(sha256, "sha256").toLowerCase(Locale.ROOT);
         if (!SHA256.matcher(sha256).matches()) {
             throw new IllegalArgumentException("Invalid snapshot SHA-256");

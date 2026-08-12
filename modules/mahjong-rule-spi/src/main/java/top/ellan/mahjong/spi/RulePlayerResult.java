@@ -19,10 +19,11 @@ public record RulePlayerResult(
         if (placement < 1 || placement > 8) {
             throw new IllegalArgumentException("Placement must be between 1 and 8");
         }
-        canonicalPayload = Objects.requireNonNull(canonicalPayload, "canonicalPayload").clone();
+        canonicalPayload = Objects.requireNonNull(canonicalPayload, "canonicalPayload");
         if (canonicalPayload.length > MAX_PAYLOAD_BYTES) {
             throw new IllegalArgumentException("Player result payload exceeds 1 MiB");
         }
+        canonicalPayload = canonicalPayload.clone();
     }
 
     @Override

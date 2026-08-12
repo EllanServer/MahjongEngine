@@ -1,6 +1,7 @@
 package top.ellan.mahjong.plugin.match;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
@@ -30,6 +31,9 @@ import top.ellan.mahjong.spi.RulePackRef;
 
 /** Coordinates durable match creation and recovery without owning actor construction details. */
 public final class RulePackMatchCoordinator {
+    private static final Duration INITIALIZATION_TIMEOUT = Duration.ofSeconds(2);
+    private static final Duration RECOVERY_TIMEOUT = Duration.ofSeconds(30);
+
     private final Executor ioExecutor;
     private final FairRuleExecutor rules;
     private final JdbcMatchRepository matches;
@@ -108,6 +112,7 @@ public final class RulePackMatchCoordinator {
         rulePacks.acquire(reference, command.tableId());
         return rules.submit(
                         command.ruleId(),
+                        INITIALIZATION_TIMEOUT,
                         () -> RuleMatchStateFactory.initialize(command, provider, reference, clock))
                 .thenCompose(
                         initialized ->
@@ -141,6 +146,7 @@ public final class RulePackMatchCoordinator {
                                                                 .binding()
                                                                 .rulePack()
                                                                 .ruleId(),
+                                                        RECOVERY_TIMEOUT,
                                                         () ->
                                                                 RuleStateReplayVerifier.replay(
                                                                         input.provider(),

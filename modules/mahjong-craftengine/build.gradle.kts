@@ -20,6 +20,7 @@ dependencies {
     implementation(project(":mahjong-platform-paper"))
     compileOnly("net.momirealms:craft-engine-core:26.7")
     compileOnly("net.momirealms:craft-engine-bukkit:26.7")
+    compileOnly("net.momirealms:craft-engine-bukkit-proxy:26.7")
     compileOnly("io.papermc.paper:paper-api:26.2.build.111-stable")
     compileOnly("net.momirealms:sparrow-heart:0.72")
     compileOnly("net.momirealms:sparrow-reflection:0.33")

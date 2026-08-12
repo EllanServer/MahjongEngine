@@ -1,6 +1,7 @@
 package top.ellan.mahjong.plugin.runtime;
 
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
+import top.ellan.mahjong.spi.RuleId;
 
 /** Bounded execution pools for player-driven rules and automated players. */
 public final class RuleExecutionPools implements AutoCloseable {
@@ -9,13 +10,14 @@ public final class RuleExecutionPools implements AutoCloseable {
 
     public RuleExecutionPools(int processors) {
         int availableProcessors = Math.max(1, processors);
-        int ruleWorkers =
-                Math.max(2, Math.min(Math.max(1, availableProcessors / 2), 8));
+        int workerBudget = Math.max(1, availableProcessors - 1);
         int automationWorkers =
-                Math.max(1, Math.min(Math.max(1, availableProcessors / 4), 2));
-        rules = new FairRuleExecutor(ruleWorkers, 1_024, "mahjong-rule");
+                Math.max(1, Math.min(Math.max(1, workerBudget / 4), 2));
+        int ruleWorkers =
+                Math.max(1, Math.min(Math.max(1, workerBudget - automationWorkers), 8));
+        rules = new FairRuleExecutor(ruleWorkers, 1_024, 256, "mahjong-rule");
         automation =
-                new FairRuleExecutor(automationWorkers, 1_024, "mahjong-automation");
+                new FairRuleExecutor(automationWorkers, 512, 128, "mahjong-automation");
     }
 
     public FairRuleExecutor rules() {
@@ -24,6 +26,16 @@ public final class RuleExecutionPools implements AutoCloseable {
 
     public FairRuleExecutor automation() {
         return automation;
+    }
+
+    public void resetCircuit(RuleId ruleId) {
+        rules.resetCircuit(ruleId);
+        automation.resetCircuit(ruleId);
+    }
+
+    public void renewWorkers() {
+        rules.renewWorkers();
+        automation.renewWorkers();
     }
 
     @Override

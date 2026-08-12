@@ -11,13 +11,24 @@ public record PublicRuleView(
         List<RuleViewTile> tiles,
         Map<String, String> attributes,
         RuleTablePresentation tablePresentation) {
+    private static final int MAX_TILES = 512;
+    private static final int MAX_ATTRIBUTES = 128;
+
     public PublicRuleView {
         if (stateRevision < 0) {
             throw new IllegalArgumentException("Revision must be non-negative");
         }
         phase = Objects.requireNonNull(phase, "phase");
-        tiles = List.copyOf(Objects.requireNonNull(tiles, "tiles"));
-        attributes = Map.copyOf(Objects.requireNonNull(attributes, "attributes"));
+        if (phase.length() > 128) {
+            throw new IllegalArgumentException("Rule phase is too large");
+        }
+        Objects.requireNonNull(tiles, "tiles");
+        Objects.requireNonNull(attributes, "attributes");
         Objects.requireNonNull(tablePresentation, "tablePresentation");
+        if (tiles.size() > MAX_TILES || attributes.size() > MAX_ATTRIBUTES) {
+            throw new IllegalArgumentException("Public rule view exceeds bounded output limits");
+        }
+        tiles = List.copyOf(tiles);
+        attributes = RuleOutputLimits.copyAttributes(attributes);
     }
 }

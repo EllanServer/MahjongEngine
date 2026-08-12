@@ -6,6 +6,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import top.ellan.mahjong.application.concurrent.RuleExecutionTimeoutException;
+import top.ellan.mahjong.application.concurrent.RulePackCircuitOpenException;
 import top.ellan.mahjong.application.persistence.OutboxHealth;
 import top.ellan.mahjong.application.persistence.PersistenceOutbox;
 import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
@@ -23,6 +27,7 @@ import top.ellan.mahjong.spi.ActionToken;
 import top.ellan.mahjong.spi.AuthorizedAction;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.RuleAction;
+import top.ellan.mahjong.spi.RuleExecutionBudget;
 import top.ellan.mahjong.spi.RuleState;
 import top.ellan.mahjong.spi.RuleTransition;
 import top.ellan.mahjong.spi.ScheduledRuleAction;
@@ -91,7 +96,7 @@ final class TableActorStateMachine {
         if (completion.failure() != null || completion.computed() == null) {
             String failure = completion.failure() == null
                     ? "null-rule-result"
-                    : completion.failure().getClass().getSimpleName();
+                    : ruleFailureCode(completion.failure());
             block(failure);
             completeResponse(
                     completion, result(TableActionCode.RULE_PACK_FAILURE, failureCode));
@@ -149,6 +154,24 @@ final class TableActorStateMachine {
         aggregate = aggregate.withLifecycle(TableLifecycle.BLOCKED_RULE_PACK);
         actionCatalog.clear();
         republishLifecycle();
+    }
+
+    private static String ruleFailureCode(Throwable failure) {
+        Throwable cause = failure;
+        while ((cause instanceof CompletionException || cause instanceof ExecutionException)
+                && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        if (RuleExecutionBudget.exceeded(cause)) {
+            return "rule-execution-budget-exceeded";
+        }
+        if (cause instanceof RuleExecutionTimeoutException) {
+            return "rule-execution-timeout";
+        }
+        if (cause instanceof RulePackCircuitOpenException) {
+            return "rule-pack-circuit-open";
+        }
+        return cause.getClass().getSimpleName();
     }
 
     void recordFailure(String failure) {

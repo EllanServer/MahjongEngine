@@ -1,5 +1,6 @@
 package top.ellan.mahjong.craftengine.privateview;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -26,7 +27,6 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
     private final SparrowDisplayGateway displays;
     private final CameraProjectionCallbacks callbacks;
     private final ClientCameraPacketSender cameraPackets;
-    private final ClientDisplayInterpolationPacketSender interpolationPackets;
     private final int transitionTicks;
     private final ConcurrentHashMap<PlayerId, PendingCamera> pending =
             new ConcurrentHashMap<>();
@@ -49,10 +49,8 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
             throw new IllegalArgumentException("transitionTicks must be between 1 and 40");
         }
         this.transitionTicks = transitionTicks;
-        cameraPackets = new ClientCameraPacketSender(plugin.getLogger());
+        cameraPackets = new ClientCameraPacketSender(displays, plugin.getLogger());
         cameraPackets.prewarm();
-        interpolationPackets =
-                new ClientDisplayInterpolationPacketSender(plugin.getLogger());
     }
 
     @Override
@@ -184,8 +182,13 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
             display.item(new ItemStack(Material.AIR));
             display.spawn(player);
             int clientTicks = OverheadCameraPath.clientInterpolationTicks(transitionTicks);
-            boolean clientInterpolation =
-                    interpolationPackets.configure(player, display.entityID(), clientTicks);
+            Object interpolation = displays.interpolationPacket(display.entityID(), clientTicks);
+            Object cameraPacket = cameraPackets.createPacket(display.entityID());
+            if (cameraPacket == null) {
+                displays.destroyItem(player, display);
+                return ToggleResult.UNAVAILABLE;
+            }
+            boolean clientInterpolation = interpolation != null;
             int serverKeyframes = OverheadCameraPath.serverKeyframeCount(
                     transitionTicks, clientInterpolation);
             next = new ActiveCamera(tableId, display, start, target, serverKeyframes);
@@ -194,7 +197,10 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
                 displays.destroyItem(player, display);
                 return ToggleResult.UNAVAILABLE;
             }
-            if (!cameraPackets.pointAt(player, display.entityID())) {
+            List<Object> setupPackets = interpolation == null
+                    ? List.of(cameraPacket)
+                    : List.of(interpolation, cameraPacket);
+            if (!displays.sendPackets(player, setupPackets)) {
                 active.remove(playerId, next);
                 displays.destroyItem(player, display);
                 return ToggleResult.UNAVAILABLE;

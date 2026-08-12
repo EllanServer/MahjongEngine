@@ -6,8 +6,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import top.ellan.mahjong.domain.table.ParticipantRole;
+import java.util.regex.Pattern;
 import top.ellan.mahjong.application.table.TableActorConfig;
+import top.ellan.mahjong.domain.table.ParticipantRole;
 import top.ellan.mahjong.domain.table.TableParticipant;
 import top.ellan.mahjong.spi.AutomatedPlayerActions;
 import top.ellan.mahjong.spi.LegalAction;
@@ -28,6 +29,7 @@ import top.ellan.mahjong.spi.TransitionDisposition;
 /** Executes and validates pure provider calls away from the actor scheduling loop. */
 final class RuleComputationEngine {
     private static final long SNAPSHOT_ACTION_INTERVAL = 32L;
+    private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
 
     private final RulePackProvider provider;
     private final List<TableParticipant> participants;
@@ -57,7 +59,7 @@ final class RuleComputationEngine {
 
     RuleComputation frameOnly(
             RuleState state, long revision, List<PlayerId> automatedPlayers) {
-        String hash = provider.stateHash(state);
+        String hash = checkedHash(provider.stateHash(state));
         return new RuleComputation(
                 state,
                 null,
@@ -76,18 +78,17 @@ final class RuleComputationEngine {
             long startingSequence,
             long nextAcceptedAction,
             List<PlayerId> automatedPlayers) {
-        String beforeHash = provider.stateHash(state);
+        String beforeHash = checkedHash(provider.stateHash(state));
         RuleTransition transition = provider.transition(state, actor, action);
         Objects.requireNonNull(transition, "provider returned null transition");
         validateTransition(state, transition);
         long targetRevision = transition.accepted() ? revision + 1 : revision;
         RuleState targetState = transition.nextState();
-        String afterHash = provider.stateHash(targetState);
+        String afterHash = checkedHash(provider.stateHash(targetState));
         long resultingSequence = startingSequence + transition.events().size();
-        Optional<RuleStateSnapshot> snapshot =
-                snapshotDue(transition, nextAcceptedAction)
-                        ? Optional.of(provider.snapshot(targetState, resultingSequence))
-                        : Optional.empty();
+        Optional<RuleStateSnapshot> snapshot = snapshotDue(transition, nextAcceptedAction)
+                ? Optional.of(validatedSnapshot(targetState, resultingSequence, afterHash))
+                : Optional.empty();
         Optional<RuleMatchResult> matchResult = transition.disposition()
                         == TransitionDisposition.MATCH_ENDED
                 ? Objects.requireNonNull(
@@ -154,7 +155,8 @@ final class RuleComputationEngine {
     private RuleFrame buildFrame(
             RuleState state, long revision, List<PlayerId> automatedPlayers) {
         Set<PlayerId> automated = Set.copyOf(automatedPlayers);
-        PublicRuleView publicView = provider.publicView(state, revision);
+        PublicRuleView publicView = Objects.requireNonNull(
+                provider.publicView(state, revision), "provider returned null public view");
         if (publicView.stateRevision() != revision) {
             throw new IllegalStateException(
                     "Provider returned a public view for the wrong revision");
@@ -212,7 +214,9 @@ final class RuleComputationEngine {
 
     private PrivateRuleView validatedPrivateView(
             RuleState state, long revision, PlayerId player) {
-        PrivateRuleView privateView = provider.privateView(state, player, revision);
+        PrivateRuleView privateView = Objects.requireNonNull(
+                provider.privateView(state, player, revision),
+                "provider returned null private view");
         if (!privateView.viewer().equals(player) || privateView.stateRevision() != revision) {
             throw new IllegalStateException("Provider returned an unauthorized private view");
         }
@@ -220,15 +224,34 @@ final class RuleComputationEngine {
     }
 
     private List<LegalAction> validatedLegalActions(RuleState state, PlayerId player) {
-        List<LegalAction> actions = List.copyOf(provider.legalActions(state, player));
-        if (actions.size() > limits.maxLegalActionsPerPlayer()) {
+        List<LegalAction> provided = Objects.requireNonNull(
+                provider.legalActions(state, player), "provider returned null legal actions");
+        if (provided.size() > limits.maxLegalActionsPerPlayer()) {
             throw new IllegalStateException("Provider exceeded legal-action limit");
         }
+        List<LegalAction> actions = List.copyOf(provided);
         long distinctKeys = actions.stream().map(LegalAction::key).distinct().count();
         if (distinctKeys != actions.size()) {
             throw new IllegalStateException("Provider emitted duplicate legal-action keys");
         }
         return actions;
+    }
+
+    private RuleStateSnapshot validatedSnapshot(
+            RuleState state, long sequence, String expectedHash) {
+        RuleStateSnapshot snapshot = Objects.requireNonNull(
+                provider.snapshot(state, sequence), "provider returned null snapshot");
+        if (snapshot.sequence() != sequence || !snapshot.sha256().equals(expectedHash)) {
+            throw new IllegalStateException("Provider snapshot provenance differs from rule state");
+        }
+        return snapshot;
+    }
+
+    private static String checkedHash(String hash) {
+        if (hash == null || !SHA256.matcher(hash).matches()) {
+            throw new IllegalStateException("Provider state hash is not lowercase SHA-256");
+        }
+        return hash;
     }
 
     private static void validateAutomatedAction(

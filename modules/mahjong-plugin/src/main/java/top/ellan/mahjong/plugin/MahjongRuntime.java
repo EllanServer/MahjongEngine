@@ -295,7 +295,7 @@ public final class MahjongRuntime implements AutoCloseable {
 
     private RulePackOperations ruleAdmin() {
         return new RulePackOperations(
-                requireServices().rules(), ruleExecutors.rules(), platform::activateRuleResource);
+                requireServices().rules(), ruleExecutors, platform::activateRuleResource);
     }
 
     public CompletionStage<List<PlayerMatchHistoryEntry>> playerHistory(

@@ -9,18 +9,23 @@ public record RuleEvent(String type, byte[] canonicalPayload) {
 
     public RuleEvent {
         type = Objects.requireNonNull(type, "type");
-        canonicalPayload = Objects.requireNonNull(canonicalPayload, "canonicalPayload").clone();
+        canonicalPayload = Objects.requireNonNull(canonicalPayload, "canonicalPayload");
         if (!VALID_TYPE.matcher(type).matches()) {
             throw new IllegalArgumentException("Invalid event type: " + type);
         }
         if (canonicalPayload.length > 1_048_576) {
             throw new IllegalArgumentException("Event payload exceeds 1 MiB");
         }
+        canonicalPayload = canonicalPayload.clone();
     }
 
     @Override
     public byte[] canonicalPayload() {
         return canonicalPayload.clone();
+    }
+
+    int canonicalPayloadSize() {
+        return canonicalPayload.length;
     }
 
     @Override

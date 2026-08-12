@@ -9,6 +9,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
+import top.ellan.mahjong.application.concurrent.RulePackCircuitOpenException;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.application.automation.TableAutomationEndpoint;
 import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
@@ -274,7 +275,8 @@ public final class TableActor
         envelope.response().complete(stateMachine.result(TableActionCode.ACCEPTED_MEMORY, update.reasonCode()));
     }
 
-    private void submitFrameComputation() {        ruleInFlight = true;
+    private void submitFrameComputation() {
+        ruleInFlight = true;
         try {
             ruleTasks.frame(
                     stateMachine.ruleState(),
@@ -283,7 +285,11 @@ public final class TableActor
                     this::signalRuleCompletion);
         } catch (RejectedExecutionException failure) {
             ruleInFlight = false;
-            stateMachine.recordFailure("rule-pool-saturated");
+            if (failure instanceof RulePackCircuitOpenException) {
+                stateMachine.block("rule-pack-circuit-open");
+            } else {
+                stateMachine.recordFailure("rule-pool-saturated");
+            }
         }
     }
 
@@ -310,14 +316,22 @@ public final class TableActor
                     this::signalRuleCompletion);
         } catch (RejectedExecutionException failure) {
             ruleInFlight = false;
+            boolean circuitOpen = failure instanceof RulePackCircuitOpenException;
+            String reason = circuitOpen ? "rule-pack-circuit-open" : "rule-pool-saturated";
+            TableActionCode code = circuitOpen
+                    ? TableActionCode.RULE_PACK_FAILURE
+                    : TableActionCode.RULE_POOL_SATURATED;
+            if (circuitOpen) {
+                stateMachine.block(reason);
+            }
             if (envelope.isPresent()) {
                 envelope.orElseThrow().response().complete(stateMachine.result(
-                        TableActionCode.RULE_POOL_SATURATED, "rule-pool-saturated"));
+                        code, reason));
             } else if (authorityEnvelope.isPresent()) {
                 authorityEnvelope.orElseThrow().response().complete(stateMachine.result(
-                        TableActionCode.RULE_POOL_SATURATED, "rule-pool-saturated"));
+                        code, reason));
             } else {
-                stateMachine.block("scheduled-rule-pool-saturated");
+                stateMachine.block(circuitOpen ? reason : "scheduled-rule-pool-saturated");
             }
         }
     }
@@ -340,7 +354,8 @@ public final class TableActor
             completion.envelope().ifPresent(value -> value.response().complete(closedResult));
             completion.authorityEnvelope().ifPresent(value -> value.response().complete(closedResult));
             return;
-        }        stateMachine.handleRuleCompletion(completion);
+        }
+        stateMachine.handleRuleCompletion(completion);
         if (automationRefreshPending) {
             automationRefreshPending = false;
             if (stateMachine.lifecycle().acceptsRuleActions()) {

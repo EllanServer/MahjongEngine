@@ -1,14 +1,17 @@
 package top.ellan.mahjong.application.concurrent;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import top.ellan.mahjong.spi.RuleExecutionBudget;
 import top.ellan.mahjong.spi.RuleId;
 
 class FairRuleExecutorTest {
@@ -156,6 +159,83 @@ class FairRuleExecutorTest {
                     java.util.Collections.disjoint(before, after),
                     "renewed pool still uses old threads: " + before + " vs " + after);
             assertEquals(2, after.size(), "the pool must keep its configured width");
+        }
+    }
+
+    @Test
+    void onePackCannotConsumeAnotherPacksQueueQuota() throws Exception {
+        try (FairRuleExecutor executor =
+                new FairRuleExecutor(1, 4, 1, "fair-rule-quota")) {
+            RuleId noisy = new RuleId("riichi");
+            CountDownLatch entered = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            var running = executor.submit(noisy, () -> {
+                entered.countDown();
+                await(release);
+                return 1;
+            });
+            assertTrue(entered.await(2, TimeUnit.SECONDS));
+            var queued = executor.submit(noisy, () -> 2);
+
+            assertThrows(
+                    java.util.concurrent.RejectedExecutionException.class,
+                    () -> executor.submit(noisy, () -> 3));
+            var other = executor.submit(new RuleId("mcr"), () -> 4);
+
+            release.countDown();
+            assertEquals(1, running.get(2, TimeUnit.SECONDS));
+            assertEquals(2, queued.get(2, TimeUnit.SECONDS));
+            assertEquals(4, other.get(2, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void timeoutIsolatesOnlyTheOffendingPackUntilReset() throws Exception {
+        try (FairRuleExecutor executor =
+                new FairRuleExecutor(2, 16, 8, "fair-rule-timeout")) {
+            RuleId faulty = new RuleId("riichi");
+            var timedOut = executor.submit(
+                    faulty,
+                    Duration.ofMillis(25),
+                    () -> {
+                        while (true) {
+                            RuleExecutionBudget.checkpoint();
+                        }
+                    });
+
+            assertThrows(
+                    java.util.concurrent.ExecutionException.class,
+                    () -> timedOut.get(2, TimeUnit.SECONDS));
+            assertThrows(
+                    RulePackCircuitOpenException.class,
+                    () -> executor.submit(faulty, () -> 1));
+            assertEquals(
+                    2,
+                    executor.submit(new RuleId("mcr"), () -> 2)
+                            .get(2, TimeUnit.SECONDS));
+
+            executor.resetCircuit(faulty);
+            assertEquals(3, executor.submit(faulty, () -> 3).get(2, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void threeConsecutiveProviderFailuresOpenTheCircuit() throws Exception {
+        try (FairRuleExecutor executor =
+                new FairRuleExecutor(1, 16, 8, "fair-rule-failure")) {
+            RuleId ruleId = new RuleId("sichuan");
+            for (int failure = 0; failure < 3; failure++) {
+                var future = executor.submit(ruleId, () -> {
+                    throw new IllegalStateException("broken provider");
+                });
+                assertThrows(
+                        java.util.concurrent.ExecutionException.class,
+                        () -> future.get(2, TimeUnit.SECONDS));
+            }
+
+            assertThrows(
+                    RulePackCircuitOpenException.class,
+                    () -> executor.submit(ruleId, () -> 1));
         }
     }
 

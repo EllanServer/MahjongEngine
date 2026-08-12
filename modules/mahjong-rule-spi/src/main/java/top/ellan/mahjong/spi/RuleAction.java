@@ -9,13 +9,14 @@ public record RuleAction(String type, byte[] payload) {
 
     public RuleAction {
         type = Objects.requireNonNull(type, "type");
-        payload = Objects.requireNonNull(payload, "payload").clone();
+        payload = Objects.requireNonNull(payload, "payload");
         if (!VALID_TYPE.matcher(type).matches()) {
             throw new IllegalArgumentException("Invalid action type: " + type);
         }
         if (payload.length > 65_536) {
             throw new IllegalArgumentException("Action payload exceeds 64 KiB");
         }
+        payload = payload.clone();
     }
 
     @Override

@@ -31,6 +31,7 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
     public static final String TABLE_KEY = "scene_table";
     public static final String NODE_KEY = "scene_node";
     public static final String INTERACTION_KEY = "scene_interaction";
+    private static final CompletionStage<Void> COMPLETED = CompletableFuture.completedStage(null);
 
     private final TableAnchorLookup anchors;
     private final PrivateProjectionGateway privateProjection;
@@ -61,7 +62,7 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
         if (!node.worldBacked()) {
             removeWorldEntity(new NodeKey(tableId, node.id()));
             privateProjection.upsert(tableId, node);
-            return CompletableFuture.completedFuture(null);
+            return COMPLETED;
         }
         NodeKey key = new NodeKey(tableId, node.id());
         if (node instanceof FurnitureNode furniture) {
@@ -110,7 +111,7 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
                     interactionKey, PersistentDataType.STRING, handle.value().toString());
         }
         worldEntities.put(key, new WorldFurniture(entity, node));
-        return CompletableFuture.completedFuture(null);
+        return COMPLETED;
     }
 
     @Override
@@ -119,7 +120,7 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
         Objects.requireNonNull(nodeId, "nodeId");
         removeWorldEntity(new NodeKey(tableId, nodeId));
         privateProjection.remove(tableId, nodeId);
-        return CompletableFuture.completedFuture(null);
+        return COMPLETED;
     }
 
     public NamespacedKey managedKey() {
@@ -183,7 +184,7 @@ public final class DirectCraftEngineMutationGateway implements CraftEngineMutati
         }
         if (!transformChanged) {
             worldEntities.put(key, new WorldFurniture(entity, desired));
-            return CompletableFuture.completedFuture(null);
+            return COMPLETED;
         }
         Location anchor = anchors.location(key.tableId())
                 .orElseThrow(() -> new IllegalStateException("No anchor for table " + key.tableId()));

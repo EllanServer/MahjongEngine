@@ -1,102 +1,133 @@
 package top.ellan.mahjong.application.concurrent;
 
+import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
+import top.ellan.mahjong.spi.RuleExecutionBudget;
 import top.ellan.mahjong.spi.RuleId;
 
-/**
- * Bounded rule CPU pool with round-robin pack selection and a per-pack concurrency ceiling.
- * Waiting workers never occupy execution slots while a pack is at its ceiling.
- */
+/** Bounded, fair rule CPU pool with per-pack quotas, deadlines and circuit breaking. */
 public final class FairRuleExecutor implements AutoCloseable {
+    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration MAX_TIMEOUT = Duration.ofMinutes(5);
+    private static final int FAILURE_THRESHOLD = 3;
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition available = lock.newCondition();
-    private final Map<RuleId, PackQueue> packs = new HashMap<>();
+    private final Map<RuleId, RulePackWorkQueue> packs = new HashMap<>();
     private final ArrayDeque<RuleId> readyPacks = new ArrayDeque<>();
     private final Thread[] workers;
     private final int queueCapacity;
+    private final int perPackQueueCapacity;
     private final int workerCount;
     private final String threadPrefix;
     private final ClassLoader hostContextClassLoader;
+    private final ScheduledThreadPoolExecutor watchdog;
     private final AtomicBoolean closed = new AtomicBoolean();
     private int queuedTasks;
     private int activePacks;
     private int renewTarget;
-
-    public FairRuleExecutor(int workerCount, int queueCapacity, String threadPrefix) {
-        if (workerCount < 1 || queueCapacity < 1) {
-            throw new IllegalArgumentException("workerCount and queueCapacity must be positive");
+    public FairRuleExecutor(int workers, int capacity, String prefix) {
+        this(workers, capacity, Math.max(1, capacity / 2), prefix);
+    }
+    public FairRuleExecutor(int workerCount, int queueCapacity, int perPackQueueCapacity,
+            String threadPrefix) {
+        if (workerCount < 1 || queueCapacity < 1 || perPackQueueCapacity < 1) {
+            throw new IllegalArgumentException("worker and queue capacities must be positive");
+        }
+        if (perPackQueueCapacity > queueCapacity) {
+            throw new IllegalArgumentException("per-pack capacity exceeds global capacity");
         }
         this.queueCapacity = queueCapacity;
+        this.perPackQueueCapacity = perPackQueueCapacity;
         this.workerCount = workerCount;
         this.threadPrefix = Objects.requireNonNull(threadPrefix, "threadPrefix");
-        // Captured from the host thread that builds the pool so replacement workers never inherit a
-        // rule-pack loader as their context classloader.
         hostContextClassLoader = FairRuleExecutor.class.getClassLoader();
+        watchdog = createWatchdog(threadPrefix, hostContextClassLoader);
         workers = new Thread[workerCount];
         for (int index = 0; index < workerCount; index++) {
             workers[index] = startWorker(index, 0);
         }
     }
-
+    private static ScheduledThreadPoolExecutor createWatchdog(
+            String prefix, ClassLoader contextClassLoader) {
+        ScheduledThreadPoolExecutor timer = new ScheduledThreadPoolExecutor(
+                1,
+                task -> {
+                    Thread thread = Thread.ofPlatform()
+                            .name(prefix + "-watchdog")
+                            .daemon(true)
+                            .unstarted(task);
+                    thread.setContextClassLoader(contextClassLoader);
+                    return thread;
+                });
+        timer.setRemoveOnCancelPolicy(true);
+        timer.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        return timer;
+    }
     private Thread startWorker(int index, int generation) {
-        Thread worker =
-                Thread.ofPlatform()
-                        .name(threadPrefix + '-' + index + (generation == 0 ? "" : "-r" + generation))
-                        .daemon(true)
-                        .unstarted(() -> workerLoop(index, generation));
+        Thread worker = Thread.ofPlatform()
+                .name(threadPrefix + '-' + index + (generation == 0 ? "" : "-r" + generation))
+                .daemon(true)
+                .unstarted(() -> workerLoop(index, generation));
         worker.setContextClassLoader(hostContextClassLoader);
+        worker.setPriority(Math.max(Thread.MIN_PRIORITY, Thread.NORM_PRIORITY - 1));
         worker.start();
         return worker;
     }
-
-    /** Retires one worker generation and starts its replacement. Must hold {@link #lock}. */
     private void replaceWorker(int index, int generation) {
         workers[index] = startWorker(index, generation + 1);
     }
-
-    /**
-     * Replaces every idle worker thread.
-     *
-     * <p>Called after a rule pack is unloaded. A worker that ran rule code may still hold thread
-     * locals whose values were loaded by that pack's classloader, which would keep the loader
-     * reachable and defeat the unload. Retiring the threads is the only reliable fix; clearing the
-     * thread-local map reflectively is not thread safe.</p>
-     */
     public void renewWorkers() {
         lock.lock();
         try {
-            if (closed.get()) {
-                return;
+            if (!closed.get()) {
+                renewTarget++;
+                available.signalAll();
             }
-            renewTarget++;
-            available.signalAll();
         } finally {
             lock.unlock();
         }
     }
-
     public <T> CompletableFuture<T> submit(RuleId ruleId, Supplier<T> operation) {
+        return submit(ruleId, DEFAULT_TIMEOUT, operation);
+    }
+    public <T> CompletableFuture<T> submit(
+            RuleId ruleId, Duration timeout, Supplier<T> operation) {
         Objects.requireNonNull(ruleId, "ruleId");
+        Objects.requireNonNull(timeout, "timeout");
         Objects.requireNonNull(operation, "operation");
-        ScheduledOperation<T> scheduled = new ScheduledOperation<>(operation);
+        if (timeout.isZero() || timeout.isNegative() || timeout.compareTo(MAX_TIMEOUT) > 0) {
+            throw new IllegalArgumentException("rule execution timeout must be within five minutes");
+        }
+        ScheduledOperation<T> scheduled = new ScheduledOperation<>(timeout, operation);
         lock.lock();
         try {
             if (closed.get()) {
                 throw new RejectedExecutionException("rule executor is closed");
             }
+            RulePackWorkQueue pack = packs.computeIfAbsent(ruleId, ignored -> new RulePackWorkQueue());
+            if (pack.circuitOpen()) {
+                throw new RulePackCircuitOpenException(ruleId);
+            }
+            if (pack.operations().size() >= perPackQueueCapacity) {
+                throw new RejectedExecutionException("rule-pack queue is full: " + ruleId);
+            }
             if (queuedTasks >= queueCapacity) {
                 throw new RejectedExecutionException("rule executor queue is full");
             }
-            PackQueue pack = packs.computeIfAbsent(ruleId, ignored -> new PackQueue());
             if (pack.idle()) {
                 activePacks++;
             }
@@ -109,7 +140,19 @@ public final class FairRuleExecutor implements AutoCloseable {
         }
         return scheduled.future();
     }
-
+    public void resetCircuit(RuleId ruleId) {
+        Objects.requireNonNull(ruleId, "ruleId");
+        lock.lock();
+        try {
+            RulePackWorkQueue pack = packs.get(ruleId);
+            if (pack != null) {
+                pack.circuitOpen(false);
+                pack.consecutiveFailures(0);
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
     public int queuedTasks() {
         lock.lock();
         try {
@@ -118,7 +161,6 @@ public final class FairRuleExecutor implements AutoCloseable {
             lock.unlock();
         }
     }
-
     public int maxWorkersPerPack() {
         lock.lock();
         try {
@@ -127,7 +169,6 @@ public final class FairRuleExecutor implements AutoCloseable {
             lock.unlock();
         }
     }
-
     private void workerLoop(int index, int generation) {
         while (true) {
             ClaimedOperation claimed = claim(index, generation);
@@ -135,41 +176,45 @@ public final class FairRuleExecutor implements AutoCloseable {
                 return;
             }
             try {
-                claimed.operation().run();
+                claimed.operation().run(this, claimed.ruleId());
             } finally {
                 release(claimed.ruleId());
             }
         }
     }
-
     private ClaimedOperation claim(int index, int generation) {
         lock.lock();
         try {
-            while (readyPacks.isEmpty()) {
+            while (true) {
+                while (!closed.get()
+                        && generation >= renewTarget
+                        && readyPacks.isEmpty()) {
+                    available.await();
+                }
                 if (closed.get()) {
                     return null;
                 }
                 if (generation < renewTarget) {
-                    // Retire this thread and start a fresh one so no rule-pack thread local
-                    // survives an unload. The replacement inherits the host context classloader.
                     replaceWorker(index, generation);
                     return null;
                 }
-                available.await();
+                RuleId ruleId = readyPacks.removeFirst();
+                RulePackWorkQueue pack = packs.get(ruleId);
+                pack.ready(false);
+                if (pack.circuitOpen()
+                        || pack.operations().isEmpty()
+                        || pack.activeWorkers() >= ceiling()) {
+                    continue;
+                }
+                ScheduledOperation<?> operation = pack.operations().removeFirst();
+                queuedTasks--;
+                pack.activeWorkers(pack.activeWorkers() + 1);
+                makeReady(ruleId, pack);
+                if (!readyPacks.isEmpty()) {
+                    available.signal();
+                }
+                return new ClaimedOperation(ruleId, operation);
             }
-            RuleId ruleId = readyPacks.removeFirst();
-            PackQueue pack = packs.get(ruleId);
-            pack.ready(false);
-            ScheduledOperation<?> operation = pack.operations().removeFirst();
-            queuedTasks--;
-            pack.activeWorkers(pack.activeWorkers() + 1);
-            makeReady(ruleId, pack);
-            // Cascade: wake exactly one more waiter when ready work remains, so a single signal
-            // fans out without a thundering herd of signalAll.
-            if (!readyPacks.isEmpty()) {
-                available.signal();
-            }
-            return new ClaimedOperation(ruleId, operation);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             return null;
@@ -177,17 +222,15 @@ public final class FairRuleExecutor implements AutoCloseable {
             lock.unlock();
         }
     }
-
     private void release(RuleId ruleId) {
         lock.lock();
         try {
-            PackQueue pack = packs.get(ruleId);
+            RulePackWorkQueue pack = packs.get(ruleId);
             pack.activeWorkers(pack.activeWorkers() - 1);
-            if (pack.idle()) {
+            if (pack.idle() && activePacks > 0) {
                 activePacks--;
             }
             makeReady(ruleId, pack);
-            // A released slot admits at most one more worker; the claim cascade fans out further.
             if (!readyPacks.isEmpty()) {
                 available.signal();
             }
@@ -195,14 +238,82 @@ public final class FairRuleExecutor implements AutoCloseable {
             lock.unlock();
         }
     }
-
-    private int ceiling() {
-        // A single active pack may use the whole pool; several packs share it fairly.
-        return Math.max(1, workerCount / Math.max(1, activePacks));
+    private void recordSuccess(RuleId ruleId) {
+        lock.lock();
+        try {
+            RulePackWorkQueue pack = packs.get(ruleId);
+            if (pack != null && !pack.circuitOpen()) {
+                pack.consecutiveFailures(0);
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+    private void recordFailure(RuleId ruleId, Throwable failure) {
+        List<ScheduledOperation<?>> rejected = List.of();
+        lock.lock();
+        try {
+            RulePackWorkQueue pack = packs.get(ruleId);
+            if (pack == null || pack.circuitOpen()) {
+                return;
+            }
+            int failures = pack.consecutiveFailures() + 1;
+            pack.consecutiveFailures(failures);
+            if (failure instanceof Error
+                    || RuleExecutionBudget.exceeded(failure)
+                    || failures >= FAILURE_THRESHOLD) {
+                rejected = openCircuit(ruleId, pack);
+            }
+        } finally {
+            lock.unlock();
+        }
+        reject(rejected, new RulePackCircuitOpenException(ruleId, failure));
+    }
+    private void timeout(RuleId ruleId, ScheduledOperation<?> operation, Thread runner) {
+        RuleExecutionTimeoutException failure = new RuleExecutionTimeoutException(ruleId);
+        if (!operation.claimTimeout()) {
+            return;
+        }
+        List<ScheduledOperation<?>> rejected;
+        lock.lock();
+        try {
+            RulePackWorkQueue pack = packs.get(ruleId);
+            rejected = pack == null || pack.circuitOpen()
+                    ? List.of()
+                    : openCircuit(ruleId, pack);
+        } finally {
+            lock.unlock();
+        }
+        reject(rejected, new RulePackCircuitOpenException(ruleId, failure));
+        operation.future().completeExceptionally(failure);
+        runner.interrupt();
+    }
+    private List<ScheduledOperation<?>> openCircuit(RuleId ruleId, RulePackWorkQueue pack) {
+        pack.circuitOpen(true);
+        pack.consecutiveFailures(0);
+        if (pack.ready()) {
+            readyPacks.remove(ruleId);
+            pack.ready(false);
+        }
+        List<ScheduledOperation<?>> rejected = new ArrayList<>(pack.operations());
+        queuedTasks -= rejected.size();
+        pack.operations().clear();
+        if (pack.idle()) {
+            activePacks = Math.max(0, activePacks - 1);
+        }
+        return rejected;
+    }
+    private static void reject(List<ScheduledOperation<?>> operations,
+            RulePackCircuitOpenException failure) {
+        operations.forEach(operation -> operation.future().completeExceptionally(failure));
     }
 
-    private void makeReady(RuleId ruleId, PackQueue pack) {
-        if (!pack.ready()
+    private int ceiling() {
+        return Math.max(1, workerCount / Math.max(1, activePacks));
+    }
+    private void makeReady(RuleId ruleId, RulePackWorkQueue pack) {
+        if (!pack.circuitOpen()
+                && !pack.ready()
                 && !pack.operations().isEmpty()
                 && pack.activeWorkers() < ceiling()) {
             pack.ready(true);
@@ -233,55 +344,57 @@ public final class FairRuleExecutor implements AutoCloseable {
         for (Thread worker : workers) {
             worker.interrupt();
         }
+        watchdog.shutdownNow();
     }
 
-    private static final class PackQueue {
-        private final ArrayDeque<ScheduledOperation<?>> operations = new ArrayDeque<>();
-        private int activeWorkers;
-        private boolean ready;
+    static final class ScheduledOperation<T> {
+        private final Duration timeout;
+        private final Supplier<T> supplier;
+        private final CompletableFuture<T> future = new CompletableFuture<>();
+        private final AtomicBoolean finished = new AtomicBoolean();
 
-        ArrayDeque<ScheduledOperation<?>> operations() {
-            return operations;
+        private ScheduledOperation(Duration timeout, Supplier<T> supplier) {
+            this.timeout = timeout;
+            this.supplier = supplier;
         }
 
-        int activeWorkers() {
-            return activeWorkers;
+        private CompletableFuture<T> future() {
+            return future;
         }
 
-        void activeWorkers(int value) {
-            activeWorkers = value;
+        private void run(FairRuleExecutor owner, RuleId ruleId) {
+            if (future.isCancelled()) {
+                return;
+            }
+            Thread runner = Thread.currentThread();
+            ScheduledFuture<?> deadline = null;
+            try {
+                deadline = owner.watchdog.schedule(
+                        () -> owner.timeout(ruleId, this, runner),
+                        timeout.toNanos(),
+                        TimeUnit.NANOSECONDS);
+                T result = RuleExecutionBudget.call(timeout, supplier);
+                if (finished.compareAndSet(false, true)) {
+                    owner.recordSuccess(ruleId);
+                    future.complete(result);
+                }
+            } catch (Throwable failure) {
+                if (finished.compareAndSet(false, true)) {
+                    owner.recordFailure(ruleId, failure);
+                    future.completeExceptionally(failure);
+                }
+            } finally {
+                if (deadline != null) {
+                    deadline.cancel(false);
+                }
+                Thread.interrupted();
+            }
         }
 
-        boolean ready() {
-            return ready;
-        }
-
-        void ready(boolean value) {
-            ready = value;
-        }
-
-        /** A pack is idle only when it has neither queued operations nor running workers. */
-        boolean idle() {
-            return operations.isEmpty() && activeWorkers == 0;
+        private boolean claimTimeout() {
+            return finished.compareAndSet(false, true);
         }
     }
 
     private record ClaimedOperation(RuleId ruleId, ScheduledOperation<?> operation) {}
-
-    private record ScheduledOperation<T>(Supplier<T> supplier, CompletableFuture<T> future) {
-        private ScheduledOperation(Supplier<T> supplier) {
-            this(supplier, new CompletableFuture<>());
-        }
-
-        private void run() {
-            if (future.isCancelled()) {
-                return;
-            }
-            try {
-                future.complete(supplier.get());
-            } catch (Throwable failure) {
-                future.completeExceptionally(failure);
-            }
-        }
-    }
 }

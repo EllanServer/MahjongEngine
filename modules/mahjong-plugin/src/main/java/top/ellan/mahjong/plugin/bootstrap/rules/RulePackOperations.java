@@ -4,7 +4,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
+import top.ellan.mahjong.plugin.runtime.RuleExecutionPools;
 import top.ellan.mahjong.runtime.admin.RulePackAdminService;
 import top.ellan.mahjong.runtime.admin.RulePackInventoryReader;
 import top.ellan.mahjong.runtime.admin.RulePackVerification;
@@ -19,15 +19,15 @@ import top.ellan.mahjong.spi.RuleId;
  */
 public final class RulePackOperations {
     private final RulePackRuntimeServices services;
-    private final FairRuleExecutor rules;
+    private final RuleExecutionPools executors;
     private final RuleResourceActivator resources;
 
     public RulePackOperations(
             RulePackRuntimeServices services,
-            FairRuleExecutor rules,
+            RuleExecutionPools executors,
             RuleResourceActivator resources) {
         this.services = Objects.requireNonNull(services, "services");
-        this.rules = Objects.requireNonNull(rules, "rules");
+        this.executors = Objects.requireNonNull(executors, "executors");
         this.resources = Objects.requireNonNull(resources, "resources");
     }
 
@@ -76,7 +76,7 @@ public final class RulePackOperations {
                 services.runtime()
                         .orElseThrow(
                                 () -> new IllegalStateException("Rule-pack runtime is unavailable")),
-                rules,
+                executors,
                 services.resources()
                         .orElseThrow(
                                 () -> new IllegalStateException(

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.ServiceConfigurationError;
@@ -11,11 +12,10 @@ import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
-
 import top.ellan.mahjong.runtime.common.RulePackException;
 import top.ellan.mahjong.runtime.registry.RulePackRegistryEntry;
-
 import top.ellan.mahjong.spi.RulePackDescriptor;
+import top.ellan.mahjong.spi.RuleExecutionBudget;
 import top.ellan.mahjong.spi.RulePackProvider;
 import top.ellan.mahjong.spi.RulePackRef;
 import top.ellan.mahjong.spi.SpiVersion;
@@ -35,6 +35,7 @@ public final class RulePackLoader implements PinnedRulePackLoader {
     private static final long MAX_ENTRY_BYTES = 64L * 1024 * 1024;
     private static final long MAX_UNCOMPRESSED_BYTES = 256L * 1024 * 1024;
     private static final int MAX_ENTRIES = 20_000;
+    private static final Duration PROVIDER_PROBE_BUDGET = Duration.ofSeconds(2);
     private final String coreVersion;
     private final ArtifactInspections inspections = new ArtifactInspections();
 
@@ -72,16 +73,18 @@ public final class RulePackLoader implements PinnedRulePackLoader {
             throw new RulePackException("Invalid rule-pack artifact path", failure);
         }
         try {
-            List<RulePackProvider> providers =
-                    ServiceLoader.load(RulePackProvider.class, loader).stream()
+            List<RulePackProvider> providers = RuleExecutionBudget.call(
+                    PROVIDER_PROBE_BUDGET,
+                    () -> ServiceLoader.load(RulePackProvider.class, loader).stream()
                             .map(ServiceLoader.Provider::get)
-                            .toList();
+                            .toList());
             if (providers.size() != 1) {
                 throw new RulePackException(
                         "Rule pack must expose exactly one RulePackProvider; found " + providers.size());
             }
             RulePackProvider provider = providers.getFirst();
-            RulePackDescriptor descriptor = provider.descriptor();
+            RulePackDescriptor descriptor = RuleExecutionBudget.call(
+                    PROVIDER_PROBE_BUDGET, provider::descriptor);
             validateDescriptor(descriptor, manifest);
             RulePackRef reference =
                     new RulePackRef(
@@ -95,6 +98,14 @@ public final class RulePackLoader implements PinnedRulePackLoader {
             throw failure;
         } catch (ServiceConfigurationError | RuntimeException | LinkageError failure) {
             RulePackException wrapped = new RulePackException("Rule-pack provider probe failed", failure);
+            closeAfterFailure(loader, wrapped);
+            throw wrapped;
+        } catch (Error failure) {
+            if (!RuleExecutionBudget.exceeded(failure)) {
+                throw failure;
+            }
+            RulePackException wrapped =
+                    new RulePackException("Rule-pack provider probe exceeded its budget", failure);
             closeAfterFailure(loader, wrapped);
             throw wrapped;
         }
@@ -228,11 +239,15 @@ public final class RulePackLoader implements PinnedRulePackLoader {
                 throw new RulePackException(
                         "Rule JAR must not contain resource-pack content: " + name);
             }
+            if (name.startsWith("META-INF/versions/")) {
+                throw new RulePackException("Multi-release rule JARs are not supported");
+            }
         }
         String service = "META-INF/services/" + RulePackProvider.class.getName();
         if (!names.contains(service)) {
             throw new RulePackException("Rule pack has no RulePackProvider service descriptor");
         }
+        RulePackBytecodePolicy.verify(jar, service);
         for (String resource : manifest.requiredResources()) {
             if (!names.contains(resource)) {
                 throw new RulePackException("Rule pack is missing required resource: " + resource);

@@ -1,8 +1,11 @@
 package top.ellan.mahjong.runtime.loading;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.security.CodeSource;
+import java.security.cert.Certificate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -17,9 +20,46 @@ public final class ChildFirstRuleClassLoader extends URLClassLoader {
     private static final String[] PARENT_FIRST = {
         "java.", "javax.", "jdk.", "sun.", "top.ellan.mahjong.spi."
     };
+    private final URL artifact;
 
     public ChildFirstRuleClassLoader(URL artifact, ClassLoader parent) {
         super(new URL[] {artifact}, parent);
+        this.artifact = artifact;
+    }
+
+    @Override
+    protected Class<?> findClass(String name) throws ClassNotFoundException {
+        String resourceName = name.replace('.', '/') + ".class";
+        URL resource = findResource(resourceName);
+        if (resource == null) {
+            throw new ClassNotFoundException(name);
+        }
+        try (InputStream input = resource.openStream()) {
+            byte[] bytecode = RulePackClassInstrumenter.instrument(input.readAllBytes());
+            definePackageIfNeeded(name);
+            CodeSource source = new CodeSource(artifact, (Certificate[]) null);
+            return defineClass(name, bytecode, 0, bytecode.length, source);
+        } catch (IOException | IllegalArgumentException | VerifyError failure) {
+            throw new ClassNotFoundException("Unable to instrument rule class " + name, failure);
+        }
+    }
+
+    private void definePackageIfNeeded(String className) {
+        int separator = className.lastIndexOf('.');
+        if (separator < 1) {
+            return;
+        }
+        String packageName = className.substring(0, separator);
+        if (getDefinedPackage(packageName) != null) {
+            return;
+        }
+        try {
+            definePackage(packageName, null, null, null, null, null, null, null);
+        } catch (IllegalArgumentException concurrentDefinition) {
+            if (getDefinedPackage(packageName) == null) {
+                throw concurrentDefinition;
+            }
+        }
     }
 
     @Override

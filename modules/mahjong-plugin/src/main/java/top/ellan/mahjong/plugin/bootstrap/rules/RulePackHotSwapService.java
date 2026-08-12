@@ -3,7 +3,7 @@ package top.ellan.mahjong.plugin.bootstrap.rules;
 import java.lang.ref.WeakReference;
 import java.util.Objects;
 import java.util.Optional;
-import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
+import top.ellan.mahjong.plugin.runtime.RuleExecutionPools;
 import top.ellan.mahjong.runtime.admin.RulePackAdminService;
 import top.ellan.mahjong.runtime.common.RulePackException;
 import top.ellan.mahjong.runtime.lifecycle.RulePackRuntime;
@@ -22,19 +22,19 @@ import top.ellan.mahjong.spi.RulePackRef;
 public final class RulePackHotSwapService {
     private final RulePackAdminService admin;
     private final RulePackRuntime runtime;
-    private final FairRuleExecutor rules;
+    private final RuleExecutionPools executors;
     private final RuleResourcePackResolver resourcePacks;
     private final RuleResourceActivator resourceActivator;
 
     public RulePackHotSwapService(
             RulePackAdminService admin,
             RulePackRuntime runtime,
-            FairRuleExecutor rules,
+            RuleExecutionPools executors,
             RuleResourcePackResolver resourcePacks,
             RuleResourceActivator resourceActivator) {
         this.admin = Objects.requireNonNull(admin, "admin");
         this.runtime = Objects.requireNonNull(runtime, "runtime");
-        this.rules = Objects.requireNonNull(rules, "rules");
+        this.executors = Objects.requireNonNull(executors, "executors");
         this.resourcePacks = Objects.requireNonNull(resourcePacks, "resourcePacks");
         this.resourceActivator = Objects.requireNonNull(resourceActivator, "resourceActivator");
     }
@@ -53,6 +53,7 @@ public final class RulePackHotSwapService {
             Optional<InspectedRuleResourcePack> resources = resourcePacks.resolve(target);
             resourceActivator.activate(target, resources);
             Optional<RulePackRef> stillRunning = runtime.promote(target);
+            executors.resetCircuit(ruleId);
             return describe(stillRunning, "replaced version fully unloaded");
         } catch (Exception failure) {
             if (selectionChanged) {
@@ -111,6 +112,7 @@ public final class RulePackHotSwapService {
             Optional<InspectedRuleResourcePack> targetResources = resourcePacks.resolve(target);
             resourceActivator.activate(target, targetResources);
             Optional<RulePackRef> stillRunning = runtime.promote(restored);
+            executors.resetCircuit(ruleId);
             return describe(stillRunning, "restored " + restored.version());
         } catch (Exception failure) {
             if (selectionChanged) {
@@ -142,7 +144,7 @@ public final class RulePackHotSwapService {
         if (stillRunning.isPresent()) {
             return stillRunning.orElseThrow().version() + " still serving running matches";
         }
-        rules.renewWorkers();
+        executors.renewWorkers();
         return unloadedDetail;
     }
 

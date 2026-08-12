@@ -1,8 +1,11 @@
 package top.ellan.mahjong.application.table.actor;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
 import top.ellan.mahjong.application.table.TableActorConfig;
 import top.ellan.mahjong.domain.table.TableParticipant;
@@ -14,6 +17,9 @@ import top.ellan.mahjong.spi.RuleState;
 
 /** Launches serialized pure-provider work on the bounded fair rule pool. */
 final class TableRuleTaskLauncher {
+    private static final Duration PLAYER_TIMEOUT = Duration.ofMillis(750);
+    private static final Duration AUTOMATION_TIMEOUT = Duration.ofSeconds(1);
+
     private final FairRuleExecutor rules;
     private final FairRuleExecutor automation;
     private final RuleId ruleId;
@@ -38,10 +44,10 @@ final class TableRuleTaskLauncher {
             List<PlayerId> automatedPlayers,
             Consumer<RuleTaskCompletion> completion) {
         List<PlayerId> automationSnapshot = List.copyOf(automatedPlayers);
-        executorFor(automationSnapshot).submit(
+        submit(
+                        !automationSnapshot.isEmpty(),
                         ruleId,
-                        () -> computations.frameOnly(
-                                state, expectedRevision, automationSnapshot))
+                        () -> computations.frameOnly(state, expectedRevision, automationSnapshot))
                 .whenComplete((computed, failure) -> completion.accept(new RuleTaskCompletion(
                         expectedRevision,
                         Optional.empty(),
@@ -64,7 +70,10 @@ final class TableRuleTaskLauncher {
             Optional<ScheduledActionTrigger> scheduledTrigger,
             Consumer<RuleTaskCompletion> completion) {
         List<PlayerId> automationSnapshot = List.copyOf(automatedPlayers);
-        executorFor(automationSnapshot).submit(
+        boolean automatedExecution = scheduledTrigger.isPresent()
+                && automationSnapshot.contains(actor);
+        submit(
+                        automatedExecution,
                         ruleId,
                         () -> computations.transition(
                                 state,
@@ -83,7 +92,13 @@ final class TableRuleTaskLauncher {
                         failure)));
     }
 
-    private FairRuleExecutor executorFor(List<PlayerId> automatedPlayers) {
-        return automatedPlayers.isEmpty() ? rules : automation;
+    private FairRuleExecutor executorFor(boolean automatedExecution) {
+        return automatedExecution ? automation : rules;
+    }
+
+    private <T> CompletableFuture<T> submit(
+            boolean automatedExecution, RuleId id, Supplier<T> task) {
+        Duration timeout = automatedExecution ? AUTOMATION_TIMEOUT : PLAYER_TIMEOUT;
+        return executorFor(automatedExecution).submit(id, timeout, task);
     }
 }
