@@ -446,14 +446,11 @@ public final class MahjongDialogService
         return content.ruleName(player, ruleId);
     }
 
-    String profileName(
-            Player player, top.ellan.mahjong.spi.ProfileId profileId, String fallback) {
+    String profileName(Player player, top.ellan.mahjong.spi.ProfileId profileId, String fallback) {
         return content.profileName(player, profileId, fallback);
     }
 
-    String ruleProfile(
-            Player player,
-            top.ellan.mahjong.spi.RuleId ruleId,
+    String ruleProfile(Player player, top.ellan.mahjong.spi.RuleId ruleId,
             top.ellan.mahjong.spi.ProfileId profileId) {
         return content.ruleProfile(player, ruleId, profileId);
     }
