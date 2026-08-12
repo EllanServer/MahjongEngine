@@ -2,7 +2,6 @@ package top.ellan.mahjong.plugin.lobby;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -232,27 +231,26 @@ public final class LobbyRuntimeCoordinator implements AutoCloseable {
         if (current.lobbies().isEmpty() || current.anchors().isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
-        List<TableLobby> stored;
-        Map<TableId, TableAnchor> anchorsByTable = new HashMap<>();
+        List<TableLobby> recoverableLobbies;
+        Map<TableId, TableAnchor> anchorsByTable;
         Set<TableId> matchTables;
         try {
-            stored = current.lobbies().orElseThrow().list();
-            current.anchors()
-                    .orElseThrow()
-                    .list()
-                    .forEach(anchor -> anchorsByTable.put(anchor.tableId(), anchor));
             matchTables =
                     current.matches().isEmpty()
                             ? Set.of()
                             : current.matches().orElseThrow().recoverableMatches().stream()
                                     .map(MatchInstanceRecord::tableId)
                                     .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            recoverableLobbies = current.lobbies().orElseThrow().list().stream()
+                    .filter(lobby -> keepLobby(lobby, matchTables))
+                    .toList();
+            anchorsByTable = current.anchors().orElseThrow().findAll(
+                    recoverableLobbies.stream().map(TableLobby::tableId).toList());
         } catch (Exception failure) {
             return CompletableFuture.failedFuture(failure);
         }
         List<CompletableFuture<Void>> recoveries =
-                stored.stream()
-                        .filter(lobby -> keepLobby(lobby, matchTables))
+                recoverableLobbies.stream()
                         .map(
                                 lobby ->
                                         recoverOne(

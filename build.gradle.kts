@@ -63,14 +63,19 @@ val architectureCheck =
                 )
             val globalScanPrimitives =
                 listOf(
-                    "getOnlinePlayers(",
-                    "Bukkit.getWorlds(",
-                    ".getEntities(",
-                    ".getEntitiesByClass(",
-                    ".getLivingEntities(",
-                    ".getNearbyEntities(",
-                    ".getNearbyPlayers(",
-                    "liveTables.list(",
+                    "getOnlinePlayers",
+                    "getOfflinePlayers",
+                    "Bukkit.getWorlds",
+                    ".getPlayers()",
+                    ".getEntities",
+                    ".getEntitiesByClass",
+                    ".getLivingEntities",
+                    ".getNearbyEntities",
+                    ".getNearbyPlayers",
+                    ".liveTables().list",
+                    ".lobbyTables().list",
+                    "anchorRepository.list",
+                    ".anchors().orElseThrow().list",
                 )
             production.files.sorted().forEach { source ->
                 val relative = source.relativeTo(projectDir).invariantSeparatorsPath

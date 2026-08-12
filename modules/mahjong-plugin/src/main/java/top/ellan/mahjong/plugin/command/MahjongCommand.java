@@ -98,7 +98,7 @@ public final class MahjongCommand implements BasicCommand {
                     help(
                             "list",
                             "/mahjong list",
-                            "List all waiting lobbies and active matches.",
+                            "Show only the table you currently belong to.",
                             false),
                     help(
                             "state",

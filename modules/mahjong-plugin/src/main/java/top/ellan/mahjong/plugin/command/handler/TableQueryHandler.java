@@ -37,37 +37,7 @@ public final class TableQueryHandler implements SubcommandHandler {
         if (arguments.length != 1) {
             throw CommandSupport.usage("/mahjong list");
         }
-        var lobbies = support.runtime().lobbyTables().list();
-        var matches = support.runtime().liveTables().list();
-        support.reply(
-                sender,
-                CommandSupport.message(
-                        "mahjongpaper.command.tables_summary",
-                        "Tables: %s lobbies, %s matches.",
-                        lobbies.size(),
-                        matches.size()));
-        for (HostedLobby lobby : lobbies) {
-            support.reply(
-                    sender,
-                    CommandSupport.message(
-                            "mahjongpaper.command.lobby_summary",
-                            "%s - lobby - %s/%s - seats %s/%s",
-                            lobby.tableId(),
-                            lobby.state().ruleId(),
-                            lobby.state().profileId(),
-                            lobby.state().occupiedSeatCount(),
-                            lobby.state().seats().size()));
-        }
-        for (StartedRulePackMatch match : matches) {
-            support.reply(
-                    sender,
-                    CommandSupport.message(
-                            "mahjongpaper.command.match_summary",
-                            "%s - %s - %s",
-                            match.tableId(),
-                            match.actor().snapshot().lifecycle(),
-                            match.binding().rulePack()));
-        }
+        state(sender, new String[] {"state"});
     }
 
     private void state(CommandSender sender, String[] arguments) {
@@ -128,7 +98,7 @@ public final class TableQueryHandler implements SubcommandHandler {
     @Override
     public List<String> complete(CommandSender sender, String[] arguments) {
         return arguments.length == 2 && "state".equalsIgnoreCase(arguments[0])
-                ? CommandSupport.filter(arguments[1], support.tableIds())
+                ? CommandSupport.filter(arguments[1], support.currentTableIds(sender))
                 : List.of();
     }
 }

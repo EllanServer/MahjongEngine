@@ -134,7 +134,7 @@ public final class LobbyActionHandler implements SubcommandHandler {
         if (arguments.length == 2
                 && ("join".equalsIgnoreCase(arguments[0])
                         || "spectate".equalsIgnoreCase(arguments[0]))) {
-            return CommandSupport.filter(arguments[1], support.tableIds());
+            return CommandSupport.filter(arguments[1], support.currentTableIds(sender));
         }
         if (arguments.length == 3 && "join".equalsIgnoreCase(arguments[0])) {
             return CommandSupport.filter(

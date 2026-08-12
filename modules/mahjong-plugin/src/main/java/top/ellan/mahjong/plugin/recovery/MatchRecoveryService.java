@@ -3,7 +3,6 @@ package top.ellan.mahjong.plugin.recovery;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -63,10 +62,11 @@ public final class MatchRecoveryService {
         Objects.requireNonNull(anchorRepository, "anchorRepository");
         Objects.requireNonNull(coordinator, "coordinator");
         List<MatchInstanceRecord> recoverable;
-        Map<TableId, TableAnchor> anchorsByTable = new HashMap<>();
+        Map<TableId, TableAnchor> anchorsByTable;
         try {
             recoverable = matches.recoverableMatches();
-            anchorRepository.list().forEach(value -> anchorsByTable.put(value.tableId(), value));
+            anchorsByTable = anchorRepository.findAll(
+                    recoverable.stream().map(MatchInstanceRecord::tableId).toList());
         } catch (SQLException failure) {
             return CompletableFuture.failedFuture(failure);
         }

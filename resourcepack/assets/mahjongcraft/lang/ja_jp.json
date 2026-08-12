@@ -98,7 +98,7 @@
   "mahjongpaper.command.help.description.start": "ロビーが開始条件を満たしたら対局を開始します。",
   "mahjongpaper.command.help.description.mode": "開始前にロビーのルールパックと任意のプロファイルを変更します。",
   "mahjongpaper.command.help.description.auto": "対局中の自席で自動代打を有効または無効にします。",
-  "mahjongpaper.command.help.description.list": "待機中のロビーと進行中の対局を一覧表示します。",
+  "mahjongpaper.command.help.description.list": "自分が現在参加している卓だけを表示します。",
   "mahjongpaper.command.help.description.state": "ロビーまたは対局状態を表示します。卓 ID 省略時は現在の卓を使います。",
   "mahjongpaper.command.help.description.history": "進行中および完了済みの対局履歴をページごとに表示します。",
   "mahjongpaper.command.help.description.rank": "指定した公式ルールパックで自分の順位とランキングを表示します。",

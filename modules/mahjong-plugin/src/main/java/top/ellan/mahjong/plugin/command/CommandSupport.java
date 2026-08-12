@@ -11,6 +11,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import top.ellan.mahjong.plugin.MahjongPaperPlugin;
 import top.ellan.mahjong.plugin.MahjongRuntime;
+import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.ProfileId;
 import top.ellan.mahjong.spi.RuleId;
 
@@ -169,16 +170,21 @@ public final class CommandSupport {
         }
     }
 
-    /** Stable snapshot used by all table-id completions. */
-    public List<String> tableIds() {
-        return java.util.stream.Stream.concat(
-                        runtime.lobbyTables().list().stream()
-                                .map(lobby -> lobby.tableId().toString()),
-                        runtime.liveTables().list().stream()
-                                .map(match -> match.tableId().toString()))
-                .distinct()
-                .sorted()
-                .toList();
+    /** Returns at most the sender's current table; completion must never enumerate tables. */
+    public List<String> currentTableIds(CommandSender sender) {
+        if (!(Objects.requireNonNull(sender, "sender") instanceof Player player)) {
+            return List.of();
+        }
+        PlayerId playerId = new PlayerId(player.getUniqueId());
+        return runtime.lobbyTables()
+                .findByPlayer(playerId)
+                .map(lobby -> List.of(lobby.tableId().toString()))
+                .or(
+                        () ->
+                                runtime.liveTables()
+                                        .findByPlayer(playerId)
+                                        .map(match -> List.of(match.tableId().toString())))
+                .orElseGet(List::of);
     }
 
     public static List<String> filter(String prefix, List<String> values) {

@@ -38,13 +38,27 @@ jobs:
       - name: Make wrapper executable
         run: chmod +x ./gradlew
       - name: Compile and test every module
-        run: ./gradlew clean check :mahjong-plugin:shadowJar --no-daemon --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          for attempt in 1 2 3; do
+            ./gradlew clean check :mahjong-plugin:shadowJar --no-daemon --stacktrace \
+              2>&1 | tee gradle-verify.log && exit 0
+            status=$?
+            if ! grep -Eqi 'status code 429|too many requests' gradle-verify.log \
+              || [ "$attempt" -eq 3 ]; then
+              exit "$status"
+            fi
+            sleep "$((attempt * 15))"
+          done
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: module-test-reports-linux
-          path: modules/*/build/reports/tests/**
+          path: |
+            modules/*/build/reports/tests/**
+            gradle-verify.log
           if-no-files-found: ignore
 
   official-rule-packs:

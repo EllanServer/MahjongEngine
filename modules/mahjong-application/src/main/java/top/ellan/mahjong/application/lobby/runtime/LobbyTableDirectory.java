@@ -1,10 +1,7 @@
 package top.ellan.mahjong.application.lobby.runtime;
 
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -101,12 +98,6 @@ public final class LobbyTableDirectory implements LobbyStateObserver {
     public Optional<HostedLobby> findByPlayer(PlayerId playerId) {
         TableId tableId = tableByPlayer.get(Objects.requireNonNull(playerId, "playerId"));
         return tableId == null ? Optional.empty() : Optional.ofNullable(lobbies.get(tableId));
-    }
-
-    public synchronized List<HostedLobby> list() {
-        ArrayList<HostedLobby> snapshot = new ArrayList<>(lobbies.values());
-        snapshot.sort(Comparator.comparing(HostedLobby::tableId));
-        return List.copyOf(snapshot);
     }
 
     public int size() {

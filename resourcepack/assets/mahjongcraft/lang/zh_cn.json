@@ -98,7 +98,7 @@
   "mahjongpaper.command.help.description.start": "房间满足开局条件后开始对局。",
   "mahjongpaper.command.help.description.mode": "在开局前更换房间的规则包及可选配置。",
   "mahjongpaper.command.help.description.auto": "为当前对局座位开启或关闭自动托管。",
-  "mahjongpaper.command.help.description.list": "列出所有等待中的房间和进行中的对局。",
+  "mahjongpaper.command.help.description.list": "只查看你当前所在的牌桌。",
   "mahjongpaper.command.help.description.state": "查看房间或对局状态；不填牌桌 ID 时查看当前牌桌。",
   "mahjongpaper.command.help.description.history": "分页查看你的进行中及已完成对局记录。",
   "mahjongpaper.command.help.description.rank": "查看自己在指定官方规则包中的排名和排行榜。",

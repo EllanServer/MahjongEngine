@@ -42,6 +42,6 @@ public final class TableDialogHandler implements SubcommandHandler {
         if (arguments.length != 2) {
             return List.of();
         }
-        return CommandSupport.filter(arguments[1], support.tableIds());
+        return CommandSupport.filter(arguments[1], support.currentTableIds(sender));
     }
 }

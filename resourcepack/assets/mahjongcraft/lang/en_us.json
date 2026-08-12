@@ -98,7 +98,7 @@
   "mahjongpaper.command.help.description.start": "Start the match after the lobby meets its start conditions.",
   "mahjongpaper.command.help.description.mode": "Change the lobby rule pack and optional profile before starting.",
   "mahjongpaper.command.help.description.auto": "Enable or disable automatic trustee play for your active seat.",
-  "mahjongpaper.command.help.description.list": "List all waiting lobbies and active matches.",
+  "mahjongpaper.command.help.description.list": "Show only the table you currently belong to.",
   "mahjongpaper.command.help.description.state": "Show lobby or match state; defaults to your current table.",
   "mahjongpaper.command.help.description.history": "Show your in-progress and completed match history by page.",
   "mahjongpaper.command.help.description.rank": "Show your ranking and the ranking page for one official rule pack.",

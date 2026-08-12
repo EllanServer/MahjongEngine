@@ -128,12 +128,6 @@ public final class LiveTableDirectory {
                 .contains(Objects.requireNonNull(playerId, "playerId"));
     }
 
-    public List<StartedRulePackMatch> list() {
-        return tables.values().stream()
-                .sorted(java.util.Comparator.comparing(StartedRulePackMatch::tableId))
-                .toList();
-    }
-
     public int size() {
         return tables.size();
     }

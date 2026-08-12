@@ -48,7 +48,7 @@ public final class TableRemoveHandler implements SubcommandHandler {
             return List.of();
         }
         if (sender.hasPermission("mahjongpaper.admin")) {
-            return CommandSupport.filter(arguments[1], support.tableIds());
+            return CommandSupport.filter(arguments[1], support.currentTableIds(sender));
         }
         if (!(sender instanceof Player player)) {
             return List.of();

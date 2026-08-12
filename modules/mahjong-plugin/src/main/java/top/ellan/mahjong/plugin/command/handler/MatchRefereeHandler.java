@@ -65,7 +65,7 @@ public final class MatchRefereeHandler implements SubcommandHandler {
             return List.of();
         }
         if (arguments.length == 2) {
-            return CommandSupport.filter(arguments[1], support.tableIds());
+            return CommandSupport.filter(arguments[1], support.currentTableIds(sender));
         }
         if (arguments.length == 3) {
             return CommandSupport.filter(arguments[2], OPERATIONS);
