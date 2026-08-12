@@ -42,6 +42,7 @@ import top.ellan.mahjong.plugin.match.RulePackMatchCoordinator;
 import top.ellan.mahjong.plugin.match.StartedRulePackMatch;
 import top.ellan.mahjong.plugin.history.PlayerRecordService;
 import top.ellan.mahjong.plugin.i18n.LocalizedMessageCatalog;
+import top.ellan.mahjong.plugin.gameroom.GameRoomRuntime;
 import top.ellan.mahjong.plugin.dialog.MahjongDialogService;
 import top.ellan.mahjong.plugin.dialog.CompositeSceneProjectionPort;
 import top.ellan.mahjong.plugin.platform.CraftEnginePlatformRuntime;
@@ -78,6 +79,7 @@ public final class MahjongRuntime implements AutoCloseable {
     private final LocalizedMessageCatalog messages;
     private final MahjongDialogService dialogs;
     private final CraftEnginePlatformRuntime platform;
+    private final GameRoomRuntime gameRooms;
     private final TablePlacementService placement;
     private final LobbyRuntimeCoordinator lobbyRuntime;
     private final TableLifecycleCoordinator tableLifecycle;
@@ -110,7 +112,9 @@ public final class MahjongRuntime implements AutoCloseable {
                         deadlines,
                         actors,
                         messages);
-        placement = new TablePlacementService(platform, new ProtectionService(plugin));
+        gameRooms = new GameRoomRuntime(plugin, configuration.gameRooms(), executors.io(), messages);
+        placement = new TablePlacementService(
+                platform, new ProtectionService(plugin), gameRooms.registry(), configuration.gameRooms());
         lobbyRuntime =
                 new LobbyRuntimeCoordinator(
                         executors.actor(),
@@ -194,6 +198,7 @@ public final class MahjongRuntime implements AutoCloseable {
     public List<RulePackDescriptor> ruleDescriptors() { return requireServices().rules().activeDescriptors(); }
 
     public TablePlacementService placement() { requireServices(); return placement; }
+    public GameRoomRuntime gameRooms() { requireServices(); return gameRooms; }
 
     public CompletionStage<top.ellan.mahjong.application.table.TableActionResult> setAutomation(
             top.ellan.mahjong.spi.PlayerId playerId, boolean enabled) {
@@ -319,6 +324,7 @@ public final class MahjongRuntime implements AutoCloseable {
     }
 
     private void initializeServices() {
+        gameRooms.load();
         DatabaseRuntime database =
                 new DatabaseBootstrap(
                                 configuration.database(),
@@ -467,6 +473,7 @@ public final class MahjongRuntime implements AutoCloseable {
         lobbyRuntime.close();
         ActorDrain.awaitAll(actors, SHUTDOWN_TIMEOUT, plugin.getLogger());
         dialogs.close();
+        gameRooms.close();
         platform.close();
         deadlines.close();
         ruleExecutors.close();

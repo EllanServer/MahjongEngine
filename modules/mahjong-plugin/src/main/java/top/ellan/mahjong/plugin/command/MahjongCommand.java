@@ -19,6 +19,7 @@ import org.bukkit.command.CommandSender;
 import top.ellan.mahjong.plugin.MahjongPaperPlugin;
 import top.ellan.mahjong.plugin.MahjongRuntime;
 import top.ellan.mahjong.plugin.command.handler.LobbyActionHandler;
+import top.ellan.mahjong.plugin.command.handler.GameRoomCommandHandler;
 import top.ellan.mahjong.plugin.command.handler.MatchAutomationHandler;
 import top.ellan.mahjong.plugin.command.handler.MatchRefereeHandler;
 import top.ellan.mahjong.plugin.command.handler.PlayerRecordHandler;
@@ -133,6 +134,12 @@ public final class MahjongCommand implements BasicCommand {
                             "List installed rule packs; admins can install, verify, activate, swap, or roll them back.",
                             false),
                     help(
+                            "room",
+                            "/mahjong room <wand|create|delete|list|info> [...]",
+                            "Admin: define bounded game rooms and inspect them by ID or page.",
+                            true,
+                            "gameroom"),
+                    help(
                             "referee",
                             "/mahjong referee <table-id> <operation> <seat> [ruling]",
                             "Admin: submit an official Sichuan referee ruling for a live table.",
@@ -157,6 +164,7 @@ public final class MahjongCommand implements BasicCommand {
         register(routes, new TableQueryHandler(support));
         register(routes, new PlayerRecordHandler(support));
         register(routes, new TableRemoveHandler(support));
+        register(routes, new GameRoomCommandHandler(support));
         register(routes, new RulePackAdminHandler(support));
         validateHelpCoverage(routes.keySet());
         handlers = Map.copyOf(routes);

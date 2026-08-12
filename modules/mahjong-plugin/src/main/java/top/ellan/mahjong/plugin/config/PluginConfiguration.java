@@ -9,6 +9,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 public record PluginConfiguration(
         Database database,
         String registryUrl,
+        GameRoomSettings gameRooms,
         String craftEngineBundleFolder,
         CraftEngineAssets craftEngineAssets,
         LayoutGeometry layoutGeometry,
@@ -17,6 +18,7 @@ public record PluginConfiguration(
     public PluginConfiguration {
         Objects.requireNonNull(database, "database");
         registryUrl = Objects.requireNonNull(registryUrl, "registryUrl").trim();
+        Objects.requireNonNull(gameRooms, "gameRooms");
         craftEngineBundleFolder = requireToken(craftEngineBundleFolder, "bundle folder");
         Objects.requireNonNull(craftEngineAssets, "craftEngineAssets");
         Objects.requireNonNull(layoutGeometry, "layoutGeometry");
@@ -48,6 +50,16 @@ public record PluginConfiguration(
                         config.getString("database.password", ""),
                         poolSize),
                 config.getString("rules.registry-url", ""),
+                new GameRoomSettings(
+                        config.getBoolean("game-rooms.enabled", true),
+                        config.getBoolean("game-rooms.restrict-new-tables", true),
+                        config.getBoolean("game-rooms.enter-exit-messages", true),
+                        config.getInt("game-rooms.leave-countdown-seconds", 60),
+                        config.getInt("game-rooms.default-radius", 10),
+                        config.getInt("game-rooms.default-height", 8),
+                        requireToken(
+                                config.getString("game-rooms.file", "game-rooms.yml"),
+                                "game-room file")),
                 config.getString("craftengine.bundle-folder", "mahjongpaper"),
                 new CraftEngineAssets(
                         config.getString(
@@ -179,6 +191,31 @@ public record PluginConfiguration(
             if (rollTicks < 1 || rollTicks > 200 || revealTicks < 1 || revealTicks > 200) {
                 throw new IllegalArgumentException("opening timings must be between 1 and 200 ticks");
             }
+        }
+    }
+
+    public record GameRoomSettings(
+            boolean enabled,
+            boolean restrictNewTables,
+            boolean enterExitMessages,
+            int leaveCountdownSeconds,
+            int defaultRadius,
+            int defaultHeight,
+            String file) {
+        public GameRoomSettings {
+            if (leaveCountdownSeconds < 5 || leaveCountdownSeconds > 600) {
+                throw new IllegalArgumentException(
+                        "game-room leave countdown must be between 5 and 600 seconds");
+            }
+            if (defaultRadius < 3 || defaultRadius > 127) {
+                throw new IllegalArgumentException(
+                        "game-room radius must be between 3 and 127 blocks");
+            }
+            if (defaultHeight < 4 || defaultHeight > 128) {
+                throw new IllegalArgumentException(
+                        "game-room height must be between 4 and 128 blocks");
+            }
+            file = requireToken(file, "game-room file");
         }
     }
 

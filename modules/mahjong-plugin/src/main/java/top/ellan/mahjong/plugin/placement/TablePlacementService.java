@@ -9,6 +9,8 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.plugin.config.PluginConfiguration;
+import top.ellan.mahjong.plugin.gameroom.GameRoomRegistry;
 import top.ellan.mahjong.plugin.platform.CraftEnginePlatformRuntime;
 import top.ellan.mahjong.plugin.protection.ProtectionService;
 
@@ -23,11 +25,18 @@ public final class TablePlacementService {
 
     private final CraftEnginePlatformRuntime platform;
     private final ProtectionService protection;
+    private final GameRoomRegistry gameRooms;
+    private final PluginConfiguration.GameRoomSettings roomSettings;
 
     public TablePlacementService(
-            CraftEnginePlatformRuntime platform, ProtectionService protection) {
+            CraftEnginePlatformRuntime platform,
+            ProtectionService protection,
+            GameRoomRegistry gameRooms,
+            PluginConfiguration.GameRoomSettings roomSettings) {
         this.platform = Objects.requireNonNull(platform, "platform");
         this.protection = Objects.requireNonNull(protection, "protection");
+        this.gameRooms = Objects.requireNonNull(gameRooms, "gameRooms");
+        this.roomSettings = Objects.requireNonNull(roomSettings, "roomSettings");
     }
 
     public Optional<TablePlacementFailure> validateCreation(Player owner, Location center) {
@@ -45,6 +54,18 @@ public final class TablePlacementService {
         Optional<TablePlacementFailure> blocked = firstBlockedSpace(center);
         if (blocked.isPresent()) {
             return blocked;
+        }
+        if (roomSettings.enabled()
+                && roomSettings.restrictNewTables()
+                && gameRooms
+                        .roomContainingBox(
+                                center,
+                                CLEARANCE_RADIUS_BLOCKS,
+                                CLEARANCE_HEIGHT_BLOCKS)
+                        .isEmpty()) {
+            return Optional.of(
+                    TablePlacementFailure.simple(
+                            TablePlacementFailure.Reason.NOT_IN_GAME_ROOM));
         }
         if (!protection.canPlace(owner, footprint(center))) {
             return Optional.of(

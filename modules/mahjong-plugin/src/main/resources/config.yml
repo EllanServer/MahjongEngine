@@ -7,6 +7,16 @@ database:
 rules:
   # HTTPS URL of the Ed25519-signed official registry envelope.
   registry-url: "https://github.com/EllanServer/MahjongEngine/releases/download/rule-registry-v2026.08.10.1/registry.json"
+game-rooms:
+  enabled: true
+  # When enabled, the complete 7x4x7 table footprint must fit inside one room.
+  restrict-new-tables: true
+  # Only seated players in a live match receive room-boundary messages.
+  enter-exit-messages: true
+  leave-countdown-seconds: 60
+  default-radius: 10
+  default-height: 8
+  file: "game-rooms.yml"
 craftengine:
   bundle-folder: "mahjongpaper"
   assets:
