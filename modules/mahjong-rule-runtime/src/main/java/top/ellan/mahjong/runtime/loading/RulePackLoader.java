@@ -102,6 +102,11 @@ public final class RulePackLoader implements PinnedRulePackLoader {
             throw wrapped;
         } catch (Error failure) {
             if (!RuleExecutionBudget.exceeded(failure)) {
+                try {
+                    loader.close();
+                } catch (IOException closeFailure) {
+                    failure.addSuppressed(closeFailure);
+                }
                 throw failure;
             }
             RulePackException wrapped =

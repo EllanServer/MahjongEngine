@@ -109,6 +109,46 @@ class FairRuleExecutorTest {
     }
 
     @Test
+    void idleCapacityReturnsImmediatelyWhenAnotherPackFinishes() throws Exception {
+        try (FairRuleExecutor executor = new FairRuleExecutor(4, 32, "fair-rule-rebalance")) {
+            RuleId first = new RuleId("riichi");
+            RuleId second = new RuleId("mcr");
+            CountDownLatch firstRelease = new CountDownLatch(1);
+            CountDownLatch secondRelease = new CountDownLatch(1);
+            CountDownLatch initialStarted = new CountDownLatch(4);
+            CountDownLatch extraStarted = new CountDownLatch(2);
+            List<java.util.concurrent.CompletableFuture<Integer>> futures = new ArrayList<>();
+            for (int index = 0; index < 2; index++) {
+                futures.add(executor.submit(first, () -> {
+                    initialStarted.countDown();
+                    await(firstRelease);
+                    return 1;
+                }));
+                futures.add(executor.submit(second, () -> {
+                    initialStarted.countDown();
+                    await(secondRelease);
+                    return 2;
+                }));
+            }
+            assertTrue(initialStarted.await(2, TimeUnit.SECONDS));
+            for (int index = 0; index < 2; index++) {
+                futures.add(executor.submit(first, () -> {
+                    extraStarted.countDown();
+                    await(firstRelease);
+                    return 3;
+                }));
+            }
+
+            secondRelease.countDown();
+            assertTrue(extraStarted.await(2, TimeUnit.SECONDS));
+            firstRelease.countDown();
+            for (var future : futures) {
+                future.get(2, TimeUnit.SECONDS);
+            }
+        }
+    }
+
+    @Test
     void releaseSignalsAtMostOneWaiterSoQueuesAlwaysProgress() throws Exception {
         try (FairRuleExecutor executor = new FairRuleExecutor(2, 32, "fair-rule-test")) {
             CountDownLatch release = new CountDownLatch(1);

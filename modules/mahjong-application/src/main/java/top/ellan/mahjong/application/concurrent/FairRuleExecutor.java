@@ -229,8 +229,10 @@ public final class FairRuleExecutor implements AutoCloseable {
             pack.activeWorkers(pack.activeWorkers() - 1);
             if (pack.idle() && activePacks > 0) {
                 activePacks--;
+                packs.forEach(this::makeReady);
+            } else {
+                makeReady(ruleId, pack);
             }
-            makeReady(ruleId, pack);
             if (!readyPacks.isEmpty()) {
                 available.signal();
             }
@@ -307,7 +309,6 @@ public final class FairRuleExecutor implements AutoCloseable {
             RulePackCircuitOpenException failure) {
         operations.forEach(operation -> operation.future().completeExceptionally(failure));
     }
-
     private int ceiling() {
         return Math.max(1, workerCount / Math.max(1, activePacks));
     }
@@ -320,7 +321,6 @@ public final class FairRuleExecutor implements AutoCloseable {
             readyPacks.addLast(ruleId);
         }
     }
-
     @Override
     public void close() {
         if (!closed.compareAndSet(false, true)) {
@@ -346,22 +346,18 @@ public final class FairRuleExecutor implements AutoCloseable {
         }
         watchdog.shutdownNow();
     }
-
     static final class ScheduledOperation<T> {
         private final Duration timeout;
         private final Supplier<T> supplier;
         private final CompletableFuture<T> future = new CompletableFuture<>();
         private final AtomicBoolean finished = new AtomicBoolean();
-
         private ScheduledOperation(Duration timeout, Supplier<T> supplier) {
             this.timeout = timeout;
             this.supplier = supplier;
         }
-
         private CompletableFuture<T> future() {
             return future;
         }
-
         private void run(FairRuleExecutor owner, RuleId ruleId) {
             if (future.isCancelled()) {
                 return;
@@ -390,11 +386,9 @@ public final class FairRuleExecutor implements AutoCloseable {
                 Thread.interrupted();
             }
         }
-
         private boolean claimTimeout() {
             return finished.compareAndSet(false, true);
         }
     }
-
     private record ClaimedOperation(RuleId ruleId, ScheduledOperation<?> operation) {}
 }
