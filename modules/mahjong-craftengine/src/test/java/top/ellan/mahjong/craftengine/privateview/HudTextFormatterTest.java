@@ -58,7 +58,8 @@ class HudTextFormatterTest {
 
     private static HudNode node(String key, String value) {
         return new HudNode(
-                new SceneNodeId("hud/" + key.replace(':', '/')),
+                new SceneNodeId(
+                        "hud/" + key.replace(':', '/').toLowerCase(Locale.ROOT)),
                 SceneVisibility.privateTo(Set.of(VIEWER)),
                 key,
                 value);
