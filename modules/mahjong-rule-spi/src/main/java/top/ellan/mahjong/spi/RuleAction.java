@@ -3,7 +3,12 @@ package top.ellan.mahjong.spi;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/** Canonical opaque action passed through the parent classloader boundary. */
+/**
+ * Canonical opaque action passed through the parent classloader boundary.
+ *
+ * @param type stable action type identifier
+ * @param payload bounded rule-defined action payload
+ */
 public record RuleAction(String type, byte[] payload) {
     private static final Pattern VALID_TYPE = Pattern.compile("[a-z][a-z0-9._-]{0,63}");
 

@@ -4,7 +4,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** Information safe to publish to every viewer. */
+/**
+ * Information safe to publish to every viewer.
+ *
+ * @param stateRevision monotonically increasing revision of the published rule state
+ * @param phase stable rule-defined identifier for the current phase
+ * @param tiles tiles whose locations are public to every viewer
+ * @param attributes bounded rule-defined public attributes
+ * @param tablePresentation physical table presentation metadata for the client
+ */
 public record PublicRuleView(
         long stateRevision,
         String phase,

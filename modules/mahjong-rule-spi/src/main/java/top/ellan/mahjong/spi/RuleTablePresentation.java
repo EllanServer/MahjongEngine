@@ -3,7 +3,17 @@ package top.ellan.mahjong.spi;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Typed table-wide geometry metadata shared without exposing a concrete rules implementation. */
+/**
+ * Typed table-wide geometry metadata shared without exposing a concrete rules implementation.
+ *
+ * @param seatCount number of seats present at the table
+ * @param wall physical wall layout exposed by the rule pack
+ * @param discardsPerRow maximum number of discards in one river row
+ * @param dealerSeat current dealer, when the rule pack has assigned one
+ * @param currentSeat seat whose turn is currently active, when applicable
+ * @param lastDiscard most recently discarded tile, when one is available
+ * @param opening physical wall-opening metadata, when the rule exposes it
+ */
 public record RuleTablePresentation(
         int seatCount,
         RuleWallPresentation wall,
