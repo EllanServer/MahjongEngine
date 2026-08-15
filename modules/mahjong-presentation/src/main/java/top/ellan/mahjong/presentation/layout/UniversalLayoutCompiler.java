@@ -4,6 +4,11 @@ import top.ellan.mahjong.presentation.node.SceneTransform;
 
 /** Cold-path compiler that turns rule-declared table dimensions into immutable lookup arrays. */
 final class UniversalLayoutCompiler {
+    /** v1.5 ViewerOverlayRenderer pulls the action row 0.42 blocks toward the table. */
+    private static final double ACTION_ROW_OUTWARD_INSET = 0.42D;
+    /** v1.5 OVERLAY_ACTION_Y_OFFSET above the display center surface. */
+    private static final double ACTION_ROW_Y_OFFSET = 0.36D;
+
     private final TableGeometry geometry;
     private final UniversalLayoutSpec spec;
 
@@ -172,11 +177,11 @@ final class UniversalLayoutCompiler {
         SceneTransform[][] result = new SceneTransform[spec.seatCount()][rows];
         for (int seat = 0; seat < spec.seatCount(); seat++) {
             SeatAxis axis = axis(seat);
-            double outward = geometry.handRadius() - 0.42D + extraOutward;
+            double outward = geometry.handRadius() - ACTION_ROW_OUTWARD_INSET + extraOutward;
             for (int row = 0; row < rows; row++) {
                 result[seat][row] = transform(
                         axis.outX() * outward,
-                        geometry.surfaceHeight() + 0.36D
+                        geometry.surfaceHeight() + ACTION_ROW_Y_OFFSET
                                 - row * geometry.actionRowSpacing(),
                         axis.outZ() * outward,
                         seat);
@@ -206,10 +211,10 @@ final class UniversalLayoutCompiler {
         for (int seat = 0; seat < spec.seatCount(); seat++) {
             SeatAxis axis = axis(seat);
             double tangent = 2.55D * geometry.actionColumnSpacing();
-            double outward = geometry.handRadius() - 0.42D;
+            double outward = geometry.handRadius() - ACTION_ROW_OUTWARD_INSET;
             result[seat] = transform(
                     axis.outX() * outward + axis.tangentX() * tangent,
-                    geometry.surfaceHeight() + 0.36D,
+                    geometry.surfaceHeight() + ACTION_ROW_Y_OFFSET,
                     axis.outZ() * outward + axis.tangentZ() * tangent,
                     seat);
         }

@@ -30,8 +30,6 @@ import top.ellan.mahjong.spi.TileInstanceId;
 
 /** Projects revision-bound hitboxes independently from visual scene construction. */
 public final class InteractionSceneProjector {
-    private static final double ACTION_LABEL_RAISE = 0.12D;
-
     private final TableSceneAssets assets;
     private final boolean overheadEnabled;
     private final ActionRowProjector actionRows;
@@ -174,7 +172,7 @@ public final class InteractionSceneProjector {
                         labelId,
                         SceneVisibility.privateTo(player),
                         "action.view_river",
-                        labelTransform(transform),
+                        transform,
                         false));
         bindings.add(SceneInteractionBinding.overhead(handle, player, projection.revision()));
     }
@@ -222,14 +220,4 @@ public final class InteractionSceneProjector {
         return index;
     }
 
-    private static SceneTransform labelTransform(SceneTransform base) {
-        return new SceneTransform(
-                base.x(),
-                base.y() + ACTION_LABEL_RAISE,
-                base.z(),
-                base.yawDegrees(),
-                base.pitchDegrees(),
-                base.rollDegrees(),
-                base.scale());
-    }
 }

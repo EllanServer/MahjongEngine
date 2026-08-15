@@ -315,12 +315,16 @@ class SceneGraphTest {
                 .map(InteractionNode.class::cast)
                 .findFirst()
                 .orElseThrow();
-
-        assertEquals("mahjongpaper:action_button_hitbox", interaction.assetId());
-        assertTrue(mapper().map(rowAction).nodes().values().stream()
+        ActionLabelNode label = mapper().map(rowAction).nodes().values().stream()
                 .filter(ActionLabelNode.class::isInstance)
                 .map(ActionLabelNode.class::cast)
-                .anyMatch(label -> label.labelKey().equals("action.win")));
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals("mahjongpaper:action_button_hitbox", interaction.assetId());
+        assertEquals("action.win", label.labelKey());
+        assertEquals(interaction.transform(), label.transform());
+        assertEquals(GEOMETRY.surfaceHeight() + 0.36D, label.transform().y(), 0.000_001D);
     }
 
     @Test
@@ -358,6 +362,8 @@ class SceneGraphTest {
         assertEquals(90.0D, camera.transform().yawDegrees());
         assertEquals(90.0D, camera.transform().pitchDegrees());
         assertTrue(view.transform().x() > 0.0D);
+        assertEquals(view.transform(), label.transform());
+        assertEquals(GEOMETRY.surfaceHeight() + 0.36D, label.transform().y(), 0.000_001D);
         assertEquals(11, binding.revision());
         assertEquals(PLAYER, binding.playerId());
     }

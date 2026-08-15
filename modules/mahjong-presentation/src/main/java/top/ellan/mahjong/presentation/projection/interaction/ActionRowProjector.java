@@ -23,8 +23,6 @@ import top.ellan.mahjong.spi.SeatId;
 
 /** Builds localized, dynamically centered rows without doing work on a server tick. */
 final class ActionRowProjector {
-    private static final double LABEL_RAISE = 0.12D;
-
     private final TableSceneAssets assets;
     private final ActionButtonMetrics metrics;
 
@@ -149,7 +147,7 @@ final class ActionRowProjector {
                 labelId,
                 SceneVisibility.privateTo(player),
                 action.legalAction().actionPresentation().labelKey(),
-                raise(transform),
+                transform,
                 action.legalAction().actionPresentation().emphasized());
         if (nodes.putIfAbsent(labelId, label) != null) {
             throw new IllegalArgumentException("duplicate action label node");
@@ -157,14 +155,4 @@ final class ActionRowProjector {
         bindings.add(new SceneInteractionBinding(handle, player, action.token()));
     }
 
-    private static SceneTransform raise(SceneTransform base) {
-        return new SceneTransform(
-                base.x(),
-                base.y() + LABEL_RAISE,
-                base.z(),
-                base.yawDegrees(),
-                base.pitchDegrees(),
-                base.rollDegrees(),
-                base.scale());
-    }
 }
