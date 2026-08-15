@@ -21,10 +21,13 @@ class CommandHelpCatalogTest {
         assertEquals("removebot", names.get(11));
         assertEquals("rule", names.get(12));
         assertEquals("leaderboard", names.get(26));
-        assertEquals("forceend", names.get(27));
-        assertEquals("deletetable", names.get(28));
-        assertEquals("reload", names.get(29));
-        assertEquals("room", names.get(30));
+        assertEquals("render", names.get(27));
+        assertEquals("inspect", names.get(28));
+        assertEquals("clear", names.get(29));
+        assertEquals("forceend", names.get(30));
+        assertEquals("deletetable", names.get(31));
+        assertEquals("reload", names.get(32));
+        assertEquals("room", names.get(33));
         assertTrue(names.indexOf("ready") > names.indexOf("room"));
     }
 

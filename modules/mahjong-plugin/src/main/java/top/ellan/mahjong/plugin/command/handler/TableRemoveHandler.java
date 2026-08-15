@@ -28,8 +28,8 @@ public final class TableRemoveHandler implements SubcommandHandler {
                     "/mahjong " + arguments[0].toLowerCase(java.util.Locale.ROOT)
                             + " <table-id>");
         }
-        boolean legacyAdminForm = "deletetable".equalsIgnoreCase(arguments[0]);
-        if (legacyAdminForm) {
+        boolean adminAlias = "deletetable".equalsIgnoreCase(arguments[0]);
+        if (adminAlias) {
             support.requireAdmin(sender);
         }
         TableId tableId = TableId.parse(arguments[1]);

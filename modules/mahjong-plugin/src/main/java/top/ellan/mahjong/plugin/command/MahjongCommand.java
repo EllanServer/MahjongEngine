@@ -20,7 +20,7 @@ import org.bukkit.command.CommandSender;
 import top.ellan.mahjong.plugin.MahjongPaperPlugin;
 import top.ellan.mahjong.plugin.MahjongRuntime;
 import top.ellan.mahjong.plugin.command.handler.LobbyActionHandler;
-import top.ellan.mahjong.plugin.command.handler.LegacyActionCommandHandler;
+import top.ellan.mahjong.plugin.command.handler.MatchActionCommandHandler;
 import top.ellan.mahjong.plugin.command.handler.GameRoomCommandHandler;
 import top.ellan.mahjong.plugin.command.handler.BotMatchHandler;
 import top.ellan.mahjong.plugin.command.handler.ReloadCommandHandler;
@@ -34,6 +34,7 @@ import top.ellan.mahjong.plugin.command.handler.TableCreateHandler;
 import top.ellan.mahjong.plugin.command.handler.TableDialogHandler;
 import top.ellan.mahjong.plugin.command.handler.TableQueryHandler;
 import top.ellan.mahjong.plugin.command.handler.TableRemoveHandler;
+import top.ellan.mahjong.plugin.command.handler.TableRenderHandler;
 
 /** Thin O(1) command router; use cases live behind dedicated handlers. */
 public final class MahjongCommand implements BasicCommand {
@@ -47,9 +48,10 @@ public final class MahjongCommand implements BasicCommand {
         register(routes, new BotMatchHandler(support));
         register(routes, new LobbyActionHandler(support));
         register(routes, new MatchAutomationHandler(support));
-        register(routes, new LegacyActionCommandHandler(support));
+        register(routes, new MatchActionCommandHandler(support));
         register(routes, new MatchRefereeHandler(support));
         register(routes, new TableDialogHandler(support));
+        register(routes, new TableRenderHandler(support));
         register(routes, new RuleDialogHandler(support));
         register(routes, new TableQueryHandler(support));
         register(routes, new PlayerRecordHandler(support));

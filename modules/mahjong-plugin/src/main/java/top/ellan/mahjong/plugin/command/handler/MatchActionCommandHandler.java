@@ -19,17 +19,18 @@ import top.ellan.mahjong.spi.RuleViewTile;
 import top.ellan.mahjong.spi.RuleViewZone;
 
 /**
- * v1.5 command fallback for in-match actions. The authoritative input remains the CraftEngine
- * action row; these commands resolve the matching currently-authorized token, so stale or
- * ambiguous commands fail closed exactly like a stale click.
+ * In-match action commands (riichi, tsumo, ron, pon, minkan, chii, kan, skip, kyuushu). The
+ * CraftEngine action row stays the primary input; these commands resolve the matching
+ * currently-authorized token, so stale or ambiguous commands fail closed exactly like a
+ * stale click.
  */
-public final class LegacyActionCommandHandler implements SubcommandHandler {
+public final class MatchActionCommandHandler implements SubcommandHandler {
     private static final Set<String> NAMES =
             Set.of("riichi", "tsumo", "ron", "pon", "minkan", "chii", "kan", "skip", "kyuushu");
 
     private final CommandSupport support;
 
-    public LegacyActionCommandHandler(CommandSupport support) {
+    public MatchActionCommandHandler(CommandSupport support) {
         this.support = java.util.Objects.requireNonNull(support, "support");
     }
 

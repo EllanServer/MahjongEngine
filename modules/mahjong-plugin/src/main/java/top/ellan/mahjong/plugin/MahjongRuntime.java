@@ -25,6 +25,7 @@ import top.ellan.mahjong.application.lobby.usecase.LobbyUseCases;
 import top.ellan.mahjong.application.table.TableActionResult;
 import top.ellan.mahjong.application.table.TableActorRegistry;
 import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.craftengine.scene.CraftEngineSceneBackend;
 import top.ellan.mahjong.platform.paper.concurrent.BoundedPlatformExecutors;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackBootstrap;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackOperations;
@@ -55,6 +56,7 @@ import top.ellan.mahjong.plugin.runtime.RuntimeServices;
 import top.ellan.mahjong.plugin.runtime.RuleExecutionPools;
 import top.ellan.mahjong.plugin.table.LiveTableDirectory;
 import top.ellan.mahjong.plugin.table.TableLifecycleCoordinator;
+import top.ellan.mahjong.presentation.projection.LatestSceneProjector;
 import top.ellan.mahjong.runtime.admin.RulePackInventory;
 import top.ellan.mahjong.runtime.admin.RulePackVerification;
 import top.ellan.mahjong.spi.PlayerId;
@@ -201,6 +203,19 @@ public final class MahjongRuntime implements AutoCloseable {
     public TablePlacementService placement() { requireServices(); return placement; }
     public GameRoomRuntime gameRooms() { requireServices(); return gameRooms; }
     public TableLifecycleCoordinator lifecycle() { requireServices(); return tableLifecycle; }
+
+    /** Display-scene operations for the render, inspect, and clear commands. */
+    public LatestSceneProjector sceneProjector() {
+        return platform.sceneProjector();
+    }
+
+    public CraftEngineSceneBackend sceneBackend() {
+        return platform.sceneBackend();
+    }
+
+    public Optional<Location> tableAnchor(TableId tableId) {
+        return platform.tableAnchor(Objects.requireNonNull(tableId, "tableId"));
+    }
 
     public CompletionStage<top.ellan.mahjong.application.table.TableActionResult> setAutomation(
             top.ellan.mahjong.spi.PlayerId playerId, boolean enabled) {

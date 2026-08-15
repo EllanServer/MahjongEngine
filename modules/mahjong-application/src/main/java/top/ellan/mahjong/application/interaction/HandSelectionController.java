@@ -14,7 +14,7 @@ import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.TileInstanceId;
 
-/** Owns the legacy-compatible select/confirm hand gesture and its private visual. */
+/** Owns the select/confirm hand gesture and its private visual. */
 final class HandSelectionController {
     private final ConcurrentHashMap<PlayerId, HandSelection> selections =
             new ConcurrentHashMap<>();

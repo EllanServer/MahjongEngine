@@ -4,7 +4,7 @@ import java.util.Optional;
 import net.momirealms.craftengine.core.entity.furniture.hitbox.FurnitureHitBox;
 import top.ellan.mahjong.spi.SeatId;
 
-/** Resolves the four v1.5 compass seats from stable scene ids or legacy CE hitboxes. */
+/** Resolves the four compass seats from stable scene ids or CE furniture hitboxes. */
 public final class CraftEngineSeatResolver {
     private static final float MIN_OFFSET = 0.25F;
     private static final String SEAT_NODE_PREFIX = "furniture/seat/";

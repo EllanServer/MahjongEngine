@@ -2,6 +2,7 @@ package top.ellan.mahjong.presentation.projection;
 
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
@@ -69,6 +70,40 @@ public final class LatestSceneProjector implements SceneProjectionPort {
             backend.submit(differ.diff(previous, SceneGraph.empty(tableId, previous.revision() + 1)));
         }
     }
+
+    /**
+     * Drops the applied scene so the next accepted publish re-emits the full scene instead of a
+     * diff. Re-publishing the current projection afterwards forces a complete display refresh.
+     */
+    public void refresh(TableId tableId) {
+        Slot slot = slots.get(Objects.requireNonNull(tableId, "tableId"));
+        if (slot == null) {
+            return;
+        }
+        synchronized (slot) {
+            slot.applied = null;
+        }
+    }
+
+    /** Applied-scene diagnostics for the inspect command; empty until a scene was applied. */
+    public Optional<AppliedScene> appliedScene(TableId tableId) {
+        Slot slot = slots.get(Objects.requireNonNull(tableId, "tableId"));
+        if (slot == null) {
+            return Optional.empty();
+        }
+        synchronized (slot) {
+            if (slot.applied == null) {
+                return Optional.empty();
+            }
+            return Optional.of(
+                    new AppliedScene(
+                            slot.applied.revision(),
+                            slot.applied.nodes().size(),
+                            slot.applied.interactionBindings().size()));
+        }
+    }
+
+    public record AppliedScene(long revision, int nodes, int interactionBindings) {}
 
     public int trackedTables() {
         return slots.size();

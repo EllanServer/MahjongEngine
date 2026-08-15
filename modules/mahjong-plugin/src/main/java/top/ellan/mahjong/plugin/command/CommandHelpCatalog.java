@@ -5,8 +5,8 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Immutable paged command help catalog in the v1.5 reading order. Entries for commands that did
- * not exist in 1.5 are appended after the legacy flow so the original page boundaries stay intact.
+ * Immutable paged command help catalog in the v1.5 reading order. Entries for commands beyond
+ * the v1.5 flow are appended after it so the original page boundaries stay intact.
  */
 final class CommandHelpCatalog {
     static final int HELP_PAGE_SIZE = 10;
@@ -152,6 +152,21 @@ final class CommandHelpCatalog {
                             "Show the ranked leaderboard for one mode.",
                             false,
                             "lb"),
+                    help(
+                            "render",
+                            "/mahjong render",
+                            "Force a table display refresh.",
+                            true),
+                    help(
+                            "inspect",
+                            "/mahjong inspect",
+                            "Show the table's render anchor and applied scene diagnostics.",
+                            true),
+                    help(
+                            "clear",
+                            "/mahjong clear",
+                            "Remove current display entities for the table.",
+                            true),
                     help(
                             "forceend",
                             "/mahjong forceend <table-id>",
