@@ -44,9 +44,9 @@ final class GameRoomCountdownPresenter {
                                                             messages.resolve(
                                                                     player.locale(),
                                                                     "mahjongpaper.gameroom.countdown",
-                                                                    "Return to the game room within %s seconds."),
+                                                                    "Match ends in %s seconds if you do not return."),
                                                             remaining),
-                                                    NamedTextColor.YELLOW)),
+                                                    NamedTextColor.RED)),
                             null);
         });
     }

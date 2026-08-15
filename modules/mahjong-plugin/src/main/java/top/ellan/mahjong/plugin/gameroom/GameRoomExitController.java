@@ -395,10 +395,10 @@ final class GameRoomExitController implements Listener, AutoCloseable {
                                 messages.resolve(
                                         player.locale(),
                                         "mahjongpaper.gameroom.exit_warning",
-                                        "Return to %s within %s seconds or this match will end."),
+                                        "You left the game room during an active match! Return within %s seconds or the match will be forced to end."),
                                 room.name(),
                                 settings.leaveCountdownSeconds()),
-                        NamedTextColor.YELLOW));
+                        NamedTextColor.RED));
     }
 
     private void sendReturned(Player player) {
@@ -408,7 +408,7 @@ final class GameRoomExitController implements Listener, AutoCloseable {
                             messages.resolve(
                                     player.locale(),
                                     "mahjongpaper.gameroom.returned",
-                                    "You returned to the game room; the countdown was cancelled."),
+                                    "Countdown cancelled. You have returned to the game room."),
                             NamedTextColor.GREEN));
         }
     }

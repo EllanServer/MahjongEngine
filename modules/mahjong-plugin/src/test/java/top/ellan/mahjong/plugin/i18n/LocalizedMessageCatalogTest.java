@@ -53,20 +53,20 @@ class LocalizedMessageCatalogTest {
     @Test
     void localizesCommandPurposeAndPagedHelpChrome() {
         assertEquals(
-                "在当前位置使用所选规则包创建一张可复用牌桌。",
+                "在你当前位置创建一张新牌桌。",
                 messages.resolve(
                         Locale.SIMPLIFIED_CHINESE,
                         "mahjongpaper.command.help.description.create",
                         "missing"));
         assertEquals(
-                "第 1/2 页，共 17 条命令",
+                "[1/2] 17 条可用命令",
                 messages.format(
                         Locale.SIMPLIFIED_CHINESE,
                         "mahjongpaper.command.help.page_status",
                         "Page %s/%s - %s commands available",
                         List.of("1", "2", "17")));
         assertEquals(
-                "各コマンドの用途を説明するページ形式のヘルプを表示します。",
+                "ページ形式のコマンドヘルプを表示します。",
                 messages.resolve(
                         Locale.JAPANESE,
                         "mahjongpaper.command.help.description.help",
@@ -76,7 +76,7 @@ class LocalizedMessageCatalogTest {
     @Test
     void localizesSemanticTileAndSuitLabelsWithLocaleSizedHitboxes() {
         assertEquals(
-                "二万",
+                "2万",
                 messages.resolve(
                         Locale.SIMPLIFIED_CHINESE,
                         "mahjongpaper.tile.m2",
@@ -94,6 +94,24 @@ class LocalizedMessageCatalogTest {
                         < messages.actionButtonWidth(
                                 Locale.ENGLISH,
                                 "action.declare_missing:suit.wan"));
+    }
+
+    @Test
+    void localizesV15GameRoomCountdownTexts() {
+        assertEquals(
+                "如不返回，对局将在 30 秒后强制结束。",
+                messages.format(
+                        Locale.SIMPLIFIED_CHINESE,
+                        "mahjongpaper.gameroom.countdown",
+                        "Match ends in %s seconds if you do not return.",
+                        List.of("30")));
+        assertEquals(
+                "Match ends in 30 seconds if you do not return.",
+                messages.format(
+                        Locale.ENGLISH,
+                        "mahjongpaper.gameroom.countdown",
+                        "Match ends in %s seconds if you do not return.",
+                        List.of("30")));
     }
 
     @Test

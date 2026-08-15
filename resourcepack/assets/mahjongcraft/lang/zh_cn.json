@@ -25,7 +25,7 @@
   "mahjongpaper.action.settle_exhaustion": "结算荒牌",
   "mahjongpaper.action.skip": "跳过",
   "mahjongpaper.action.start_next_hand": "下一局",
-  "mahjongpaper.action.start": "开始对局",
+  "mahjongpaper.action.start": "开始",
   "mahjongpaper.action.transfer_owner_east": "转让房主给东家",
   "mahjongpaper.action.transfer_owner_north": "转让房主给北家",
   "mahjongpaper.action.transfer_owner_south": "转让房主给南家",
@@ -33,37 +33,37 @@
   "mahjongpaper.action.unready": "取消准备",
   "mahjongpaper.action.view_river": "看牌河",
   "mahjongpaper.action.win": "胡",
-  "mahjongpaper.action.leave": "离桌",
+  "mahjongpaper.action.leave": "离开",
   "mahjongpaper.suit.wan": "万",
   "mahjongpaper.suit.tong": "筒",
   "mahjongpaper.suit.suo": "索",
-  "mahjongpaper.tile.m1": "一万",
-  "mahjongpaper.tile.m2": "二万",
-  "mahjongpaper.tile.m3": "三万",
-  "mahjongpaper.tile.m4": "四万",
-  "mahjongpaper.tile.m5": "五万",
-  "mahjongpaper.tile.m6": "六万",
-  "mahjongpaper.tile.m7": "七万",
-  "mahjongpaper.tile.m8": "八万",
-  "mahjongpaper.tile.m9": "九万",
-  "mahjongpaper.tile.p1": "一筒",
-  "mahjongpaper.tile.p2": "二筒",
-  "mahjongpaper.tile.p3": "三筒",
-  "mahjongpaper.tile.p4": "四筒",
-  "mahjongpaper.tile.p5": "五筒",
-  "mahjongpaper.tile.p6": "六筒",
-  "mahjongpaper.tile.p7": "七筒",
-  "mahjongpaper.tile.p8": "八筒",
-  "mahjongpaper.tile.p9": "九筒",
-  "mahjongpaper.tile.s1": "一索",
-  "mahjongpaper.tile.s2": "二索",
-  "mahjongpaper.tile.s3": "三索",
-  "mahjongpaper.tile.s4": "四索",
-  "mahjongpaper.tile.s5": "五索",
-  "mahjongpaper.tile.s6": "六索",
-  "mahjongpaper.tile.s7": "七索",
-  "mahjongpaper.tile.s8": "八索",
-  "mahjongpaper.tile.s9": "九索",
+  "mahjongpaper.tile.m1": "1万",
+  "mahjongpaper.tile.m2": "2万",
+  "mahjongpaper.tile.m3": "3万",
+  "mahjongpaper.tile.m4": "4万",
+  "mahjongpaper.tile.m5": "5万",
+  "mahjongpaper.tile.m6": "6万",
+  "mahjongpaper.tile.m7": "7万",
+  "mahjongpaper.tile.m8": "8万",
+  "mahjongpaper.tile.m9": "9万",
+  "mahjongpaper.tile.p1": "1筒",
+  "mahjongpaper.tile.p2": "2筒",
+  "mahjongpaper.tile.p3": "3筒",
+  "mahjongpaper.tile.p4": "4筒",
+  "mahjongpaper.tile.p5": "5筒",
+  "mahjongpaper.tile.p6": "6筒",
+  "mahjongpaper.tile.p7": "7筒",
+  "mahjongpaper.tile.p8": "8筒",
+  "mahjongpaper.tile.p9": "9筒",
+  "mahjongpaper.tile.s1": "1索",
+  "mahjongpaper.tile.s2": "2索",
+  "mahjongpaper.tile.s3": "3索",
+  "mahjongpaper.tile.s4": "4索",
+  "mahjongpaper.tile.s5": "5索",
+  "mahjongpaper.tile.s6": "6索",
+  "mahjongpaper.tile.s7": "7索",
+  "mahjongpaper.tile.s8": "8索",
+  "mahjongpaper.tile.s9": "9索",
   "mahjongpaper.tile.m5_red": "赤五万",
   "mahjongpaper.tile.p5_red": "赤五筒",
   "mahjongpaper.tile.s5_red": "赤五索",
@@ -81,27 +81,27 @@
   "mahjongpaper.command.creating_lobby": "正在异步创建房间 %s……",
   "mahjongpaper.command.failed": "失败：%s",
   "mahjongpaper.command.help": "/mahjong help [页码]",
-  "mahjongpaper.command.help.header": "MahjongPaper 命令说明",
+  "mahjongpaper.command.help.header": "MahjongPaper 命令帮助",
   "mahjongpaper.command.help.subtitle": "<> 为必填参数，[] 为可选参数；使用 /mahjong help <页码> 翻页。",
-  "mahjongpaper.command.help.page_status": "第 %s/%s 页，共 %s 条命令",
+  "mahjongpaper.command.help.page_status": "[%s/%s] %s 条可用命令",
   "mahjongpaper.command.help.previous": "上一页",
   "mahjongpaper.command.help.next": "下一页",
-  "mahjongpaper.command.help.description.help": "查看带用途说明的分页命令帮助。",
-  "mahjongpaper.command.help.description.create": "在当前位置使用所选规则包创建一张可复用牌桌。",
-  "mahjongpaper.command.help.description.join": "加入指定牌桌和座位；也可以直接点击椅子入座。",
-  "mahjongpaper.command.help.description.leave": "离开当前座位和牌桌。",
-  "mahjongpaper.command.help.description.spectate": "不占座位地观战指定牌桌。",
-  "mahjongpaper.command.help.description.unspectate": "退出当前牌桌的观战。",
+  "mahjongpaper.command.help.description.help": "查看分页命令帮助。",
+  "mahjongpaper.command.help.description.create": "在你当前位置创建一张新牌桌。",
+  "mahjongpaper.command.help.description.join": "作为玩家加入已有牌桌。",
+  "mahjongpaper.command.help.description.leave": "离开当前牌桌，或退出观战。",
+  "mahjongpaper.command.help.description.spectate": "以观战者身份进入牌桌，不占座位。",
+  "mahjongpaper.command.help.description.unspectate": "退出当前观战的牌桌。",
   "mahjongpaper.command.help.description.ready": "在开局前切换准备状态。",
   "mahjongpaper.command.help.description.owner": "把牌桌房主转让给指定的已占用座位。",
   "mahjongpaper.command.help.description.bot": "在开局前给指定座位添加或移除 Bot。",
-  "mahjongpaper.command.help.description.start": "房间满足开局条件后开始对局。",
-  "mahjongpaper.command.help.description.mode": "在开局前更换房间的规则包及可选配置。",
+  "mahjongpaper.command.help.description.start": "切换准备状态；4 个座位满员且全部准备后自动开局。",
+  "mahjongpaper.command.help.description.mode": "应用规则预设；主要玩法为雀魂风格立直，国标和四川为可选模式。",
   "mahjongpaper.command.help.description.auto": "为当前对局座位开启或关闭自动托管。",
   "mahjongpaper.command.help.description.list": "只查看你当前所在的牌桌。",
-  "mahjongpaper.command.help.description.state": "查看房间或对局状态；不填牌桌 ID 时查看当前牌桌。",
+  "mahjongpaper.command.help.description.state": "查看当前牌桌和牌局状态。",
   "mahjongpaper.command.help.description.history": "分页查看你的进行中及已完成对局记录。",
-  "mahjongpaper.command.help.description.rank": "查看自己在指定官方规则包中的排名和排行榜。",
+  "mahjongpaper.command.help.description.rank": "查看你的雀魂风格段位进度。",
   "mahjongpaper.command.help.description.rules": "列出已安装规则包；管理员可安装、校验、启停或回滚。",
   "mahjongpaper.command.help.description.referee": "管理员：向进行中的四川麻将牌桌提交正式裁判裁定。",
   "mahjongpaper.command.help.description.remove": "删除自己拥有的等待中牌桌；管理员可以删除任意牌桌。",
@@ -147,8 +147,8 @@
   "mahjongpaper.feedback.overhead_exited": "已返回座位。",
   "mahjongpaper.feedback.overhead_read_only": "俯视模式只读，请先按 Shift 返回座位。",
   "mahjongpaper.feedback.overhead_unavailable": "当前服务端版本暂不支持俯视功能。",
-  "mahjongpaper.command.help.description.table": "打开原生牌桌控制对话框；点击实体牌桌也会打开。",
-  "mahjongpaper.command.help.description.settlement": "重新打开最近一局或整场对局的结算详情。",
+  "mahjongpaper.command.help.description.table": "打开牌桌控制面板。",
+  "mahjongpaper.command.help.description.settlement": "重新打开本桌最近一次结算界面。",
   "mahjongpaper.dialog.table.title": "牌桌 · %s",
   "mahjongpaper.dialog.table.rule": "规则",
   "mahjongpaper.dialog.table.seats": "座位",
@@ -316,67 +316,75 @@
   "mahjongpaper.dialog.result.not_all_ready": "所有已入座的真人玩家都必须准备",
   "mahjongpaper.dialog.result.owner_required": "只有桌主可以执行此操作",
   "mahjongpaper.dialog.result.seat_occupied": "该座位已被占用",
-  "mahjongpaper.dialog.result.already_seated": "你已经入座"
-  ,"mahjongpaper.command.create_failed_invalid_location": "无法在此位置放置牌桌。"
-  ,"mahjongpaper.command.create_failed_too_close": "此位置离牌桌 %s 太近。"
-  ,"mahjongpaper.command.create_failed_blocked": "牌桌空间在 %s, %s, %s 处被方块阻挡。"
-  ,"mahjongpaper.command.create_failed_height": "此处没有足够的垂直空间放置牌桌。"
-  ,"mahjongpaper.command.create_failed_not_in_room": "只能在棋牌室内创建新牌桌。"
-  ,"mahjongpaper.command.create_failed_protected": "领地保护不允许在此处放置牌桌。"
-  ,"mahjongpaper.command.remove_failed_protected": "领地保护不允许你移除牌桌 %s。"
-  ,"mahjongpaper.command.help.description.room": "管理员：划定棋牌室，并按编号或分页查看。"
-  ,"mahjongpaper.command.room.disabled": "棋牌室功能已关闭。"
-  ,"mahjongpaper.command.room.created": "已创建棋牌室 %s（%s）：%s"
-  ,"mahjongpaper.command.room.exists": "棋牌室 %s 已存在。"
-  ,"mahjongpaper.command.room.deleted": "已删除棋牌室 %s。"
-  ,"mahjongpaper.command.room.not_found": "棋牌室 %s 不存在。"
-  ,"mahjongpaper.command.room.list_header": "棋牌室 - 第 %s/%s 页（共 %s 个）"
-  ,"mahjongpaper.command.room.list_entry": "- %s（%s）：%s"
-  ,"mahjongpaper.command.room.list_empty": "尚未创建棋牌室。"
-  ,"mahjongpaper.command.room.output": "%s"
-  ,"mahjongpaper.command.room.not_found_here": "没有找到对应的棋牌室。"
-  ,"mahjongpaper.command.room.info": "%s（%s）\n边界：%s\n尺寸：%sx%sx%s\n所有者：%s"
-  ,"mahjongpaper.command.room.inventory_full": "你的背包已满。"
-  ,"mahjongpaper.command.room.wand_given": "已给予棋牌室魔棒。左键和右键分别选择两个角。"
-  ,"mahjongpaper.gameroom.wand.first": "第一个角：%s, %s, %s"
-  ,"mahjongpaper.gameroom.wand.second": "第二个角：%s, %s, %s"
-  ,"mahjongpaper.gameroom.wand.title": "棋牌室选区魔棒"
-  ,"mahjongpaper.gameroom.wand.left": "左键：设置第一个角"
-  ,"mahjongpaper.gameroom.wand.right": "右键：设置第二个角"
-  ,"mahjongpaper.gameroom.wand.finish": "然后执行 /mahjong room create <编号>"
-  ,"mahjongpaper.command.help.description.ops": "管理员：操作指定牌桌或重载棋牌室索引；不会列出全部牌桌。"
-  ,"mahjongpaper.command.ops.live_status": "牌桌 %s：对局中，生命周期=%s，版本=%s，参与者=%s，邮箱=%s，规则任务=%s"
-  ,"mahjongpaper.command.ops.lobby_status": "牌桌 %s：大厅，阶段=%s，版本=%s，已占座=%s/%s"
-  ,"mahjongpaper.command.ops.table_not_found": "牌桌 %s 未加载。"
-  ,"mahjongpaper.command.ops.force_ended": "已强制结束牌桌 %s 的对局并重新开放大厅。"
-  ,"mahjongpaper.command.ops.removed": "已移除牌桌 %s。"
-  ,"mahjongpaper.command.ops.rooms_reloaded": "已重载 %s 个分块索引棋牌室。"
-  ,"mahjongpaper.gameroom.exit_warning": "请返回 %s；剩余 %s 秒，否则本局将结束。"
-  ,"mahjongpaper.gameroom.returned": "你已返回棋牌室，倒计时已取消。"
-  ,"mahjongpaper.gameroom.force_ended": "有玩家持续离开棋牌室，本局已结束。"
-  ,"mahjongpaper.command.help.description.botmatch": "管理员：创建一桌四个 Bot 的测试对局并进入观战。"
-  ,"mahjongpaper.command.help.description.rule": "打开当前大厅的规则设置；rule summary 显示当前配置。"
-  ,"mahjongpaper.command.help.description.reload": "管理员：重载有界运行时索引；规则包激活与核心配置仍需完整重启。"
-  ,"mahjongpaper.command.unknown_lobby": "找不到等待大厅 %s。"
-  ,"mahjongpaper.command.no_empty_seat": "牌桌 %s 没有空座位。"
-  ,"mahjongpaper.command.no_bot_seat": "牌桌 %s 没有机器人座位。"
-  ,"mahjongpaper.command.not_at_lobby": "你不属于任何等待大厅。"
-  ,"mahjongpaper.command.table_owner_target_not_found": "玩家 %s 不在线。"
-  ,"mahjongpaper.command.table_owner_target_not_seated": "%s 未坐在牌桌 %s。"
-  ,"mahjongpaper.command.creating_botmatch": "正在创建四个 Bot 的 %s 对局 %s…"
-  ,"mahjongpaper.command.botmatch_created": "已创建四个 Bot 的 %s/%s 对局 %s；正在观战。"
-  ,"mahjongpaper.command.botmatch_failed_in_table": "你已经属于一张牌桌，请先离开或退出观战。"
-  ,"mahjongpaper.command.reload_success": "已重载 %s 个棋牌室索引。规则包激活与核心配置更改需要完整重启。"
-  ,"mahjongpaper.command.rule_summary": "%s/%s：%s"
-  ,"mahjongpaper.gameroom.countdown": "请在 %s 秒内返回棋牌室。"
-  ,"mahjongpaper.command.help.description.riichi": "立直并打出所选手牌。"
-  ,"mahjongpaper.command.help.description.tsumo": "宣告自摸和牌。"
-  ,"mahjongpaper.command.help.description.ron": "荣和当前打出的牌。"
-  ,"mahjongpaper.command.help.description.pon": "碰当前打出的牌。"
-  ,"mahjongpaper.command.help.description.minkan": "明杠当前打出的牌。"
-  ,"mahjongpaper.command.help.description.chii": "吃当前打出的牌。"
-  ,"mahjongpaper.command.help.description.kan": "宣告暗杠或加杠。"
-  ,"mahjongpaper.command.help.description.skip": "跳过当前响应。"
-  ,"mahjongpaper.command.help.description.kyuushu": "宣告九种九牌。"
-  ,"mahjongpaper.command.not_in_active_match": "你不在进行中的对局里。"
+  "mahjongpaper.dialog.result.already_seated": "你已经入座",
+  "mahjongpaper.command.create_failed_invalid_location": "无法在此位置放置牌桌。",
+  "mahjongpaper.command.create_failed_too_close": "此位置离牌桌 %s 太近。",
+  "mahjongpaper.command.create_failed_blocked": "牌桌空间在 %s, %s, %s 处被方块阻挡。",
+  "mahjongpaper.command.create_failed_height": "此处没有足够的垂直空间放置牌桌。",
+  "mahjongpaper.command.create_failed_not_in_room": "只能在棋牌室内创建新牌桌。",
+  "mahjongpaper.command.create_failed_protected": "领地保护不允许在此处放置牌桌。",
+  "mahjongpaper.command.remove_failed_protected": "领地保护不允许你移除牌桌 %s。",
+  "mahjongpaper.command.help.description.room": "管理棋牌室",
+  "mahjongpaper.command.room.disabled": "棋牌室功能已关闭。",
+  "mahjongpaper.command.room.created": "已创建棋牌室 %s（%s）：%s",
+  "mahjongpaper.command.room.exists": "棋牌室 %s 已存在。",
+  "mahjongpaper.command.room.deleted": "已删除棋牌室 %s。",
+  "mahjongpaper.command.room.not_found": "棋牌室 %s 不存在。",
+  "mahjongpaper.command.room.list_header": "棋牌室 - 第 %s/%s 页（共 %s 个）",
+  "mahjongpaper.command.room.list_entry": "- %s（%s）：%s",
+  "mahjongpaper.command.room.list_empty": "尚未创建棋牌室。",
+  "mahjongpaper.command.room.output": "%s",
+  "mahjongpaper.command.room.not_found_here": "没有找到对应的棋牌室。",
+  "mahjongpaper.command.room.info": "%s（%s）\n边界：%s\n尺寸：%sx%sx%s\n所有者：%s",
+  "mahjongpaper.command.room.inventory_full": "你的背包已满。",
+  "mahjongpaper.command.room.wand_given": "已给予棋牌室魔棒。左键和右键分别选择两个角。",
+  "mahjongpaper.gameroom.wand.first": "第一个角：%s, %s, %s",
+  "mahjongpaper.gameroom.wand.second": "第二个角：%s, %s, %s",
+  "mahjongpaper.gameroom.wand.title": "棋牌室选区魔棒",
+  "mahjongpaper.gameroom.wand.left": "左键：设置第一个角",
+  "mahjongpaper.gameroom.wand.right": "右键：设置第二个角",
+  "mahjongpaper.gameroom.wand.finish": "然后执行 /mahjong room create <编号>",
+  "mahjongpaper.command.help.description.ops": "管理员：操作指定牌桌或重载棋牌室索引；不会列出全部牌桌。",
+  "mahjongpaper.command.ops.live_status": "牌桌 %s：对局中，生命周期=%s，版本=%s，参与者=%s，邮箱=%s，规则任务=%s",
+  "mahjongpaper.command.ops.lobby_status": "牌桌 %s：大厅，阶段=%s，版本=%s，已占座=%s/%s",
+  "mahjongpaper.command.ops.table_not_found": "牌桌 %s 未加载。",
+  "mahjongpaper.command.ops.force_ended": "已强制结束牌桌 %s 的对局并重新开放大厅。",
+  "mahjongpaper.command.ops.removed": "已移除牌桌 %s。",
+  "mahjongpaper.command.ops.rooms_reloaded": "已重载 %s 个分块索引棋牌室。",
+  "mahjongpaper.gameroom.exit_warning": "对局中离开了棋牌室！请在 %s 秒内返回，否则对局将被强制结束。",
+  "mahjongpaper.gameroom.returned": "倒计时已取消，你已返回棋牌室。",
+  "mahjongpaper.gameroom.force_ended": "有玩家持续离开棋牌室，本局已结束。",
+  "mahjongpaper.command.help.description.botmatch": "创建并启动一整桌 4 Bot 测试对局，然后自动进入观战。",
+  "mahjongpaper.command.help.description.rule": "打开规则界面，或在开局前修改单项规则。",
+  "mahjongpaper.command.help.description.reload": "管理员：重载有界运行时索引；规则包激活与核心配置仍需完整重启。",
+  "mahjongpaper.command.unknown_lobby": "找不到等待大厅 %s。",
+  "mahjongpaper.command.no_empty_seat": "牌桌 %s 没有空座位。",
+  "mahjongpaper.command.no_bot_seat": "牌桌 %s 没有机器人座位。",
+  "mahjongpaper.command.not_at_lobby": "你不属于任何等待大厅。",
+  "mahjongpaper.command.table_owner_target_not_found": "玩家 %s 不在线。",
+  "mahjongpaper.command.table_owner_target_not_seated": "%s 未坐在牌桌 %s。",
+  "mahjongpaper.command.creating_botmatch": "正在创建四个 Bot 的 %s 对局 %s…",
+  "mahjongpaper.command.botmatch_created": "已创建四个 Bot 的 %s/%s 对局 %s；正在观战。",
+  "mahjongpaper.command.botmatch_failed_in_table": "你已经属于一张牌桌，请先离开或退出观战。",
+  "mahjongpaper.command.reload_success": "已重载 %s 个棋牌室索引。规则包激活与核心配置更改需要完整重启。",
+  "mahjongpaper.command.rule_summary": "%s/%s：%s",
+  "mahjongpaper.gameroom.countdown": "如不返回，对局将在 %s 秒后强制结束。",
+  "mahjongpaper.command.help.description.riichi": "宣告立直，并打出指定手牌索引的牌。仅限立直麻将。",
+  "mahjongpaper.command.help.description.tsumo": "在满足条件时宣告自摸。",
+  "mahjongpaper.command.help.description.ron": "对他家打出的牌宣告荣和。",
+  "mahjongpaper.command.help.description.pon": "在当前反应窗口执行碰牌。",
+  "mahjongpaper.command.help.description.minkan": "在当前反应窗口执行明杠。",
+  "mahjongpaper.command.help.description.chii": "用手里的两张指定牌执行吃牌。",
+  "mahjongpaper.command.help.description.kan": "用指定牌种宣告暗杠或加杠。",
+  "mahjongpaper.command.help.description.skip": "放弃当前可执行的反应操作。",
+  "mahjongpaper.command.help.description.kyuushu": "宣告九种九牌流局。仅限立直麻将。",
+  "mahjongpaper.command.not_in_active_match": "你不在进行中的对局里。",
+  "mahjongpaper.command.help.subtitle.use": "使用 ",
+  "mahjongpaper.command.help.subtitle.browse": "浏览命令页。",
+  "mahjongpaper.command.help.commands_available": " 条可用命令",
+  "mahjongpaper.command.help.description.addbot": "给空座位补一个 Bot。",
+  "mahjongpaper.command.help.description.removebot": "在开局前移除一个 Bot。",
+  "mahjongpaper.command.help.description.leaderboard": "查看指定模式的排位排行榜。",
+  "mahjongpaper.command.help.description.forceend": "管理员：强制结束当前对局并让桌子回到等待状态。",
+  "mahjongpaper.command.help.description.deletetable": "管理员：立即删除当前或指定牌桌。"
 }

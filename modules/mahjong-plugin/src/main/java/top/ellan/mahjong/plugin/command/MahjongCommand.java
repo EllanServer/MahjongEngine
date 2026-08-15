@@ -13,6 +13,7 @@ import io.papermc.paper.command.brigadier.BasicCommand;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.command.CommandSender;
@@ -118,7 +119,7 @@ public final class MahjongCommand implements BasicCommand {
         }
     }
 
-    /** Paginated usage-and-description help matching the v1.5.0 reading flow. */
+    /** Paginated usage-and-description help with the v1.5 header, page status and buttons. */
     private void sendHelp(CommandSender sender, int requestedPage) {
         List<CommandHelpCatalog.HelpEntry> entries = CommandHelpCatalog.ENTRIES.stream()
                 .filter(entry -> !entry.adminOnly() || sender.hasPermission("mahjongpaper.admin"))
@@ -131,6 +132,7 @@ public final class MahjongCommand implements BasicCommand {
         List<Component> lines = new ArrayList<>();
         lines.add(
                 Component.text("------------ ", NamedTextColor.DARK_AQUA)
+                        .decorate(TextDecoration.STRIKETHROUGH)
                         .append(Component.text(
                                         support.text(
                                                 sender,
@@ -138,29 +140,28 @@ public final class MahjongCommand implements BasicCommand {
                                                 "MahjongPaper Commands"),
                                         NamedTextColor.GOLD)
                                 .decorate(TextDecoration.BOLD))
-                        .append(Component.text(" ------------", NamedTextColor.DARK_AQUA)));
+                        .append(Component.text(" ------------", NamedTextColor.DARK_AQUA)
+                                .decorate(TextDecoration.STRIKETHROUGH)));
         lines.add(
                 Component.text(
-                        support.text(
-                                sender,
-                                "mahjongpaper.command.help.subtitle",
-                                "<> is required and [] is optional; use /mahjong help <page> to browse."),
-                        NamedTextColor.GRAY));
-        lines.add(
-                Component.text(
-                        support.text(
-                                sender,
-                                "mahjongpaper.command.help.page_status",
-                                "Page %s/%s - %s commands available",
-                                page,
-                                pageCount,
-                                entries.size()),
-                        NamedTextColor.GRAY));
+                                support.text(
+                                        sender,
+                                        "mahjongpaper.command.help.subtitle.use",
+                                        "Use "),
+                                NamedTextColor.GRAY)
+                        .append(Component.text("/mahjong help <page>", NamedTextColor.YELLOW))
+                        .append(Component.text(
+                                support.text(
+                                        sender,
+                                        "mahjongpaper.command.help.subtitle.browse",
+                                        " to browse command pages."),
+                                NamedTextColor.GRAY)));
+        lines.add(pageStatus(sender, page, pageCount, entries.size()));
         for (int index = start; index < end; index++) {
             CommandHelpCatalog.HelpEntry entry = entries.get(index);
             lines.add(
                     Component.text("  - ", NamedTextColor.DARK_AQUA)
-                            .append(Component.text(entry.usage(), NamedTextColor.AQUA))
+                            .append(Component.text(entry.usage(), NamedTextColor.GRAY))
                             .append(Component.text(" - ", NamedTextColor.DARK_GRAY))
                             .append(Component.text(
                                     support.text(
@@ -169,40 +170,63 @@ public final class MahjongCommand implements BasicCommand {
                                             entry.fallbackDescription()),
                                     NamedTextColor.WHITE)));
         }
-        if (pageCount > 1) {
-            lines.add(helpNavigation(sender, page, pageCount));
-        }
-        lines.add(Component.text("----------------------------------------", NamedTextColor.DARK_AQUA));
+        lines.add(helpNavigation(sender, page, pageCount));
+        lines.add(Component.text("----------------------------------------", NamedTextColor.DARK_AQUA)
+                .decorate(TextDecoration.STRIKETHROUGH));
         lines.forEach(sender::sendMessage);
+    }
+
+    private Component pageStatus(CommandSender sender, int page, int pageCount, int commandCount) {
+        return Component.text("[", NamedTextColor.DARK_GRAY)
+                .append(Component.text(Integer.toString(page), NamedTextColor.AQUA))
+                .append(Component.text("/", NamedTextColor.GRAY))
+                .append(Component.text(Integer.toString(pageCount), NamedTextColor.AQUA))
+                .append(Component.text("] ", NamedTextColor.DARK_GRAY))
+                .append(Component.text(Integer.toString(commandCount), NamedTextColor.WHITE))
+                .append(Component.text(
+                        support.text(
+                                sender,
+                                "mahjongpaper.command.help.commands_available",
+                                " commands available"),
+                        NamedTextColor.GRAY));
     }
 
     private Component helpNavigation(CommandSender sender, int page, int pageCount) {
         Component navigation = Component.text("  ");
-        if (page > 1) {
-            navigation = navigation.append(
-                    Component.text(
-                                    "< "
-                                            + support.text(
-                                                    sender,
-                                                    "mahjongpaper.command.help.previous",
-                                                    "Previous"),
-                                    NamedTextColor.YELLOW)
-                            .clickEvent(ClickEvent.runCommand("/mahjong help " + (page - 1))));
-        }
+        navigation = navigation.append(helpPageButton(
+                sender, "mahjongpaper.command.help.previous", "Prev", page - 1, page > 1));
+        navigation = navigation.append(Component.text(" "));
         navigation = navigation.append(
-                Component.text("  [" + page + '/' + pageCount + "]  ", NamedTextColor.GRAY));
-        if (page < pageCount) {
-            navigation = navigation.append(
-                    Component.text(
-                                    support.text(
-                                                    sender,
-                                                    "mahjongpaper.command.help.next",
-                                                    "Next")
-                                            + " >",
-                                    NamedTextColor.YELLOW)
-                            .clickEvent(ClickEvent.runCommand("/mahjong help " + (page + 1))));
-        }
+                Component.text("[", NamedTextColor.DARK_GRAY)
+                        .append(Component.text(Integer.toString(page), NamedTextColor.AQUA))
+                        .append(Component.text("/", NamedTextColor.GRAY))
+                        .append(Component.text(Integer.toString(pageCount), NamedTextColor.AQUA))
+                        .append(Component.text("]", NamedTextColor.DARK_GRAY)));
+        navigation = navigation.append(Component.text(" "));
+        navigation = navigation.append(helpPageButton(
+                sender, "mahjongpaper.command.help.next", "Next", page + 1, page < pageCount));
         return navigation;
+    }
+
+    private Component helpPageButton(
+            CommandSender sender,
+            String labelKey,
+            String fallback,
+            int targetPage,
+            boolean enabled) {
+        String label = support.text(sender, labelKey, fallback);
+        Component button = Component.text("[", NamedTextColor.DARK_GRAY)
+                .append(Component.text(
+                        label,
+                        enabled ? NamedTextColor.YELLOW : NamedTextColor.DARK_GRAY))
+                .append(Component.text("]", NamedTextColor.DARK_GRAY));
+        if (!enabled) {
+            return button;
+        }
+        String command = "/mahjong help " + targetPage;
+        return button
+                .clickEvent(ClickEvent.runCommand(command))
+                .hoverEvent(HoverEvent.showText(Component.text(command, NamedTextColor.GRAY)));
     }
 
     private int helpPageCount(CommandSender sender) {
@@ -245,7 +269,8 @@ public final class MahjongCommand implements BasicCommand {
     private static List<String> rootSuggestions(CommandSender sender) {
         return CommandHelpCatalog.ENTRIES.stream()
                 .filter(entry -> !entry.adminOnly() || sender.hasPermission("mahjongpaper.admin"))
-                .map(CommandHelpCatalog.HelpEntry::canonicalName)
+                .flatMap(entry -> entry.names().stream())
+                .distinct()
                 .toList();
     }
 

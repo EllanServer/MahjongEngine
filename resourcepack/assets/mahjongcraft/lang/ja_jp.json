@@ -15,7 +15,7 @@
   "mahjongpaper.action.draw": "ツモる",
   "mahjongpaper.action.hu": "和了",
   "mahjongpaper.action.instant_rain": "即時雨",
-  "mahjongpaper.action.minkan": "明槓",
+  "mahjongpaper.action.minkan": "大明槓",
   "mahjongpaper.action.pass": "パス",
   "mahjongpaper.action.pon": "ポン",
   "mahjongpaper.action.pung": "ポン",
@@ -25,7 +25,7 @@
   "mahjongpaper.action.settle_exhaustion": "流局精算",
   "mahjongpaper.action.skip": "スキップ",
   "mahjongpaper.action.start_next_hand": "次局",
-  "mahjongpaper.action.start": "対局開始",
+  "mahjongpaper.action.start": "開始",
   "mahjongpaper.action.transfer_owner_east": "ルームオーナーを東家へ譲渡",
   "mahjongpaper.action.transfer_owner_north": "ルームオーナーを北家へ譲渡",
   "mahjongpaper.action.transfer_owner_south": "ルームオーナーを南家へ譲渡",
@@ -33,7 +33,7 @@
   "mahjongpaper.action.unready": "準備解除",
   "mahjongpaper.action.view_river": "河を見る",
   "mahjongpaper.action.win": "和了",
-  "mahjongpaper.action.leave": "卓を離れる",
+  "mahjongpaper.action.leave": "退出",
   "mahjongpaper.suit.wan": "萬子",
   "mahjongpaper.suit.tong": "筒子",
   "mahjongpaper.suit.suo": "索子",
@@ -81,27 +81,27 @@
   "mahjongpaper.command.creating_lobby": "ロビー %s を非同期で作成しています…",
   "mahjongpaper.command.failed": "失敗：%s",
   "mahjongpaper.command.help": "/mahjong help [ページ]",
-  "mahjongpaper.command.help.header": "MahjongPaper コマンドヘルプ",
+  "mahjongpaper.command.help.header": "MahjongPaper コマンド",
   "mahjongpaper.command.help.subtitle": "<> は必須、[] は任意です。/mahjong help <ページ> でページを切り替えます。",
-  "mahjongpaper.command.help.page_status": "%s/%s ページ（全 %s コマンド）",
+  "mahjongpaper.command.help.page_status": "[%s/%s] %s 件のコマンド",
   "mahjongpaper.command.help.previous": "前へ",
   "mahjongpaper.command.help.next": "次へ",
-  "mahjongpaper.command.help.description.help": "各コマンドの用途を説明するページ形式のヘルプを表示します。",
-  "mahjongpaper.command.help.description.create": "現在地に選択したルールパックの再利用可能な卓を作成します。",
-  "mahjongpaper.command.help.description.join": "指定した卓の席に参加します。椅子をクリックして着席することもできます。",
-  "mahjongpaper.command.help.description.leave": "現在の席と卓から退出します。",
-  "mahjongpaper.command.help.description.spectate": "席を使わずに指定した卓を観戦します。",
+  "mahjongpaper.command.help.description.help": "ページ形式のコマンドヘルプを表示します。",
+  "mahjongpaper.command.help.description.create": "現在地に新しい卓を作成します。",
+  "mahjongpaper.command.help.description.join": "プレイヤーとして卓に参加します。",
+  "mahjongpaper.command.help.description.leave": "現在の卓から退出するか、観戦を終了します。",
+  "mahjongpaper.command.help.description.spectate": "着席せずに卓を観戦します。",
   "mahjongpaper.command.help.description.unspectate": "現在の卓の観戦を終了します。",
   "mahjongpaper.command.help.description.ready": "対局開始前の準備状態を切り替えます。",
   "mahjongpaper.command.help.description.owner": "卓のオーナーを指定した着席済みの席へ譲渡します。",
   "mahjongpaper.command.help.description.bot": "開始前に指定した席へ Bot を追加、または削除します。",
-  "mahjongpaper.command.help.description.start": "ロビーが開始条件を満たしたら対局を開始します。",
-  "mahjongpaper.command.help.description.mode": "開始前にロビーのルールパックと任意のプロファイルを変更します。",
+  "mahjongpaper.command.help.description.start": "準備状態を切り替えます。4人全員が準備すると自動で開始します。",
+  "mahjongpaper.command.help.description.mode": "ルールセットを適用します。雀魂式リーチ麻雀が主モードで、国標麻雀と四川麻雀も選べます。",
   "mahjongpaper.command.help.description.auto": "対局中の自席で自動代打を有効または無効にします。",
   "mahjongpaper.command.help.description.list": "自分が現在参加している卓だけを表示します。",
-  "mahjongpaper.command.help.description.state": "ロビーまたは対局状態を表示します。卓 ID 省略時は現在の卓を使います。",
+  "mahjongpaper.command.help.description.state": "卓と現在局の状態を表示します。",
   "mahjongpaper.command.help.description.history": "進行中および完了済みの対局履歴をページごとに表示します。",
-  "mahjongpaper.command.help.description.rank": "指定した公式ルールパックで自分の順位とランキングを表示します。",
+  "mahjongpaper.command.help.description.rank": "雀魂式の段位進行を表示します。",
   "mahjongpaper.command.help.description.rules": "インストール済みルールパックを一覧表示します。管理者は導入、検証、有効化、切替、ロールバックを実行できます。",
   "mahjongpaper.command.help.description.referee": "管理者用：進行中の四川麻雀卓へ公式の審判裁定を送信します。",
   "mahjongpaper.command.help.description.remove": "自分が所有する待機卓を削除します。管理者は任意の卓を削除できます。",
@@ -147,8 +147,8 @@
   "mahjongpaper.feedback.overhead_exited": "席に戻りました。",
   "mahjongpaper.feedback.overhead_read_only": "俯瞰表示は閲覧専用です。先に Shift キーで席へ戻ってください。",
   "mahjongpaper.feedback.overhead_unavailable": "このサーバーバージョンでは俯瞰表示を利用できません。",
-  "mahjongpaper.command.help.description.table": "ネイティブの卓操作ダイアログを開きます。実体の卓をクリックしても開けます。",
-  "mahjongpaper.command.help.description.settlement": "直近の局または対局の精算詳細を開き直します。",
+  "mahjongpaper.command.help.description.table": "卓の操作パネルを開きます。",
+  "mahjongpaper.command.help.description.settlement": "この卓の直近の精算画面を再表示します。",
   "mahjongpaper.dialog.table.title": "麻雀卓 · %s",
   "mahjongpaper.dialog.table.rule": "ルール",
   "mahjongpaper.dialog.table.seats": "座席",
@@ -316,67 +316,75 @@
   "mahjongpaper.dialog.result.not_all_ready": "着席中の実プレイヤー全員が準備完了である必要があります",
   "mahjongpaper.dialog.result.owner_required": "この操作は卓主だけが実行できます",
   "mahjongpaper.dialog.result.seat_occupied": "その座席は使用中です",
-  "mahjongpaper.dialog.result.already_seated": "すでに着席しています"
-  ,"mahjongpaper.command.create_failed_invalid_location": "この場所には卓を設置できません。"
-  ,"mahjongpaper.command.create_failed_too_close": "この場所は卓 %s に近すぎます。"
-  ,"mahjongpaper.command.create_failed_blocked": "%s, %s, %s のブロックが卓の設置を妨げています。"
-  ,"mahjongpaper.command.create_failed_height": "卓を設置する高さが足りません。"
-  ,"mahjongpaper.command.create_failed_not_in_room": "新しい卓はゲームルーム内にのみ設置できます。"
-  ,"mahjongpaper.command.create_failed_protected": "保護設定により、この場所には卓を設置できません。"
-  ,"mahjongpaper.command.remove_failed_protected": "保護設定により、卓 %s を撤去できません。"
-  ,"mahjongpaper.command.help.description.room": "管理者：ゲームルームを設定し、ID またはページで確認します。"
-  ,"mahjongpaper.command.room.disabled": "ゲームルームは無効です。"
-  ,"mahjongpaper.command.room.created": "ゲームルーム %s（%s）を作成しました：%s"
-  ,"mahjongpaper.command.room.exists": "ゲームルーム %s は既に存在します。"
-  ,"mahjongpaper.command.room.deleted": "ゲームルーム %s を削除しました。"
-  ,"mahjongpaper.command.room.not_found": "ゲームルーム %s は存在しません。"
-  ,"mahjongpaper.command.room.list_header": "ゲームルーム - %s/%s ページ（全 %s 件）"
-  ,"mahjongpaper.command.room.list_entry": "- %s（%s）：%s"
-  ,"mahjongpaper.command.room.list_empty": "ゲームルームはまだ作成されていません。"
-  ,"mahjongpaper.command.room.output": "%s"
-  ,"mahjongpaper.command.room.not_found_here": "該当するゲームルームが見つかりません。"
-  ,"mahjongpaper.command.room.info": "%s（%s）\n範囲：%s\nサイズ：%sx%sx%s\n所有者：%s"
-  ,"mahjongpaper.command.room.inventory_full": "インベントリがいっぱいです。"
-  ,"mahjongpaper.command.room.wand_given": "ゲームルームの杖を渡しました。左クリックと右クリックで二つの角を選択してください。"
-  ,"mahjongpaper.gameroom.wand.first": "最初の角：%s, %s, %s"
-  ,"mahjongpaper.gameroom.wand.second": "二つ目の角：%s, %s, %s"
-  ,"mahjongpaper.gameroom.wand.title": "麻雀ゲームルームの杖"
-  ,"mahjongpaper.gameroom.wand.left": "左クリック：最初の角を設定"
-  ,"mahjongpaper.gameroom.wand.right": "右クリック：二つ目の角を設定"
-  ,"mahjongpaper.gameroom.wand.finish": "次に /mahjong room create <id> を実行"
-  ,"mahjongpaper.command.help.description.ops": "管理者：指定した卓を操作、またはルーム索引を再読込します。全卓一覧は作成しません。"
-  ,"mahjongpaper.command.ops.live_status": "卓 %s：対局中、ライフサイクル=%s、リビジョン=%s、参加者=%s、メールボックス=%s、ルール処理=%s"
-  ,"mahjongpaper.command.ops.lobby_status": "卓 %s：ロビー、フェーズ=%s、リビジョン=%s、着席=%s/%s"
-  ,"mahjongpaper.command.ops.table_not_found": "卓 %s は読み込まれていません。"
-  ,"mahjongpaper.command.ops.force_ended": "卓 %s の対局を強制終了し、ロビーを再開しました。"
-  ,"mahjongpaper.command.ops.removed": "卓 %s を撤去しました。"
-  ,"mahjongpaper.command.ops.rooms_reloaded": "%s 件のゲームルーム索引を再読込しました。"
-  ,"mahjongpaper.gameroom.exit_warning": "%s へ戻ってください。残り %s 秒で対局が終了します。"
-  ,"mahjongpaper.gameroom.returned": "ゲームルームへ戻ったため、カウントダウンを解除しました。"
-  ,"mahjongpaper.gameroom.force_ended": "プレイヤーがゲームルーム外に留まったため、対局を終了しました。"
-  ,"mahjongpaper.command.help.description.botmatch": "管理者：Bot 4 人のデモ対局を作成して観戦します。"
-  ,"mahjongpaper.command.help.description.rule": "現在のロビーのルール設定を開きます。rule summary で現在の設定を表示します。"
-  ,"mahjongpaper.command.help.description.reload": "管理者：境界付きランタイム索引を再読み込みします。ルールパックとコア設定は再起動が必要です。"
-  ,"mahjongpaper.command.unknown_lobby": "待機ロビー %s が見つかりません。"
-  ,"mahjongpaper.command.no_empty_seat": "テーブル %s に空席がありません。"
-  ,"mahjongpaper.command.no_bot_seat": "テーブル %s に Bot の席がありません。"
-  ,"mahjongpaper.command.not_at_lobby": "どの待機ロビーにも所属していません。"
-  ,"mahjongpaper.command.table_owner_target_not_found": "プレイヤー %s はオンラインではありません。"
-  ,"mahjongpaper.command.table_owner_target_not_seated": "%s はテーブル %s に着席していません。"
-  ,"mahjongpaper.command.creating_botmatch": "Bot 4 人の %s 対局 %s を作成しています…"
-  ,"mahjongpaper.command.botmatch_created": "Bot 4 人の %s/%s 対局 %s を作成しました。観戦を開始します。"
-  ,"mahjongpaper.command.botmatch_failed_in_table": "すでにテーブルに所属しています。先に退出するか観戦を終了してください。"
-  ,"mahjongpaper.command.reload_success": "%s 件のゲームルーム索引を再読み込みしました。ルールパックの有効化とコア設定の変更は再起動が必要です。"
-  ,"mahjongpaper.command.rule_summary": "%s/%s: %s"
-  ,"mahjongpaper.gameroom.countdown": "%s 秒以内にゲームルームへ戻ってください。"
-  ,"mahjongpaper.command.help.description.riichi": "リーチを宣言し、選んだ手牌を捨てます。"
-  ,"mahjongpaper.command.help.description.tsumo": "ツモ和了を宣言します。"
-  ,"mahjongpaper.command.help.description.ron": "ロンを宣言します。"
-  ,"mahjongpaper.command.help.description.pon": "ポンを宣言します。"
-  ,"mahjongpaper.command.help.description.minkan": "ミンカンを宣言します。"
-  ,"mahjongpaper.command.help.description.chii": "チーを宣言します。"
-  ,"mahjongpaper.command.help.description.kan": "暗槓または加槓を宣言します。"
-  ,"mahjongpaper.command.help.description.skip": "現在の応答をパスします。"
-  ,"mahjongpaper.command.help.description.kyuushu": "九種九牌を宣言します。"
-  ,"mahjongpaper.command.not_in_active_match": "進行中の対局に参加していません。"
+  "mahjongpaper.dialog.result.already_seated": "すでに着席しています",
+  "mahjongpaper.command.create_failed_invalid_location": "この場所には卓を設置できません。",
+  "mahjongpaper.command.create_failed_too_close": "この場所は卓 %s に近すぎます。",
+  "mahjongpaper.command.create_failed_blocked": "%s, %s, %s のブロックが卓の設置を妨げています。",
+  "mahjongpaper.command.create_failed_height": "卓を設置する高さが足りません。",
+  "mahjongpaper.command.create_failed_not_in_room": "新しい卓はゲームルーム内にのみ設置できます。",
+  "mahjongpaper.command.create_failed_protected": "保護設定により、この場所には卓を設置できません。",
+  "mahjongpaper.command.remove_failed_protected": "保護設定により、卓 %s を撤去できません。",
+  "mahjongpaper.command.help.description.room": "ゲームルームを管理します",
+  "mahjongpaper.command.room.disabled": "ゲームルームは無効です。",
+  "mahjongpaper.command.room.created": "ゲームルーム %s（%s）を作成しました：%s",
+  "mahjongpaper.command.room.exists": "ゲームルーム %s は既に存在します。",
+  "mahjongpaper.command.room.deleted": "ゲームルーム %s を削除しました。",
+  "mahjongpaper.command.room.not_found": "ゲームルーム %s は存在しません。",
+  "mahjongpaper.command.room.list_header": "ゲームルーム - %s/%s ページ（全 %s 件）",
+  "mahjongpaper.command.room.list_entry": "- %s（%s）：%s",
+  "mahjongpaper.command.room.list_empty": "ゲームルームはまだ作成されていません。",
+  "mahjongpaper.command.room.output": "%s",
+  "mahjongpaper.command.room.not_found_here": "該当するゲームルームが見つかりません。",
+  "mahjongpaper.command.room.info": "%s（%s）\n範囲：%s\nサイズ：%sx%sx%s\n所有者：%s",
+  "mahjongpaper.command.room.inventory_full": "インベントリがいっぱいです。",
+  "mahjongpaper.command.room.wand_given": "ゲームルームの杖を渡しました。左クリックと右クリックで二つの角を選択してください。",
+  "mahjongpaper.gameroom.wand.first": "最初の角：%s, %s, %s",
+  "mahjongpaper.gameroom.wand.second": "二つ目の角：%s, %s, %s",
+  "mahjongpaper.gameroom.wand.title": "麻雀ゲームルームの杖",
+  "mahjongpaper.gameroom.wand.left": "左クリック：最初の角を設定",
+  "mahjongpaper.gameroom.wand.right": "右クリック：二つ目の角を設定",
+  "mahjongpaper.gameroom.wand.finish": "次に /mahjong room create <id> を実行",
+  "mahjongpaper.command.help.description.ops": "管理者：指定した卓を操作、またはルーム索引を再読込します。全卓一覧は作成しません。",
+  "mahjongpaper.command.ops.live_status": "卓 %s：対局中、ライフサイクル=%s、リビジョン=%s、参加者=%s、メールボックス=%s、ルール処理=%s",
+  "mahjongpaper.command.ops.lobby_status": "卓 %s：ロビー、フェーズ=%s、リビジョン=%s、着席=%s/%s",
+  "mahjongpaper.command.ops.table_not_found": "卓 %s は読み込まれていません。",
+  "mahjongpaper.command.ops.force_ended": "卓 %s の対局を強制終了し、ロビーを再開しました。",
+  "mahjongpaper.command.ops.removed": "卓 %s を撤去しました。",
+  "mahjongpaper.command.ops.rooms_reloaded": "%s 件のゲームルーム索引を再読込しました。",
+  "mahjongpaper.gameroom.exit_warning": "対局中にゲームルームから出ました！ %s秒以内に戻らないと対局が強制終了します。",
+  "mahjongpaper.gameroom.returned": "カウントダウンを解除しました。ゲームルームに戻りました。",
+  "mahjongpaper.gameroom.force_ended": "プレイヤーがゲームルーム外に留まったため、対局を終了しました。",
+  "mahjongpaper.command.help.description.botmatch": "4人のボット対局を作成して開始し、観戦します。",
+  "mahjongpaper.command.help.description.rule": "ルール画面を開くか、開始前のルールを変更します。",
+  "mahjongpaper.command.help.description.reload": "管理者：境界付きランタイム索引を再読み込みします。ルールパックとコア設定は再起動が必要です。",
+  "mahjongpaper.command.unknown_lobby": "待機ロビー %s が見つかりません。",
+  "mahjongpaper.command.no_empty_seat": "テーブル %s に空席がありません。",
+  "mahjongpaper.command.no_bot_seat": "テーブル %s に Bot の席がありません。",
+  "mahjongpaper.command.not_at_lobby": "どの待機ロビーにも所属していません。",
+  "mahjongpaper.command.table_owner_target_not_found": "プレイヤー %s はオンラインではありません。",
+  "mahjongpaper.command.table_owner_target_not_seated": "%s はテーブル %s に着席していません。",
+  "mahjongpaper.command.creating_botmatch": "Bot 4 人の %s 対局 %s を作成しています…",
+  "mahjongpaper.command.botmatch_created": "Bot 4 人の %s/%s 対局 %s を作成しました。観戦を開始します。",
+  "mahjongpaper.command.botmatch_failed_in_table": "すでにテーブルに所属しています。先に退出するか観戦を終了してください。",
+  "mahjongpaper.command.reload_success": "%s 件のゲームルーム索引を再読み込みしました。ルールパックの有効化とコア設定の変更は再起動が必要です。",
+  "mahjongpaper.command.rule_summary": "%s/%s: %s",
+  "mahjongpaper.gameroom.countdown": "%s秒以内に戻らないと対局が終了します。",
+  "mahjongpaper.command.help.description.riichi": "指定した手牌を切ってリーチを宣言します。リーチ麻雀専用です。",
+  "mahjongpaper.command.help.description.tsumo": "ツモ和了できる手牌ならツモを宣言します。",
+  "mahjongpaper.command.help.description.ron": "他家の捨て牌でロンを宣言します。",
+  "mahjongpaper.command.help.description.pon": "現在の応答受付でポンを宣言します。",
+  "mahjongpaper.command.help.description.minkan": "現在の応答受付で大明槓を宣言します。",
+  "mahjongpaper.command.help.description.chii": "手牌の2牌を指定してチーを宣言します。",
+  "mahjongpaper.command.help.description.kan": "指定した牌種で暗槓または加槓を宣言します。",
+  "mahjongpaper.command.help.description.skip": "現在の応答機会を見送ります。",
+  "mahjongpaper.command.help.description.kyuushu": "九種九牌による途中流局を宣言します。リーチ麻雀専用です。",
+  "mahjongpaper.command.not_in_active_match": "進行中の対局に参加していません。",
+  "mahjongpaper.command.help.subtitle.use": "",
+  "mahjongpaper.command.help.subtitle.browse": "でヘルプのページを切り替えられます。",
+  "mahjongpaper.command.help.commands_available": " 件のコマンド",
+  "mahjongpaper.command.help.description.addbot": "空席を1つボットで埋めます。",
+  "mahjongpaper.command.help.description.removebot": "局の開始前にボットを1人外します。",
+  "mahjongpaper.command.help.description.leaderboard": "指定モードのランキングを表示します。",
+  "mahjongpaper.command.help.description.forceend": "管理者用: 対局を強制終了して卓を待機状態に戻します。",
+  "mahjongpaper.command.help.description.deletetable": "管理者用: 現在または指定した卓を直ちに削除します。"
 }

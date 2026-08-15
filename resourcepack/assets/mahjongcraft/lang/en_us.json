@@ -6,7 +6,7 @@
   "mahjongpaper.action.concealed_kong": "Concealed kong",
   "mahjongpaper.action.declare_heavenly_missing": "Declare no missing suit",
   "mahjongpaper.action.declare_missing": "Declare missing suit",
-  "mahjongpaper.action.declare_nine_terminals": "Nine terminals",
+  "mahjongpaper.action.declare_nine_terminals": "Abortive draw",
   "mahjongpaper.action.declare_self_kan": "Kan",
   "mahjongpaper.action.declare_tsumo": "Tsumo",
   "mahjongpaper.action.direct_kong": "Kong",
@@ -15,25 +15,25 @@
   "mahjongpaper.action.draw": "Draw",
   "mahjongpaper.action.hu": "Hu",
   "mahjongpaper.action.instant_rain": "Instant rain",
-  "mahjongpaper.action.minkan": "Open kan",
+  "mahjongpaper.action.minkan": "Minkan",
   "mahjongpaper.action.pass": "Pass",
   "mahjongpaper.action.pon": "Pon",
   "mahjongpaper.action.pung": "Pung",
   "mahjongpaper.action.ready": "Ready",
   "mahjongpaper.action.ron": "Ron",
-  "mahjongpaper.action.self_draw_win": "Self-draw win",
+  "mahjongpaper.action.self_draw_win": "Tsumo",
   "mahjongpaper.action.settle_exhaustion": "Settle draw",
   "mahjongpaper.action.skip": "Skip",
   "mahjongpaper.action.start_next_hand": "Next hand",
-  "mahjongpaper.action.start": "Start match",
+  "mahjongpaper.action.start": "Start",
   "mahjongpaper.action.transfer_owner_east": "Transfer owner to East",
   "mahjongpaper.action.transfer_owner_north": "Transfer owner to North",
   "mahjongpaper.action.transfer_owner_south": "Transfer owner to South",
   "mahjongpaper.action.transfer_owner_west": "Transfer owner to West",
-  "mahjongpaper.action.unready": "Not ready",
+  "mahjongpaper.action.unready": "Unready",
   "mahjongpaper.action.view_river": "View river",
   "mahjongpaper.action.win": "Win",
-  "mahjongpaper.action.leave": "Leave table",
+  "mahjongpaper.action.leave": "Leave",
   "mahjongpaper.suit.wan": "Characters",
   "mahjongpaper.suit.tong": "Dots",
   "mahjongpaper.suit.suo": "Bamboo",
@@ -83,25 +83,25 @@
   "mahjongpaper.command.help": "/mahjong help [page]",
   "mahjongpaper.command.help.header": "MahjongPaper Commands",
   "mahjongpaper.command.help.subtitle": "<> is required and [] is optional; use /mahjong help <page> to browse.",
-  "mahjongpaper.command.help.page_status": "Page %s/%s - %s commands available",
-  "mahjongpaper.command.help.previous": "Previous",
+  "mahjongpaper.command.help.page_status": "[%s/%s] %s commands available",
+  "mahjongpaper.command.help.previous": "Prev",
   "mahjongpaper.command.help.next": "Next",
   "mahjongpaper.command.help.description.help": "Show this paged command help with an explanation for every command.",
-  "mahjongpaper.command.help.description.create": "Create a reusable table at your position with the selected rule pack.",
-  "mahjongpaper.command.help.description.join": "Join a table in the specified seat; you can also click a chair.",
-  "mahjongpaper.command.help.description.leave": "Leave your current seat and table.",
+  "mahjongpaper.command.help.description.create": "Create a new table at your position.",
+  "mahjongpaper.command.help.description.join": "Join an existing table as a player.",
+  "mahjongpaper.command.help.description.leave": "Leave your current table or stop spectating.",
   "mahjongpaper.command.help.description.spectate": "Watch a table without taking a seat.",
-  "mahjongpaper.command.help.description.unspectate": "Stop watching the current table.",
+  "mahjongpaper.command.help.description.unspectate": "Stop spectating the current table.",
   "mahjongpaper.command.help.description.ready": "Toggle your ready state before the match starts.",
   "mahjongpaper.command.help.description.owner": "Transfer table ownership to the selected occupied seat.",
   "mahjongpaper.command.help.description.bot": "Add or remove a bot in the selected seat before starting.",
-  "mahjongpaper.command.help.description.start": "Start the match after the lobby meets its start conditions.",
-  "mahjongpaper.command.help.description.mode": "Change the lobby rule pack and optional profile before starting.",
+  "mahjongpaper.command.help.description.start": "Toggle ready; the round auto-starts when all 4 seats are ready.",
+  "mahjongpaper.command.help.description.mode": "Apply a ruleset preset. Mahjong Soul Riichi is the primary gameplay; GB and Sichuan are optional.",
   "mahjongpaper.command.help.description.auto": "Enable or disable automatic trustee play for your active seat.",
   "mahjongpaper.command.help.description.list": "Show only the table you currently belong to.",
-  "mahjongpaper.command.help.description.state": "Show lobby or match state; defaults to your current table.",
+  "mahjongpaper.command.help.description.state": "Show the current table and round state.",
   "mahjongpaper.command.help.description.history": "Show your in-progress and completed match history by page.",
-  "mahjongpaper.command.help.description.rank": "Show your ranking and the ranking page for one official rule pack.",
+  "mahjongpaper.command.help.description.rank": "Show your Mahjong Soul-style rank progress.",
   "mahjongpaper.command.help.description.rules": "List installed rule packs; admins can install, verify, activate, swap, or roll them back.",
   "mahjongpaper.command.help.description.referee": "Admin: submit an official Sichuan referee ruling for a live table.",
   "mahjongpaper.command.help.description.remove": "Remove your own waiting table; admins may remove any table.",
@@ -147,8 +147,8 @@
   "mahjongpaper.feedback.overhead_exited": "Returned to your seat.",
   "mahjongpaper.feedback.overhead_read_only": "The overhead view is read-only. Press Shift to return first.",
   "mahjongpaper.feedback.overhead_unavailable": "The overhead view is unavailable on this server version.",
-  "mahjongpaper.command.help.description.table": "Open the native table-control dialog; clicking the physical table does the same.",
-  "mahjongpaper.command.help.description.settlement": "Reopen the latest hand or match settlement details.",
+  "mahjongpaper.command.help.description.table": "Open the table control panel.",
+  "mahjongpaper.command.help.description.settlement": "Reopen the latest settlement UI for this table.",
   "mahjongpaper.dialog.table.title": "Table · %s",
   "mahjongpaper.dialog.table.rule": "Rules",
   "mahjongpaper.dialog.table.seats": "Seats",
@@ -316,67 +316,75 @@
   "mahjongpaper.dialog.result.not_all_ready": "Every occupied human seat must be ready",
   "mahjongpaper.dialog.result.owner_required": "Only the table owner can do that",
   "mahjongpaper.dialog.result.seat_occupied": "That seat is occupied",
-  "mahjongpaper.dialog.result.already_seated": "You are already seated"
-  ,"mahjongpaper.command.create_failed_invalid_location": "A table cannot be placed at this location."
-  ,"mahjongpaper.command.create_failed_too_close": "This location is too close to table %s."
-  ,"mahjongpaper.command.create_failed_blocked": "Table space is blocked at %s, %s, %s."
-  ,"mahjongpaper.command.create_failed_height": "There is not enough vertical space for a table here."
-  ,"mahjongpaper.command.create_failed_not_in_room": "New tables can only be placed inside a game room."
-  ,"mahjongpaper.command.create_failed_protected": "Land protection does not allow a table at this location."
-  ,"mahjongpaper.command.remove_failed_protected": "Land protection does not allow you to remove table %s."
-  ,"mahjongpaper.command.help.description.room": "Admin: define bounded game rooms and inspect them by ID or page."
-  ,"mahjongpaper.command.room.disabled": "Game rooms are disabled."
-  ,"mahjongpaper.command.room.created": "Created game room %s (%s): %s"
-  ,"mahjongpaper.command.room.exists": "Game room %s already exists."
-  ,"mahjongpaper.command.room.deleted": "Deleted game room %s."
-  ,"mahjongpaper.command.room.not_found": "Game room %s does not exist."
-  ,"mahjongpaper.command.room.list_header": "Game rooms - page %s/%s (%s total)"
-  ,"mahjongpaper.command.room.list_entry": "- %s (%s): %s"
-  ,"mahjongpaper.command.room.list_empty": "No game rooms have been created."
-  ,"mahjongpaper.command.room.output": "%s"
-  ,"mahjongpaper.command.room.not_found_here": "No matching game room was found."
-  ,"mahjongpaper.command.room.info": "%s (%s)\nBounds: %s\nSize: %sx%sx%s\nOwner: %s"
-  ,"mahjongpaper.command.room.inventory_full": "Your inventory is full."
-  ,"mahjongpaper.command.room.wand_given": "Room wand given. Left-click and right-click two corners."
-  ,"mahjongpaper.gameroom.wand.first": "First corner: %s, %s, %s"
-  ,"mahjongpaper.gameroom.wand.second": "Second corner: %s, %s, %s"
-  ,"mahjongpaper.gameroom.wand.title": "Mahjong Room Wand"
-  ,"mahjongpaper.gameroom.wand.left": "Left-click: set first corner"
-  ,"mahjongpaper.gameroom.wand.right": "Right-click: set second corner"
-  ,"mahjongpaper.gameroom.wand.finish": "Then run /mahjong room create <id>"
-  ,"mahjongpaper.command.help.description.ops": "Admin: operate one explicit table or reload the room index; never lists all tables."
-  ,"mahjongpaper.command.ops.live_status": "Table %s: LIVE, lifecycle=%s, revision=%s, participants=%s, mailbox=%s, rule-task=%s"
-  ,"mahjongpaper.command.ops.lobby_status": "Table %s: LOBBY, phase=%s, revision=%s, occupied=%s/%s"
-  ,"mahjongpaper.command.ops.table_not_found": "Table %s is not loaded."
-  ,"mahjongpaper.command.ops.force_ended": "Force-ended live table %s and reopened its lobby."
-  ,"mahjongpaper.command.ops.removed": "Removed table %s."
-  ,"mahjongpaper.command.ops.rooms_reloaded": "Reloaded %s indexed game rooms."
-  ,"mahjongpaper.gameroom.exit_warning": "Return to %s within %s seconds or this match will end."
-  ,"mahjongpaper.gameroom.returned": "You returned to the game room; the countdown was cancelled."
-  ,"mahjongpaper.gameroom.force_ended": "The match ended because a player stayed outside its game room."
-  ,"mahjongpaper.command.help.description.botmatch": "Admin: create a four-bot demo match and spectate it."
-  ,"mahjongpaper.command.help.description.rule": "Open your lobby's rule settings; rule summary prints the current profile."
-  ,"mahjongpaper.command.help.description.reload": "Admin: reload bounded runtime indexes; rule-pack/core changes still need a restart."
-  ,"mahjongpaper.command.unknown_lobby": "Unknown waiting lobby %s."
-  ,"mahjongpaper.command.no_empty_seat": "No empty seat is available at table %s."
-  ,"mahjongpaper.command.no_bot_seat": "No bot occupies a seat at table %s."
-  ,"mahjongpaper.command.not_at_lobby": "You do not belong to a waiting lobby."
-  ,"mahjongpaper.command.table_owner_target_not_found": "Player %s is not online."
-  ,"mahjongpaper.command.table_owner_target_not_seated": "%s is not seated at table %s."
-  ,"mahjongpaper.command.creating_botmatch": "Creating four-bot %s match %s..."
-  ,"mahjongpaper.command.botmatch_created": "Created four-bot %s/%s match %s; spectating now."
-  ,"mahjongpaper.command.botmatch_failed_in_table": "You already belong to a table; leave or spectate elsewhere first."
-  ,"mahjongpaper.command.reload_success": "Reloaded %s indexed game rooms. Rule-pack activation and core config changes require a full restart."
-  ,"mahjongpaper.command.rule_summary": "%s/%s: %s"
-  ,"mahjongpaper.gameroom.countdown": "Return to the game room within %s seconds."
-  ,"mahjongpaper.command.help.description.riichi": "Declare riichi and discard the selected hand tile."
-  ,"mahjongpaper.command.help.description.tsumo": "Declare a self-draw win."
-  ,"mahjongpaper.command.help.description.ron": "Claim the current discard for a win."
-  ,"mahjongpaper.command.help.description.pon": "Claim the current discard for a pung."
-  ,"mahjongpaper.command.help.description.minkan": "Claim the current discard for a kong."
-  ,"mahjongpaper.command.help.description.chii": "Claim the current discard for a chow."
-  ,"mahjongpaper.command.help.description.kan": "Declare a concealed or added kong."
-  ,"mahjongpaper.command.help.description.skip": "Pass the current reaction window."
-  ,"mahjongpaper.command.help.description.kyuushu": "Declare nine terminals."
-  ,"mahjongpaper.command.not_in_active_match": "You are not in an active match."
+  "mahjongpaper.dialog.result.already_seated": "You are already seated",
+  "mahjongpaper.command.create_failed_invalid_location": "A table cannot be placed at this location.",
+  "mahjongpaper.command.create_failed_too_close": "This location is too close to table %s.",
+  "mahjongpaper.command.create_failed_blocked": "Table space is blocked at %s, %s, %s.",
+  "mahjongpaper.command.create_failed_height": "There is not enough vertical space for a table here.",
+  "mahjongpaper.command.create_failed_not_in_room": "New tables can only be placed inside a game room.",
+  "mahjongpaper.command.create_failed_protected": "Land protection does not allow a table at this location.",
+  "mahjongpaper.command.remove_failed_protected": "Land protection does not allow you to remove table %s.",
+  "mahjongpaper.command.help.description.room": "Manage game rooms.",
+  "mahjongpaper.command.room.disabled": "Game rooms are disabled.",
+  "mahjongpaper.command.room.created": "Created game room %s (%s): %s",
+  "mahjongpaper.command.room.exists": "Game room %s already exists.",
+  "mahjongpaper.command.room.deleted": "Deleted game room %s.",
+  "mahjongpaper.command.room.not_found": "Game room %s does not exist.",
+  "mahjongpaper.command.room.list_header": "Game rooms - page %s/%s (%s total)",
+  "mahjongpaper.command.room.list_entry": "- %s (%s): %s",
+  "mahjongpaper.command.room.list_empty": "No game rooms have been created.",
+  "mahjongpaper.command.room.output": "%s",
+  "mahjongpaper.command.room.not_found_here": "No matching game room was found.",
+  "mahjongpaper.command.room.info": "%s (%s)\nBounds: %s\nSize: %sx%sx%s\nOwner: %s",
+  "mahjongpaper.command.room.inventory_full": "Your inventory is full.",
+  "mahjongpaper.command.room.wand_given": "Room wand given. Left-click and right-click two corners.",
+  "mahjongpaper.gameroom.wand.first": "First corner: %s, %s, %s",
+  "mahjongpaper.gameroom.wand.second": "Second corner: %s, %s, %s",
+  "mahjongpaper.gameroom.wand.title": "Mahjong Room Wand",
+  "mahjongpaper.gameroom.wand.left": "Left-click: set first corner",
+  "mahjongpaper.gameroom.wand.right": "Right-click: set second corner",
+  "mahjongpaper.gameroom.wand.finish": "Then run /mahjong room create <id>",
+  "mahjongpaper.command.help.description.ops": "Admin: operate one explicit table or reload the room index; never lists all tables.",
+  "mahjongpaper.command.ops.live_status": "Table %s: LIVE, lifecycle=%s, revision=%s, participants=%s, mailbox=%s, rule-task=%s",
+  "mahjongpaper.command.ops.lobby_status": "Table %s: LOBBY, phase=%s, revision=%s, occupied=%s/%s",
+  "mahjongpaper.command.ops.table_not_found": "Table %s is not loaded.",
+  "mahjongpaper.command.ops.force_ended": "Force-ended live table %s and reopened its lobby.",
+  "mahjongpaper.command.ops.removed": "Removed table %s.",
+  "mahjongpaper.command.ops.rooms_reloaded": "Reloaded %s indexed game rooms.",
+  "mahjongpaper.gameroom.exit_warning": "You left the game room during an active match! Return within %s seconds or the match will be forced to end.",
+  "mahjongpaper.gameroom.returned": "Countdown cancelled. You have returned to the game room.",
+  "mahjongpaper.gameroom.force_ended": "The match ended because a player stayed outside its game room.",
+  "mahjongpaper.command.help.description.botmatch": "Create and start a full 4-bot test match, then spectate it.",
+  "mahjongpaper.command.help.description.rule": "Open the rule GUI or change a rule before starting.",
+  "mahjongpaper.command.help.description.reload": "Admin: reload bounded runtime indexes; rule-pack/core changes still need a restart.",
+  "mahjongpaper.command.unknown_lobby": "Unknown waiting lobby %s.",
+  "mahjongpaper.command.no_empty_seat": "No empty seat is available at table %s.",
+  "mahjongpaper.command.no_bot_seat": "No bot occupies a seat at table %s.",
+  "mahjongpaper.command.not_at_lobby": "You do not belong to a waiting lobby.",
+  "mahjongpaper.command.table_owner_target_not_found": "Player %s is not online.",
+  "mahjongpaper.command.table_owner_target_not_seated": "%s is not seated at table %s.",
+  "mahjongpaper.command.creating_botmatch": "Creating four-bot %s match %s...",
+  "mahjongpaper.command.botmatch_created": "Created four-bot %s/%s match %s; spectating now.",
+  "mahjongpaper.command.botmatch_failed_in_table": "You already belong to a table; leave or spectate elsewhere first.",
+  "mahjongpaper.command.reload_success": "Reloaded %s indexed game rooms. Rule-pack activation and core config changes require a full restart.",
+  "mahjongpaper.command.rule_summary": "%s/%s: %s",
+  "mahjongpaper.gameroom.countdown": "Match ends in %s seconds if you do not return.",
+  "mahjongpaper.command.help.description.riichi": "Declare riichi and discard the chosen tile index. Riichi tables only.",
+  "mahjongpaper.command.help.description.tsumo": "Claim a self-draw win if your hand is ready.",
+  "mahjongpaper.command.help.description.ron": "Claim a win on another player's discard.",
+  "mahjongpaper.command.help.description.pon": "Call pon on the current reaction window.",
+  "mahjongpaper.command.help.description.minkan": "Call an open kan on the current reaction window.",
+  "mahjongpaper.command.help.description.chii": "Call chii with the listed two tiles from your hand.",
+  "mahjongpaper.command.help.description.kan": "Declare ankan or kakan with the given tile kind.",
+  "mahjongpaper.command.help.description.skip": "Pass the current reaction opportunity.",
+  "mahjongpaper.command.help.description.kyuushu": "Declare nine terminals and honors abortive draw. Riichi tables only.",
+  "mahjongpaper.command.not_in_active_match": "You are not in an active match.",
+  "mahjongpaper.command.help.subtitle.use": "Use ",
+  "mahjongpaper.command.help.subtitle.browse": " to browse command pages.",
+  "mahjongpaper.command.help.commands_available": " commands available",
+  "mahjongpaper.command.help.description.addbot": "Fill one empty seat with a bot.",
+  "mahjongpaper.command.help.description.removebot": "Remove one bot before the round starts.",
+  "mahjongpaper.command.help.description.leaderboard": "Show the ranked leaderboard for one mode.",
+  "mahjongpaper.command.help.description.forceend": "Admin: force-end the current match and return the table to waiting state.",
+  "mahjongpaper.command.help.description.deletetable": "Admin: delete the current or specified table immediately."
 }
