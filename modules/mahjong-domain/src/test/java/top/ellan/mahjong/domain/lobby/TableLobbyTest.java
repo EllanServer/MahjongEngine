@@ -38,6 +38,31 @@ class TableLobbyTest {
     }
 
     @Test
+    void v15BotMatchLobbyCanStartWithoutSeatingItsOwner() {
+        TableLobby lobby =
+                TableLobby.create(
+                        TableId.random(),
+                        player(1),
+                        new RuleId("riichi"),
+                        new ProfileId("mahjong-soul"),
+                        Map.of(),
+                        4,
+                        Instant.EPOCH);
+        ArrayList<LobbySeat> seats = new ArrayList<>();
+        for (int index = 0; index < 4; index++) {
+            SeatId seatId = new SeatId(index);
+            seats.add(
+                    LobbySeat.empty(seatId)
+                            .occupiedByReadyBot(LobbyBotIdentity.forSeat(lobby.tableId(), seatId)));
+        }
+        TableLobby botMatch = lobby.withState(seats, Set.of(player(1)), LobbyPhase.WAITING);
+
+        assertTrue(botMatch.readyToStart());
+        assertTrue(botMatch.seatOf(player(1)).isEmpty());
+        assertEquals(4, botMatch.occupiedSeatCount());
+    }
+
+    @Test
     void duplicatePhysicalOccupantsAreRejectedAtTheDomainBoundary() {
         PlayerId player = player(1);
         List<LobbySeat> seats =

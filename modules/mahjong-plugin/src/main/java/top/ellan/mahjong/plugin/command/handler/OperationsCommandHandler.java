@@ -19,12 +19,19 @@ public final class OperationsCommandHandler implements SubcommandHandler {
 
     @Override
     public Set<String> names() {
-        return Set.of("ops");
+        return Set.of("ops", "forceend");
     }
 
     @Override
     public void execute(CommandSender sender, String[] arguments) {
         support.requireAdmin(sender);
+        if ("forceend".equalsIgnoreCase(arguments[0])) {
+            if (arguments.length != 2) {
+                throw CommandSupport.usage("/mahjong forceend <table-id>");
+            }
+            forceEnd(sender, new String[] {"ops", "force-end", arguments[1]});
+            return;
+        }
         if (arguments.length < 2) {
             throw usage();
         }
@@ -41,6 +48,9 @@ public final class OperationsCommandHandler implements SubcommandHandler {
     public List<String> complete(CommandSender sender, String[] arguments) {
         if (!sender.hasPermission("mahjongpaper.admin")) {
             return List.of();
+        }
+        if (arguments.length == 1 && "forceend".equalsIgnoreCase(arguments[0])) {
+            return support.currentTableIds(sender);
         }
         if (arguments.length == 2) {
             return CommandSupport.filter(arguments[1], OPERATIONS);

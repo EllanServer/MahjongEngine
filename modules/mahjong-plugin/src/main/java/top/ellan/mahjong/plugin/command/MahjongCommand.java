@@ -19,7 +19,11 @@ import org.bukkit.command.CommandSender;
 import top.ellan.mahjong.plugin.MahjongPaperPlugin;
 import top.ellan.mahjong.plugin.MahjongRuntime;
 import top.ellan.mahjong.plugin.command.handler.LobbyActionHandler;
+import top.ellan.mahjong.plugin.command.handler.LegacyActionCommandHandler;
 import top.ellan.mahjong.plugin.command.handler.GameRoomCommandHandler;
+import top.ellan.mahjong.plugin.command.handler.BotMatchHandler;
+import top.ellan.mahjong.plugin.command.handler.ReloadCommandHandler;
+import top.ellan.mahjong.plugin.command.handler.RuleDialogHandler;
 import top.ellan.mahjong.plugin.command.handler.MatchAutomationHandler;
 import top.ellan.mahjong.plugin.command.handler.MatchRefereeHandler;
 import top.ellan.mahjong.plugin.command.handler.OperationsCommandHandler;
@@ -32,130 +36,6 @@ import top.ellan.mahjong.plugin.command.handler.TableRemoveHandler;
 
 /** Thin O(1) command router; use cases live behind dedicated handlers. */
 public final class MahjongCommand implements BasicCommand {
-    private static final int HELP_PAGE_SIZE = 10;
-    private static final List<HelpEntry> HELP_ENTRIES =
-            List.of(
-                    help(
-                            "help",
-                            "/mahjong help [page]",
-                            "Show this paged command help with an explanation for every command.",
-                            false),
-                    help(
-                            "create",
-                            "/mahjong create <riichi|mcr|sichuan> [profile]",
-                            "Create a reusable table at your position with the selected rule pack.",
-                            false),
-                    help(
-                            "join",
-                            "/mahjong join <table-id> <seat>",
-                            "Join a table in the specified seat; you can also click a chair.",
-                            false),
-                    help(
-                            "leave",
-                            "/mahjong leave",
-                            "Leave your current seat and table.",
-                            false),
-                    help(
-                            "spectate",
-                            "/mahjong spectate <table-id>",
-                            "Watch a table without taking a seat.",
-                            false),
-                    help(
-                            "unspectate",
-                            "/mahjong unspectate",
-                            "Stop watching the current table.",
-                            false),
-                    help(
-                            "ready",
-                            "/mahjong ready",
-                            "Toggle your ready state before the match starts.",
-                            false),
-                    help(
-                            "owner",
-                            "/mahjong owner <east|south|west|north>",
-                            "Transfer table ownership to the selected occupied seat.",
-                            false,
-                            "transfer"),
-                    help(
-                            "bot",
-                            "/mahjong bot <add|remove> <seat>",
-                            "Add or remove a bot in the selected seat before starting.",
-                            false),
-                    help(
-                            "start",
-                            "/mahjong start",
-                            "Start the match after the lobby meets its start conditions.",
-                            false),
-                    help(
-                            "mode",
-                            "/mahjong mode <riichi|mcr|sichuan> [profile]",
-                            "Change the lobby rule pack and optional profile before starting.",
-                            false),
-                    help(
-                            "auto",
-                            "/mahjong auto <on|off>",
-                            "Enable or disable automatic trustee play for your active seat.",
-                            false,
-                            "trustee"),
-                    help(
-                            "list",
-                            "/mahjong list",
-                            "Show only the table you currently belong to.",
-                            false),
-                    help(
-                            "state",
-                            "/mahjong state [table-id]",
-                            "Show lobby or match state; defaults to your current table.",
-                            false),
-                    help(
-                            "table",
-                            "/mahjong table [table-id]",
-                            "Open the native table-control dialog; clicking the physical table does the same.",
-                            false,
-                            "gui"),
-                    help(
-                            "settlement",
-                            "/mahjong settlement [table-id]",
-                            "Reopen the latest hand or match settlement details.",
-                            false),
-                    help(
-                            "history",
-                            "/mahjong history [page]",
-                            "Show your in-progress and completed match history by page.",
-                            false),
-                    help(
-                            "rank",
-                            "/mahjong rank <riichi|mcr|sichuan> [page]",
-                            "Show the ranking page for one official rule pack.",
-                            false,
-                            "ranking"),
-                    help(
-                            "rules",
-                            "/mahjong rules <operation> [...]",
-                            "List installed rule packs; admins can install, verify, activate, swap, or roll them back.",
-                            false),
-                    help(
-                            "room",
-                            "/mahjong room <wand|create|delete|list|info> [...]",
-                            "Admin: define bounded game rooms and inspect them by ID or page.",
-                            true,
-                            "gameroom"),
-                    help(
-                            "ops",
-                            "/mahjong ops <status|force-end|remove|reload-rooms> [...]",
-                            "Admin: operate one explicit table or reload the room index; never lists all tables.",
-                            true),
-                    help(
-                            "referee",
-                            "/mahjong referee <table-id> <operation> <seat> [ruling]",
-                            "Admin: submit an official Sichuan referee ruling for a live table.",
-                            true),
-                    help(
-                            "remove",
-                            "/mahjong remove <table-id>",
-                            "Remove your own waiting table; admins may remove any table.",
-                            false));
-
     private final CommandSupport support;
     private final Map<String, SubcommandHandler> handlers;
 
@@ -163,15 +43,19 @@ public final class MahjongCommand implements BasicCommand {
         support = new CommandSupport(plugin, runtime);
         LinkedHashMap<String, SubcommandHandler> routes = new LinkedHashMap<>();
         register(routes, new TableCreateHandler(support));
+        register(routes, new BotMatchHandler(support));
         register(routes, new LobbyActionHandler(support));
         register(routes, new MatchAutomationHandler(support));
+        register(routes, new LegacyActionCommandHandler(support));
         register(routes, new MatchRefereeHandler(support));
         register(routes, new TableDialogHandler(support));
+        register(routes, new RuleDialogHandler(support));
         register(routes, new TableQueryHandler(support));
         register(routes, new PlayerRecordHandler(support));
         register(routes, new TableRemoveHandler(support));
         register(routes, new GameRoomCommandHandler(support));
         register(routes, new OperationsCommandHandler(support));
+        register(routes, new ReloadCommandHandler(support));
         register(routes, new RulePackAdminHandler(support));
         validateHelpCoverage(routes.keySet());
         handlers = Map.copyOf(routes);
@@ -236,13 +120,13 @@ public final class MahjongCommand implements BasicCommand {
 
     /** Paginated usage-and-description help matching the v1.5.0 reading flow. */
     private void sendHelp(CommandSender sender, int requestedPage) {
-        List<HelpEntry> entries = HELP_ENTRIES.stream()
+        List<CommandHelpCatalog.HelpEntry> entries = CommandHelpCatalog.ENTRIES.stream()
                 .filter(entry -> !entry.adminOnly() || sender.hasPermission("mahjongpaper.admin"))
                 .toList();
-        int pageCount = Math.max(1, (int) Math.ceil((double) entries.size() / HELP_PAGE_SIZE));
+        int pageCount = Math.max(1, (int) Math.ceil((double) entries.size() / CommandHelpCatalog.HELP_PAGE_SIZE));
         int page = Math.max(1, Math.min(requestedPage, pageCount));
-        int start = (page - 1) * HELP_PAGE_SIZE;
-        int end = Math.min(start + HELP_PAGE_SIZE, entries.size());
+        int start = (page - 1) * CommandHelpCatalog.HELP_PAGE_SIZE;
+        int end = Math.min(start + CommandHelpCatalog.HELP_PAGE_SIZE, entries.size());
 
         List<Component> lines = new ArrayList<>();
         lines.add(
@@ -273,7 +157,7 @@ public final class MahjongCommand implements BasicCommand {
                                 entries.size()),
                         NamedTextColor.GRAY));
         for (int index = start; index < end; index++) {
-            HelpEntry entry = entries.get(index);
+            CommandHelpCatalog.HelpEntry entry = entries.get(index);
             lines.add(
                     Component.text("  - ", NamedTextColor.DARK_AQUA)
                             .append(Component.text(entry.usage(), NamedTextColor.AQUA))
@@ -322,10 +206,10 @@ public final class MahjongCommand implements BasicCommand {
     }
 
     private int helpPageCount(CommandSender sender) {
-        long visible = HELP_ENTRIES.stream()
+        long visible = CommandHelpCatalog.ENTRIES.stream()
                 .filter(entry -> !entry.adminOnly() || sender.hasPermission("mahjongpaper.admin"))
                 .count();
-        return Math.max(1, (int) Math.ceil((double) visible / HELP_PAGE_SIZE));
+        return Math.max(1, (int) Math.ceil((double) visible / CommandHelpCatalog.HELP_PAGE_SIZE));
     }
 
     private static int helpPage(String value) {
@@ -359,9 +243,9 @@ public final class MahjongCommand implements BasicCommand {
     }
 
     private static List<String> rootSuggestions(CommandSender sender) {
-        return HELP_ENTRIES.stream()
+        return CommandHelpCatalog.ENTRIES.stream()
                 .filter(entry -> !entry.adminOnly() || sender.hasPermission("mahjongpaper.admin"))
-                .map(HelpEntry::canonicalName)
+                .map(CommandHelpCatalog.HelpEntry::canonicalName)
                 .toList();
     }
 
@@ -374,29 +258,9 @@ public final class MahjongCommand implements BasicCommand {
         }
     }
 
-    private static HelpEntry help(
-            String canonicalName,
-            String usage,
-            String fallbackDescription,
-            boolean adminOnly,
-            String... aliases) {
-        LinkedHashSet<String> names = new LinkedHashSet<>();
-        names.add(canonicalName);
-        for (String alias : aliases) {
-            names.add(alias);
-        }
-        return new HelpEntry(
-                canonicalName,
-                Set.copyOf(names),
-                usage,
-                "mahjongpaper.command.help.description." + canonicalName,
-                fallbackDescription,
-                adminOnly);
-    }
-
     private static void validateHelpCoverage(Set<String> routes) {
         LinkedHashSet<String> documented = new LinkedHashSet<>();
-        HELP_ENTRIES.forEach(entry -> documented.addAll(entry.names()));
+        CommandHelpCatalog.ENTRIES.forEach(entry -> documented.addAll(entry.names()));
         LinkedHashSet<String> expected = new LinkedHashSet<>(routes);
         expected.add("help");
         if (!documented.equals(expected)) {
@@ -408,19 +272,4 @@ public final class MahjongCommand implements BasicCommand {
         }
     }
 
-    private record HelpEntry(
-            String canonicalName,
-            Set<String> names,
-            String usage,
-            String translationKey,
-            String fallbackDescription,
-            boolean adminOnly) {
-        private HelpEntry {
-            canonicalName = Objects.requireNonNull(canonicalName, "canonicalName");
-            names = Set.copyOf(names);
-            Objects.requireNonNull(usage, "usage");
-            Objects.requireNonNull(translationKey, "translationKey");
-            Objects.requireNonNull(fallbackDescription, "fallbackDescription");
-        }
-    }
 }

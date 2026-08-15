@@ -3,10 +3,14 @@ package top.ellan.mahjong.plugin.command.handler;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletionStage;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import top.ellan.mahjong.application.lobby.runtime.HostedLobby;
 import top.ellan.mahjong.application.table.TableActionResult;
+import top.ellan.mahjong.domain.lobby.LobbySeat;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.plugin.command.CommandSupport;
 import top.ellan.mahjong.plugin.command.SubcommandHandler;
@@ -27,6 +31,8 @@ public final class LobbyActionHandler implements SubcommandHandler {
                     "owner",
                     "transfer",
                     "bot",
+                    "addbot",
+                    "removebot",
                     "start",
                     "mode");
     private final CommandSupport support;
@@ -47,15 +53,7 @@ public final class LobbyActionHandler implements SubcommandHandler {
         String action = arguments[0].toLowerCase(Locale.ROOT);
         java.util.concurrent.CompletionStage<TableActionResult> result =
                 switch (action) {
-                    case "join" -> {
-                        requireLength(arguments, 3, "/mahjong join <table-id> <seat>");
-                        yield support.runtime()
-                                .lobbyUseCases()
-                                .join(
-                                        TableId.parse(arguments[1]),
-                                        seat(arguments[2]),
-                                        actor);
-                    }
+                    case "join" -> join(arguments, actor);
                     case "leave" -> {
                         requireLength(arguments, 1, "/mahjong leave");
                         yield support.runtime().leave(actor);
@@ -90,14 +88,13 @@ public final class LobbyActionHandler implements SubcommandHandler {
                                     "/mahjong bot <add|remove> <seat>");
                         };
                     }
-                    case "start" -> {
-                        requireLength(arguments, 1, "/mahjong start");
-                        yield support.runtime().lobbyUseCases().start(actor);
-                    }
+                    case "addbot" -> bot(arguments, actor, true);
+                    case "removebot" -> bot(arguments, actor, false);
+                    case "start" -> start(arguments, actor);
                     case "mode" -> {
                         if (arguments.length < 2 || arguments.length > 3) {
                             throw CommandSupport.usage(
-                                    "/mahjong mode <riichi|mcr|sichuan> [profile]");
+                                    "/mahjong mode <riichi|mcr|sichuan|MAJSOUL_HANCHAN|MAJSOUL_TONPUU|GB|SICHUAN> [profile]");
                         }
                         RuleId ruleId = CommandSupport.ruleId(arguments[1]);
                         ProfileId profile =
@@ -125,7 +122,16 @@ public final class LobbyActionHandler implements SubcommandHandler {
     @Override
     public List<String> complete(CommandSender sender, String[] arguments) {
         if (arguments.length == 2 && "mode".equalsIgnoreCase(arguments[0])) {
-            return CommandSupport.filter(arguments[1], List.of("riichi", "mcr", "sichuan"));
+            return CommandSupport.filter(
+                    arguments[1],
+                    List.of(
+                            "MAJSOUL_HANCHAN",
+                            "MAJSOUL_TONPUU",
+                            "GB",
+                            "SICHUAN",
+                            "riichi",
+                            "mcr",
+                            "sichuan"));
         }
         if (arguments.length == 3 && "mode".equalsIgnoreCase(arguments[0])) {
             return CommandSupport.filter(
@@ -154,6 +160,102 @@ public final class LobbyActionHandler implements SubcommandHandler {
                     arguments[2], List.of("east", "south", "west", "north"));
         }
         return List.of();
+    }
+
+    /**
+     * v1.5-compatible start: an owner whose lobby is fully ready starts it, everyone else
+     * toggles their own ready state just like the old /mahjong start command.
+     */
+    private CompletionStage<TableActionResult> start(String[] arguments, PlayerId actor) {
+        requireLength(arguments, 1, "/mahjong start");
+        HostedLobby lobby = support.runtime().lobbyTables().findByPlayer(actor).orElse(null);
+        if (lobby != null
+                && lobby.state().ownerId().equals(actor)
+                && lobby.state().readyToStart()) {
+            return support.runtime().lobbyUseCases().start(actor);
+        }
+        return support.runtime().lobbyUseCases().toggleReady(actor);
+    }
+
+    /** v1.5-compatible join: with no seat argument the first empty seat is selected. */
+    private CompletionStage<TableActionResult> join(String[] arguments, PlayerId actor) {
+        if (arguments.length == 3) {
+            return support.runtime()
+                    .lobbyUseCases()
+                    .join(TableId.parse(arguments[1]), seat(arguments[2]), actor);
+        }
+        if (arguments.length == 2) {
+            TableId tableId = TableId.parse(arguments[1]);
+            HostedLobby lobby =
+                    support.runtime()
+                            .lobbyTables()
+                            .find(tableId)
+                            .orElseThrow(
+                                    () ->
+                                            CommandSupport.failure(
+                                                    "mahjongpaper.command.unknown_lobby",
+                                                    "Unknown waiting lobby %s.",
+                                                    tableId));
+            SeatId target =
+                    firstEmptySeat(lobby)
+                            .orElseThrow(
+                                    () ->
+                                            CommandSupport.failure(
+                                                    "mahjongpaper.command.no_empty_seat",
+                                                    "No empty seat is available at table %s.",
+                                                    tableId));
+            return support.runtime().lobbyUseCases().join(tableId, target, actor);
+        }
+        throw CommandSupport.usage("/mahjong join <table-id> [seat]");
+    }
+
+    /** v1.5-compatible bot commands: add fills the first empty seat, remove clears the first bot. */
+    private CompletionStage<TableActionResult> bot(
+            String[] arguments, PlayerId actor, boolean add) {
+        String command = add ? "/mahjong addbot" : "/mahjong removebot";
+        requireLength(arguments, 1, command);
+        HostedLobby lobby =
+                support.runtime()
+                        .lobbyTables()
+                        .findByPlayer(actor)
+                        .orElseThrow(
+                                () ->
+                                        CommandSupport.failure(
+                                                "mahjongpaper.command.not_at_lobby",
+                                                "You do not belong to a waiting lobby."));
+        SeatId target =
+                (add ? firstEmptySeat(lobby) : firstBotSeat(lobby))
+                        .orElseThrow(
+                                () ->
+                                        CommandSupport.failure(
+                                                add
+                                                        ? "mahjongpaper.command.no_empty_seat"
+                                                        : "mahjongpaper.command.no_bot_seat",
+                                                add
+                                                        ? "No empty seat is available at table %s."
+                                                        : "No bot occupies a seat at table %s.",
+                                                lobby.tableId()));
+        return add
+                ? support.runtime().lobbyUseCases().addBot(actor, target)
+                : support.runtime().lobbyUseCases().removeBot(actor, target);
+    }
+
+    private static Optional<SeatId> firstEmptySeat(HostedLobby lobby) {
+        for (LobbySeat seat : lobby.state().seats()) {
+            if (seat.occupant().isEmpty()) {
+                return Optional.of(seat.seatId());
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<SeatId> firstBotSeat(HostedLobby lobby) {
+        for (LobbySeat seat : lobby.state().seats()) {
+            if (lobby.state().isBotSeat(seat)) {
+                return Optional.of(seat.seatId());
+            }
+        }
+        return Optional.empty();
     }
 
     private static SeatId seat(String value) {

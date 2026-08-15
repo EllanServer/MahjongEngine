@@ -86,6 +86,22 @@ public final class MahjongDialogService
         tell(player, "mahjongpaper.command.unknown_table", "Unknown table.", NamedTextColor.RED);
     }
 
+    /** v1.5-compatible /mahjong rule entry point; live matches have no mutable rule settings. */
+    public void openRules(Player player, Optional<TableId> requested) {
+        Objects.requireNonNull(player, "player");
+        TableId tableId = requested.orElseGet(() -> currentTable(player).orElse(null));
+        if (tableId == null) {
+            tell(player, "mahjongpaper.command.not_at_table", "You do not belong to a table.",
+                    NamedTextColor.RED);
+            return;
+        }
+        if (runtime.lobbyTables().find(tableId).isEmpty()) {
+            openTable(player, Optional.of(tableId));
+            return;
+        }
+        setupDialogs.openRules(player, tableId);
+    }
+
     public void openSettlement(Player player, Optional<TableId> requested) {
         settlementDialogs.open(player, requested);
     }

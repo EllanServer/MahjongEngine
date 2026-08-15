@@ -62,14 +62,16 @@ Paper / CraftEngine event
 
 核心命令：
 
-- `/mahjong create <riichi|mcr|sichuan> [profile]`
-- `/mahjong join <table-id> <seat>`、`/mahjong ready`、`/mahjong start`
-- `/mahjong owner <seat>`（兼容 `/mahjong transfer <seat>`）
-- `/mahjong bot <add|remove> <seat>`
+- `/mahjong create [riichi|mcr|sichuan] [profile]`，默认立直
+- `/mahjong botmatch [MAJSOUL_HANCHAN|MAJSOUL_TONPUU|GB|SICHUAN]`（管理员，四 Bot 观战局）
+- `/mahjong join <table-id> [seat]`、`/mahjong ready`、`/mahjong start`
+- `/mahjong owner <seat>`（兼容 `/mahjong transfer <seat>` 与 `/mahjong table owner <seat|玩家名> [table-id]`）
+- `/mahjong bot <add|remove> <seat>`（兼容 `/mahjong addbot`、`/mahjong removebot`）
 - `/mahjong auto <on|off>`
-- `/mahjong list`
-- `/mahjong state [table-id]`
-- `/mahjong remove <table-id>`
+- `/mahjong riichi <index>`、`/mahjong tsumo`、`/mahjong ron`、`/mahjong pon`、`/mahjong minkan`、`/mahjong chii <牌A> <牌B>`、`/mahjong kan <牌>`、`/mahjong skip`、`/mahjong kyuushu`（动作按钮的命令回退）
+- `/mahjong rule [summary]`（规则设置对话框；`rules` 为规则包管理）
+- `/mahjong list`、`/mahjong state [table-id]`、`/mahjong history [page]`、`/mahjong rank [rule] [page]`（兼容 `leaderboard`）
+- `/mahjong remove <table-id>`（兼容 `/mahjong deletetable`）、`/mahjong ops <status|force-end|remove|reload-rooms> [table-id]`（兼容 `/mahjong forceend`）、`/mahjong reload`
 - `/mahjong rules list`
 - `/mahjong rules install <id> [version]`
 - `/mahjong rules update <id> [version]`
@@ -77,7 +79,7 @@ Paper / CraftEngine event
 - `/mahjong rules activate <id> <version>`
 - `/mahjong rules gc`
 
-规则别名：`richi` → `riichi`，`gb` → `mcr`。规则安装与激活不会热替换 classloader，必须完整重启后生效。
+规则别名：`richi` → `riichi`，`gb` → `mcr`，`MAJSOUL_HANCHAN`/`MAJSOUL_TONPUU` → `riichi`。规则安装与激活不会热替换 classloader，必须完整重启后生效。
 
 ## 构建
 

@@ -33,9 +33,9 @@ public final class TableCreateHandler implements SubcommandHandler {
 
     @Override
     public void execute(CommandSender sender, String[] arguments) {
-        if (arguments.length < 2 || arguments.length > 3) {
+        if (arguments.length < 1 || arguments.length > 3) {
             throw CommandSupport.usage(
-                    "/mahjong create <riichi|mcr|sichuan> [profile]");
+                    "/mahjong create [riichi|mcr|sichuan] [profile]");
         }
         Player owner = support.requirePlayer(sender);
         PlayerId ownerId = new PlayerId(owner.getUniqueId());
@@ -54,7 +54,10 @@ public final class TableCreateHandler implements SubcommandHandler {
                     "You already belong to active match %s; finish or leave it before creating another table.",
                     existingMatch.tableId());
         }
-        RuleId ruleId = CommandSupport.ruleId(arguments[1]);
+        RuleId ruleId =
+                arguments.length >= 2
+                        ? CommandSupport.ruleId(arguments[1])
+                        : CommandSupport.ruleId("riichi");
         ProfileId profileId =
                 arguments.length == 3
                         ? new ProfileId(arguments[2].toLowerCase(Locale.ROOT))
@@ -111,6 +114,10 @@ public final class TableCreateHandler implements SubcommandHandler {
 
     @Override
     public List<String> complete(CommandSender sender, String[] arguments) {
+        if (arguments.length == 1
+                || (arguments.length == 2 && arguments[1].isEmpty())) {
+            return List.copyOf(RULES);
+        }
         if (arguments.length == 2) {
             return CommandSupport.filter(arguments[1], RULES);
         }

@@ -28,15 +28,18 @@ public final class PlayerRecordHandler implements SubcommandHandler {
 
     @Override
     public Set<String> names() {
-        return Set.of("history", "rank", "ranking");
+        return Set.of("history", "rank", "ranking", "leaderboard", "lb");
     }
 
     @Override
     public void execute(CommandSender sender, String[] arguments) {
         Player player = support.requirePlayer(sender);
         PlayerId playerId = new PlayerId(player.getUniqueId());
-        if ("history".equalsIgnoreCase(arguments[0])) {
+        String root = arguments[0].toLowerCase(Locale.ROOT);
+        if ("history".equals(root)) {
             history(sender, playerId, arguments);
+        } else if ("leaderboard".equals(root) || "lb".equals(root)) {
+            leaderboard(sender, playerId, arguments);
         } else {
             ranking(sender, playerId, arguments);
         }
@@ -104,18 +107,41 @@ public final class PlayerRecordHandler implements SubcommandHandler {
     }
 
     private void ranking(CommandSender sender, PlayerId playerId, String[] arguments) {
-        if (arguments.length < 2 || arguments.length > 3) {
-            throw CommandSupport.usage(
-                    "/mahjong rank <riichi|mcr|sichuan> [page]");
+        if (arguments.length > 3) {
+            throw CommandSupport.usage("/mahjong rank [riichi|mcr|sichuan] [page]");
         }
-        RuleId ruleId = CommandSupport.ruleId(arguments[1]);
-        if (!RULE_IDS.contains(ruleId.value())) {
-            throw CommandSupport.failure(
-                    "mahjongpaper.command.unsupported_rule",
-                    "Unsupported official rule id: %s",
-                    ruleId);
-        }
+        RuleId ruleId = arguments.length >= 2
+                ? officialRule(arguments[1])
+                : currentRule(playerId);
         int page = arguments.length == 3 ? page(arguments[2]) : 1;
+        queryRanking(sender, playerId, ruleId, page);
+    }
+
+    /** v1.5 leaderboard entry point: rule may be omitted and defaults to the current table. */
+    private void leaderboard(CommandSender sender, PlayerId playerId, String[] arguments) {
+        if (arguments.length > 3) {
+            throw CommandSupport.usage("/mahjong leaderboard [riichi|mcr|sichuan] [page]");
+        }
+        RuleId ruleId;
+        int page = 1;
+        if (arguments.length == 1) {
+            ruleId = currentRule(playerId);
+        } else if (arguments.length == 2) {
+            if (isPage(arguments[1])) {
+                ruleId = currentRule(playerId);
+                page = page(arguments[1]);
+            } else {
+                ruleId = officialRule(arguments[1]);
+            }
+        } else {
+            ruleId = officialRule(arguments[1]);
+            page = page(arguments[2]);
+        }
+        queryRanking(sender, playerId, ruleId, page);
+    }
+
+    private void queryRanking(
+            CommandSender sender, PlayerId playerId, RuleId ruleId, int page) {
         support.runtime()
                 .playerRanking(playerId, ruleId, page, PAGE_SIZE)
                 .whenComplete((result, failure) -> {
@@ -125,6 +151,39 @@ public final class PlayerRecordHandler implements SubcommandHandler {
                     }
                     rankingPage(sender, result);
                 });
+    }
+
+    private RuleId officialRule(String value) {
+        RuleId ruleId = CommandSupport.ruleId(value);
+        if (!RULE_IDS.contains(ruleId.value())) {
+            throw CommandSupport.failure(
+                    "mahjongpaper.command.unsupported_rule",
+                    "Unsupported official rule id: %s",
+                    ruleId);
+        }
+        return ruleId;
+    }
+
+    private RuleId currentRule(PlayerId playerId) {
+        return support.runtime()
+                .lobbyTables()
+                .findByPlayer(playerId)
+                .map(lobby -> lobby.state().ruleId())
+                .or(
+                        () ->
+                                support.runtime()
+                                        .liveTables()
+                                        .findByPlayer(playerId)
+                                        .map(match -> match.binding().rulePack().ruleId()))
+                .orElseGet(() -> CommandSupport.ruleId("riichi"));
+    }
+
+    private static boolean isPage(String value) {
+        try {
+            return page(value) > 0;
+        } catch (RuntimeException notPage) {
+            return false;
+        }
     }
 
     private void rankingPage(CommandSender sender, PlayerRankingPage page) {
@@ -195,14 +254,20 @@ public final class PlayerRecordHandler implements SubcommandHandler {
     @Override
     public List<String> complete(CommandSender sender, String[] arguments) {
         String root = arguments[0].toLowerCase(Locale.ROOT);
-        if ((root.equals("rank") || root.equals("ranking"))
-                && arguments.length == 2) {
-            return CommandSupport.filter(arguments[1], RULE_IDS);
+        boolean rankingCommand =
+                root.equals("rank")
+                        || root.equals("ranking")
+                        || root.equals("leaderboard")
+                        || root.equals("lb");
+        if (rankingCommand && arguments.length == 2) {
+            List<String> values = new java.util.ArrayList<>(RULE_IDS);
+            values.addAll(pageSuggestions());
+            return CommandSupport.filter(arguments[1], values);
         }
         if (arguments.length == 2 && root.equals("history")) {
             return CommandSupport.filter(arguments[1], pageSuggestions());
         }
-        if (arguments.length == 3 && (root.equals("rank") || root.equals("ranking"))) {
+        if (rankingCommand && arguments.length == 3) {
             return CommandSupport.filter(arguments[2], pageSuggestions());
         }
         return List.of();

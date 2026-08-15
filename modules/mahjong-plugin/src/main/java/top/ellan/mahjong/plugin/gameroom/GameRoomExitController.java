@@ -265,15 +265,26 @@ final class GameRoomExitController implements Listener, AutoCloseable {
     private void reschedule(TableId tableId, TableExitState state) {
         state.cancel();
         long generation = ++state.generation;
-        long earliest = state.deadlines.values().stream().mapToLong(Long::longValue).min().orElseThrow();
-        long remaining = Math.max(0L, earliest - System.nanoTime());
+        long earliest =
+                state.deadlines.values().stream()
+                        .mapToLong(Long::longValue)
+                        .min()
+                        .orElseThrow();
+        long now = System.nanoTime();
+        state.nextWarningNanos = GameRoomCountdownPresenter.nextWarningInstant(earliest, now);
+        long nextFire = Math.min(earliest, state.nextWarningNanos);
         state.task =
                 scheduler.schedule(
-                        () -> expire(tableId, state.binding, generation),
-                        Duration.ofNanos(remaining));
+                        () -> fire(tableId, state.binding, generation),
+                        Duration.ofNanos(Math.max(0L, nextFire - now)));
     }
 
-    private void expire(TableId tableId, MatchBinding binding, long generation) {
+    /**
+     * One timer per table serves both expiry and the v1.5 warning cadence: every 15 seconds
+     * before the final ten, then 10, 8, 6, 5, 4, 3, 2, and 1 seconds.
+     */
+    private void fire(TableId tableId, MatchBinding binding, long generation) {
+        boolean countdownWarning = false;
         List<PlayerId> expired = new ArrayList<>(4);
         synchronized (this) {
             TableExitState state = exits.get(tableId);
@@ -284,21 +295,34 @@ final class GameRoomExitController implements Listener, AutoCloseable {
                 return;
             }
             long now = System.nanoTime();
+            long earliest =
+                    state.deadlines.values().stream()
+                            .mapToLong(Long::longValue)
+                            .min()
+                            .orElseThrow();
             state.deadlines.forEach(
                     (playerId, deadline) -> {
                         if (deadline <= now) {
                             expired.add(playerId);
                         }
                     });
-            if (expired.isEmpty()) {
+            if (!expired.isEmpty()) {
+                exits.remove(tableId);
+                state.task = null;
+            } else if (state.nextWarningNanos != Long.MAX_VALUE
+                    && now >= state.nextWarningNanos) {
+                countdownWarning = true;
                 reschedule(tableId, state);
-                return;
+            } else {
+                reschedule(tableId, state);
             }
-            exits.remove(tableId);
-            state.task = null;
         }
         StartedRulePackMatch match = liveTables.find(tableId).orElse(null);
         if (match == null || !match.binding().equals(binding)) {
+            return;
+        }
+        if (countdownWarning) {
+            sendCountdownWarnings(match);
             return;
         }
         Set<PlayerId> departed =
@@ -320,6 +344,20 @@ final class GameRoomExitController implements Listener, AutoCloseable {
         forceEnd(match, departed);
     }
 
+    private void sendCountdownWarnings(StartedRulePackMatch match) {
+        if (!settings.enterExitMessages()) {
+            return;
+        }
+        List<Map.Entry<PlayerId, Long>> deadlines;
+        synchronized (this) {
+            TableExitState state = exits.get(match.tableId());
+            if (state == null || !state.binding.equals(match.binding())) {
+                return;
+            }
+            deadlines = new ArrayList<>(state.deadlines.entrySet());
+        }
+        GameRoomCountdownPresenter.sendCountdownWarnings(plugin, messages, deadlines);
+    }
     private void forceEnd(StartedRulePackMatch match, Set<PlayerId> departed) {
         try {
             lifecycle
@@ -439,6 +477,7 @@ final class GameRoomExitController implements Listener, AutoCloseable {
         private final Map<PlayerId, Long> deadlines = new HashMap<>(4);
         private Cancellable task;
         private long generation;
+        private long nextWarningNanos = Long.MAX_VALUE;
 
         private TableExitState(MatchBinding binding) {
             this.binding = Objects.requireNonNull(binding, "binding");

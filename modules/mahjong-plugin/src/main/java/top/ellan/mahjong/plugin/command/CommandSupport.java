@@ -122,6 +122,8 @@ public final class CommandSupport {
                 switch (normalized) {
                     case "richi" -> "riichi";
                     case "gb" -> "mcr";
+                    case "majsoul_hanchan", "majsoul-hanchan", "hanchan" -> "riichi";
+                    case "majsoul_tonpuu", "majsoul-tonpuu", "tonpuu", "east" -> "riichi";
                     default -> normalized;
                 });
     }
@@ -189,7 +191,9 @@ public final class CommandSupport {
 
     public static List<String> filter(String prefix, List<String> values) {
         String normalized = prefix.toLowerCase(Locale.ROOT);
-        return values.stream().filter(value -> value.startsWith(normalized)).toList();
+        return values.stream()
+                .filter(value -> value.toLowerCase(Locale.ROOT).startsWith(normalized))
+                .toList();
     }
 
     public static Throwable unwrap(Throwable failure) {

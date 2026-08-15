@@ -18,13 +18,19 @@ public final class TableRemoveHandler implements SubcommandHandler {
 
     @Override
     public Set<String> names() {
-        return Set.of("remove");
+        return Set.of("remove", "deletetable");
     }
 
     @Override
     public void execute(CommandSender sender, String[] arguments) {
         if (arguments.length != 2) {
-            throw CommandSupport.usage("/mahjong remove <table-id>");
+            throw CommandSupport.usage(
+                    "/mahjong " + arguments[0].toLowerCase(java.util.Locale.ROOT)
+                            + " <table-id>");
+        }
+        boolean legacyAdminForm = "deletetable".equalsIgnoreCase(arguments[0]);
+        if (legacyAdminForm) {
+            support.requireAdmin(sender);
         }
         TableId tableId = TableId.parse(arguments[1]);
         if (sender instanceof Player player
@@ -57,6 +63,11 @@ public final class TableRemoveHandler implements SubcommandHandler {
     public List<String> complete(CommandSender sender, String[] arguments) {
         if (arguments.length != 2) {
             return List.of();
+        }
+        if ("deletetable".equalsIgnoreCase(arguments[0])) {
+            return sender.hasPermission("mahjongpaper.admin")
+                    ? CommandSupport.filter(arguments[1], support.currentTableIds(sender))
+                    : List.of();
         }
         if (sender.hasPermission("mahjongpaper.admin")) {
             return CommandSupport.filter(arguments[1], support.currentTableIds(sender));
