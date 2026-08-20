@@ -102,7 +102,16 @@ H2 已确认两阶段查询的内层走 ladder 索引。本机没有 MySQL/Maria
 - 内层必须选择 `idx_rank_summary_ladder`、access type 不能是 `ALL`、自身不得出现 `filesort`；
 - CI 报告会记录数据库产品、完整版本与计划行。
 
-普通本地 `check` 没有 JDBC URL 时自动跳过这两项，因此不会要求开发机安装数据库。**实际 MySQL/MariaDB 结果要等改动推送到 GitHub 后才算完成验证**；目前完成的是可重复的真实引擎门禁，不声称已在本机得到结果。
+普通本地 `check` 没有 JDBC URL 时自动跳过这两项，因此不会要求开发机安装数据库。
+
+首次 GitHub 实测（[Build 2.0 #32368795346](https://github.com/EllanStudio/MahjongEngine/actions/runs/32368795346)）为 2 tests、0 failures、0 skipped：
+
+| 引擎 | 内层访问 | 内层 Extra | 外层回表 |
+|:---|:---|:---|:---|
+| MySQL 8.4.11 | `ref / idx_rank_summary_ladder` | `Backward index scan; Using index` | `eq_ref / PRIMARY` |
+| MariaDB 11.4.12 | `ref / idx_rank_summary_ladder` | `Using where; Using index` | `eq_ref / PRIMARY` |
+
+两者都对最多 51 行的派生页显示外层 `Using filesort`，这是预期行为；关键是内层未 filesort、未全表扫描，整个榜单不会被排序。真实引擎验证因此完成，且后续每次 push/PR 都会重复执行。
 
 平手键翻向的代价只有一处且无实际影响：段位、级别、阶段分与总分全部相同的两名玩家，顺序从 `player_id` 升序变为降序；两种都是确定性的。
 
@@ -153,4 +162,4 @@ H2 已确认两阶段查询的内层走 ladder 索引。本机没有 MySQL/Maria
 - `sichuan-mahjong-java/BENCHMARK.md` 已重写为与 MCR、riichi 两包一致的中文版：补充了 JMH 待办区、正确性门禁与最新实测表。早前记录称其「内容为乱码（编码损坏）」是误判——文件本就是合法 UTF-8，乱码只是 PowerShell 默认 GBK 代码页读取 UTF-8 文件的显示假象；现已修正。
 - actor 管道吞吐已测（见上表与读法说明）。相关**行为**此前就有覆盖——`FairRuleExecutorTest` 8 项涵盖单包占满池、双包共享、空闲回收、跨包配额隔离、超时只隔离肇事包、三次失败开熔断；`TableActorIsolationStressTest` 有 64 桌隔离测试。
 - 未测：大牌河下的 diff 规模。
-- 真实 MySQL/MariaDB 计划门禁已实现；尚待推送后取得第一次 GitHub 运行结果。
+- 真实 MySQL 8.4.11 与 MariaDB 11.4.12 计划已在 GitHub 验证，门禁持续运行。

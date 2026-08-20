@@ -18,7 +18,8 @@
   ascending index, and rejects an inner full scan, filesort, or any plan not using the ladder index.
 - Made the leaderboard ordering uniformly descending and declared the ladder index ascending, so the
   inner page can use a portable backward scan instead of depending on descending-index definitions.
-  H2 is verified locally; the first real MySQL/MariaDB result is produced after this change is pushed.
+  Verified on H2, MySQL 8.4.11 and MariaDB 11.4.12: both external engines select the ladder index
+  without an inner filesort and use a primary-key `eq_ref` lookup for the bounded display rows.
 - Recorded the measured baseline and hot-path attribution in `docs/performance-notes.zh-CN.md`,
   including the paths deliberately left alone: scene projection is event-driven rather than per tick
   and already carries four bounded caches, and bot decisions run on a dedicated bounded executor at
