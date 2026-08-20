@@ -141,7 +141,7 @@ public record TableLobby(
         return LobbyBotIdentity.occupies(this, seat);
     }
 
-    /** All four seats are filled and ready; the owner may be an unseated spectator (v1.5 bot match). */
+    /** All four seats are filled and ready; the owner may be an unseated spectator (1.5.0 bot-match contract). */
     public boolean readyToStart() {
         if (phase != LobbyPhase.WAITING || occupiedSeatCount() != seats.size()) {
             return false;

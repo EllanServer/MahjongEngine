@@ -5,9 +5,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -27,12 +25,14 @@ import top.ellan.mahjong.application.table.TableActorRegistry;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.craftengine.scene.CraftEngineSceneBackend;
 import top.ellan.mahjong.platform.paper.concurrent.BoundedPlatformExecutors;
+import top.ellan.mahjong.plugin.bootstrap.rules.RulePackAdminGateway;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackBootstrap;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackOperations;
 import top.ellan.mahjong.plugin.bootstrap.rules.RuleResourceStartup;
 import top.ellan.mahjong.plugin.bootstrap.rules.RulePackRuntimeServices;
 import top.ellan.mahjong.plugin.bootstrap.sql.DatabaseBootstrap;
 import top.ellan.mahjong.plugin.bootstrap.sql.DatabaseRuntime;
+import top.ellan.mahjong.plugin.history.ConfiguredRankProgression;
 import top.ellan.mahjong.plugin.config.PluginConfiguration;
 import top.ellan.mahjong.plugin.lobby.LobbyRuntimeCoordinator;
 import top.ellan.mahjong.plugin.lobby.LobbyRuntimeServices;
@@ -57,8 +57,6 @@ import top.ellan.mahjong.plugin.runtime.RuleExecutionPools;
 import top.ellan.mahjong.plugin.table.LiveTableDirectory;
 import top.ellan.mahjong.plugin.table.TableLifecycleCoordinator;
 import top.ellan.mahjong.presentation.projection.LatestSceneProjector;
-import top.ellan.mahjong.runtime.admin.RulePackInventory;
-import top.ellan.mahjong.runtime.admin.RulePackVerification;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.RuleAction;
 import top.ellan.mahjong.spi.RuleId;
@@ -291,41 +289,12 @@ public final class MahjongRuntime implements AutoCloseable {
         return tableLifecycle.removeOwnedLobby(tableId, ownerId);
     }
 
-    public CompletionStage<RulePackInventory> listRules() {
-        return submitIo(ruleAdmin().inventory()::read);
-    }
-
-    public CompletionStage<?> installRule(RuleId ruleId, Optional<String> version) {
-        return submitIo(() -> ruleAdmin().install(ruleId, version));
-    }
-
-    public CompletionStage<List<RulePackVerification>> verifyRules(Optional<RuleId> ruleId) {
-        return submitIo(() -> ruleAdmin().verify(ruleId));
-    }
-
-    public CompletionStage<?> activateRule(RuleId ruleId, String version) {
-        return submitIo(() -> ruleAdmin().activate(ruleId, version));
-    }
-
-    public CompletionStage<String> swapRule(RuleId ruleId, String version) {
-        return submitIo(() -> ruleAdmin().swap(ruleId, version));
-    }
-
-    public CompletionStage<String> deactivateRule(RuleId ruleId) {
-        return submitIo(() -> ruleAdmin().deactivate(ruleId));
-    }
-
-    public CompletionStage<String> rollbackRule(RuleId ruleId) {
-        return submitIo(() -> ruleAdmin().rollback(ruleId));
-    }
-
-    public CompletionStage<?> collectRuleGarbage() {
-        return submitIo(ruleAdmin()::collectGarbage);
-    }
-
-    private RulePackOperations ruleAdmin() {
-        return new RulePackOperations(
-                requireServices().rules(), ruleExecutors, platform::activateRuleResource);
+    /** Rule-pack administration; every operation is bounded by the IO executor. */
+    public RulePackAdminGateway ruleAdmin() {
+        return new RulePackAdminGateway(
+                () -> new RulePackOperations(
+                        requireServices().rules(), ruleExecutors, platform::activateRuleResource),
+                executors.io());
     }
 
     public CompletionStage<List<PlayerMatchHistoryEntry>> playerHistory(
@@ -346,6 +315,7 @@ public final class MahjongRuntime implements AutoCloseable {
                 new DatabaseBootstrap(
                                 configuration.database(),
                                 executors.io(),
+                                new ConfiguredRankProgression(() -> configuration),
                                 plugin.getLogger())
                         .initialize();
         RulePackRuntimeServices rules = null;
@@ -411,6 +381,7 @@ public final class MahjongRuntime implements AutoCloseable {
                         rules.runtime().orElseThrow(),
                         new CompositeSceneProjectionPort(platform.sceneProjector(), dialogs),
                         platform.presentationCues(),
+                        platform.decisionWarnings(),
                         platform.openingPresentations(),
                         tableLifecycle,
                         clock));
@@ -467,18 +438,6 @@ public final class MahjongRuntime implements AutoCloseable {
                         () ->
                                 new IllegalStateException(
                                         "Database or rule runtime is unavailable"));
-    }
-
-    private <T> CompletionStage<T> submitIo(Callable<T> operation) {
-        return CompletableFuture.supplyAsync(
-                () -> {
-                    try {
-                        return operation.call();
-                    } catch (Exception failure) {
-                        throw new CompletionException(failure);
-                    }
-                },
-                executors.io());
     }
 
     @Override

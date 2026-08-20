@@ -7,6 +7,37 @@ author: ellan
 description: CraftEngine-first Mahjong core with signed external rule packs.
 depend:
   - CraftEngine
+# AntiGriefLib binds its provider adapters when ProtectionService is constructed, so every
+# land-protection plugin it supports must load first or its claims go undetected.
+softdepend:
+  - BentoBox
+  - CrashClaim
+  - Dominion
+  - FabledSkyBlock
+  - Factions
+  - GriefDefender
+  - GriefPrevention
+  - HuskClaims
+  - HuskTowns
+  - IridiumSkyblock
+  - Kingdoms
+  - LandClaimPlugin
+  - Landlord
+  - Lands
+  - NoBuildPlus
+  - PlotSquared
+  - PreciousStones
+  - Protect
+  - RedProtect
+  - Residence
+  - SimpleClaimSystem
+  - SuperiorSkyblock2
+  - Towny
+  - UltimateClaims
+  - UltimateClans
+  - WorldGuard
+  - XClaim
+  - uSkyBlock
 permissions:
   mahjongpaper.command:
     default: true

@@ -5,6 +5,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
+import top.ellan.mahjong.application.feedback.HumanDecisionWarningPort;
 import top.ellan.mahjong.application.table.TableActionCode;
 import top.ellan.mahjong.domain.table.TableParticipant;
 import top.ellan.mahjong.spi.PlayerId;
@@ -21,9 +22,11 @@ final class TableActorAutomationController {
             List<TableParticipant> participants,
             TaskScheduler scheduler,
             TableActorInbox inbox,
-            Runnable wakeActor) {
+            Runnable wakeActor,
+            HumanDecisionWarningPort warnings) {
         roster = new TableAutomationRoster(participants);
-        deadlines = new HumanDecisionDeadlineController(scheduler, inbox, wakeActor);
+        deadlines =
+                new HumanDecisionDeadlineController(scheduler, inbox, wakeActor, warnings);
     }
 
     boolean isAutomated(PlayerId playerId) {

@@ -22,7 +22,7 @@ class CraftEngineSeatResolverTest {
     }
 
     @Test
-    void legacyConfiguredPositionsUseEastSouthWestNorth() {
+    void configuredChairOffsetsUseEastSouthWestNorth() {
         assertEquals(
                 new SeatId(0),
                 CraftEngineSeatResolver.resolveConfiguredPosition(2.125F, 0).orElseThrow());

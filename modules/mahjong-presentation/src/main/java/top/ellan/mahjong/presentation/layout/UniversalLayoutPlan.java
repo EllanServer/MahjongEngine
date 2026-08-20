@@ -11,6 +11,11 @@ import top.ellan.mahjong.spi.SeatId;
 
 /** Immutable arrays used by the hot projection path after a layout has been compiled. */
 final class UniversalLayoutPlan {
+    /** 1.5.0 showed the newest discard at double size so every seat could read it. */
+    private static final double LAST_DISCARD_SCALE = 2.0D;
+    /** Clears the table surface by the 1.5.0 gap, putting the tile at the historic y of 0.68. */
+    private static final double LAST_DISCARD_SURFACE_GAP = 0.16D;
+
     private final TableGeometry geometry;
     private final UniversalLayoutSpec spec;
     private final SceneTransform[][][] hands;
@@ -27,6 +32,7 @@ final class UniversalLayoutPlan {
     private final double[] seatTangentZ;
     private final SceneTransform[] viewControls;
     private final SceneTransform[] wall;
+    private final SceneTransform lastDiscardHighlight;
 
     UniversalLayoutPlan(
             TableGeometry geometry,
@@ -61,6 +67,19 @@ final class UniversalLayoutPlan {
         this.seatTangentZ = seatTangentZ;
         this.viewControls = viewControls;
         this.wall = wall;
+        this.lastDiscardHighlight = new SceneTransform(
+                0,
+                geometry.surfaceHeight() + LAST_DISCARD_SURFACE_GAP,
+                0,
+                0,
+                0,
+                0,
+                LAST_DISCARD_SCALE);
+    }
+
+    /** Centre pose for the enlarged copy of the most recent discard. */
+    SceneTransform lastDiscardHighlight() {
+        return lastDiscardHighlight;
     }
 
     SceneTransform tile(RuleViewTile tile, int groupSize) {

@@ -75,7 +75,7 @@ class SignedRegistryCodecTest {
                         + "\",\"spiVersion\":\""
                         + SpiVersion.CURRENT
                         + "\","
-                        + "\"requiredCoreVersion\":\">=1.5.0\",\"sizeBytes\":1234}]}")
+                        + "\"requiredCoreVersion\":\">=2.0.0\",\"sizeBytes\":1234}]}")
                 .getBytes(StandardCharsets.UTF_8);
     }
 

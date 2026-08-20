@@ -111,7 +111,7 @@ class RuleStateReplayVerifierTest {
                     new RuleId("riichi"),
                     "1.0.0",
                     SpiVersion.CURRENT,
-                    ">=1.5.0",
+                    ">=2.0.0",
                     1,
                     List.of(new RuleProfileDescriptor(
                             new ProfileId("standard"), "Standard", "{}")),

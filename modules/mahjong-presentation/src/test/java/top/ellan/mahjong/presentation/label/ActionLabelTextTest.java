@@ -19,15 +19,4 @@ class ActionLabelTextTest {
                         "action.chii:tile.m2:tile.m3",
                         (key, fallback) -> translations.getOrDefault(key, fallback)));
     }
-
-    @Test
-    void keepsPreviewRespondKeysBackwardCompatible() {
-        assertEquals(
-                "Pon one.two",
-                ActionLabelText.resolve(
-                        "action.respond:pon:one.two",
-                        (key, fallback) -> key.equals("mahjongpaper.action.pon")
-                                ? "Pon"
-                                : fallback));
-    }
 }

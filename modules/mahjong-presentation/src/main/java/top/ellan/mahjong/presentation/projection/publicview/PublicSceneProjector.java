@@ -63,6 +63,9 @@ public final class PublicSceneProjector {
 
         ZoneTileCounts counts = ZoneTileCounts.from(projection.publicView().tiles());
         HashSet<TileInstanceId> revealedHands = null;
+        TileInstanceId highlighted =
+                projection.publicView().tablePresentation().lastDiscard().orElse(null);
+        RuleViewTile highlightedTile = null;
         for (RuleViewTile tile : projection.publicView().tiles()) {
             SceneNodeId id = SceneNodeIdentity.publicTile(tile.instanceId().value());
             nodes.put(
@@ -78,7 +81,31 @@ public final class PublicSceneProjector {
                 }
                 revealedHands.add(tile.instanceId());
             }
+            if (highlighted != null && highlighted.equals(tile.instanceId())) {
+                highlightedTile = tile;
+            }
         }
+        projectLastDiscardHighlight(nodes, highlightedTile, layout);
         return revealedHands == null ? Set.of() : Set.copyOf(revealedHands);
+    }
+
+    /**
+     * Restores the 1.5.0 centre highlight: an enlarged copy of the newest discard floats above the
+     * table so every seat can read the tile a call would be made on. Omitting the node when there is
+     * no pending discard lets the scene differ retire it.
+     */
+    private void projectLastDiscardHighlight(
+            Map<SceneNodeId, SceneNode> nodes, RuleViewTile tile, ResolvedTableLayout layout) {
+        if (tile == null || !tile.faceUp()) {
+            return;
+        }
+        SceneNodeId id = SceneNodeId.trusted("furniture/last-discard");
+        nodes.put(
+                id,
+                new FurnitureNode(
+                        id,
+                        SceneVisibility.publicToAll(),
+                        furniture.resolve(tile),
+                        layout.lastDiscardHighlight()));
     }
 }

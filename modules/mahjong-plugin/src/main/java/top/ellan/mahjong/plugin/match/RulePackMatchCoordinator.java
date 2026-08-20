@@ -12,6 +12,7 @@ import java.util.concurrent.Executor;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
+import top.ellan.mahjong.application.feedback.HumanDecisionWarningPort;
 import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
 import top.ellan.mahjong.application.table.TableActorRegistry;
@@ -56,6 +57,7 @@ public final class RulePackMatchCoordinator {
             RulePackRuntime rulePacks,
             SceneProjectionPort projector,
             TablePresentationCuePort presentationCues,
+            HumanDecisionWarningPort decisionWarnings,
             TableOpeningPresentationPort openingPresentations,
             MatchCompletionPort completions,
             Clock clock) {
@@ -77,6 +79,7 @@ public final class RulePackMatchCoordinator {
                         events,
                         projector,
                         presentationCues,
+                        decisionWarnings,
                         openingPresentations,
                         completions,
                         clock);

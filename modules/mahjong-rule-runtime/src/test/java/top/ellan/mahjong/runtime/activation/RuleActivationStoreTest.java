@@ -86,7 +86,7 @@ class RuleActivationStoreTest {
     }
 
     @Test
-    void readsALegacyStateFileWithoutThePreviousField() throws Exception {
+    void rejectsAStateFileMissingTheRollbackField() throws Exception {
         Path stateFile = temporaryDirectory.resolve("activation-state.json");
         java.nio.file.Files.writeString(
                 stateFile,
@@ -94,9 +94,13 @@ class RuleActivationStoreTest {
                         + "a".repeat(64)
                         + "\",\"schema\":1}},\"pending\":{},\"pendingJvmStartMillis\":-1}");
 
-        RuleActivationState state = new RuleActivationStore(stateFile, () -> 100L).read();
+        RuleActivationStore store = new RuleActivationStore(stateFile, () -> 100L);
 
-        assertEquals("1.0.0", state.active().get(OfficialRuleIds.RIICHI).version());
-        assertTrue(state.previous().isEmpty());
+        assertEquals(
+                "Invalid activation-state fields",
+                org.junit.jupiter.api.Assertions.assertThrows(
+                                top.ellan.mahjong.runtime.common.RulePackException.class,
+                                store::read)
+                        .getMessage());
     }
 }

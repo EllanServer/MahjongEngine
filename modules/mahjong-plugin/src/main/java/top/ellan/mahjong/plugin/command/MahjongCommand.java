@@ -121,7 +121,7 @@ public final class MahjongCommand implements BasicCommand {
         }
     }
 
-    /** Paginated usage-and-description help with the v1.5 header, page status and buttons. */
+    /** Paginated usage-and-description help with the 1.5.0-aligned header, page status and buttons. */
     private void sendHelp(CommandSender sender, int requestedPage) {
         List<CommandHelpCatalog.HelpEntry> entries = CommandHelpCatalog.ENTRIES.stream()
                 .filter(entry -> !entry.adminOnly() || sender.hasPermission("mahjongpaper.admin"))

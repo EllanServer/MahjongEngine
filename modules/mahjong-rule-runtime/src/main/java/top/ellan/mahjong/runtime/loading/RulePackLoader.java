@@ -146,7 +146,8 @@ public final class RulePackLoader implements PinnedRulePackLoader {
                         pinned.jarSha256(),
                         manifest.spiVersion(),
                         manifest.requiredCoreVersion(),
-                        size);
+                        size,
+                        java.util.Optional.empty());
         LoadedRulePack loaded = load(normalized, expected);
         if (!loaded.reference().equals(pinned)) {
             try {

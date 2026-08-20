@@ -86,7 +86,7 @@ public final class MahjongDialogService
         tell(player, "mahjongpaper.command.unknown_table", "Unknown table.", NamedTextColor.RED);
     }
 
-    /** v1.5-compatible /mahjong rule entry point; live matches have no mutable rule settings. */
+    /** /mahjong rule entry point aligned with the 1.5.0 contract; live matches have no mutable rule settings. */
     public void openRules(Player player, Optional<TableId> requested) {
         Objects.requireNonNull(player, "player");
         TableId tableId = requested.orElseGet(() -> currentTable(player).orElse(null));

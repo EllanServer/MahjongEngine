@@ -12,6 +12,36 @@ dependencies:
       load: BEFORE
       required: true
       join-classpath: true
+    # AntiGriefLib binds its provider adapters when ProtectionService is constructed, so every
+    # land-protection plugin it supports must load first or its claims go undetected.
+    BentoBox: { load: BEFORE, required: false }
+    CrashClaim: { load: BEFORE, required: false }
+    Dominion: { load: BEFORE, required: false }
+    FabledSkyBlock: { load: BEFORE, required: false }
+    Factions: { load: BEFORE, required: false }
+    GriefDefender: { load: BEFORE, required: false }
+    GriefPrevention: { load: BEFORE, required: false }
+    HuskClaims: { load: BEFORE, required: false }
+    HuskTowns: { load: BEFORE, required: false }
+    IridiumSkyblock: { load: BEFORE, required: false }
+    Kingdoms: { load: BEFORE, required: false }
+    LandClaimPlugin: { load: BEFORE, required: false }
+    Landlord: { load: BEFORE, required: false }
+    Lands: { load: BEFORE, required: false }
+    NoBuildPlus: { load: BEFORE, required: false }
+    PlotSquared: { load: BEFORE, required: false }
+    PreciousStones: { load: BEFORE, required: false }
+    Protect: { load: BEFORE, required: false }
+    RedProtect: { load: BEFORE, required: false }
+    Residence: { load: BEFORE, required: false }
+    SimpleClaimSystem: { load: BEFORE, required: false }
+    SuperiorSkyblock2: { load: BEFORE, required: false }
+    Towny: { load: BEFORE, required: false }
+    UltimateClaims: { load: BEFORE, required: false }
+    UltimateClans: { load: BEFORE, required: false }
+    WorldGuard: { load: BEFORE, required: false }
+    XClaim: { load: BEFORE, required: false }
+    uSkyBlock: { load: BEFORE, required: false }
 permissions:
   mahjongpaper.command:
     default: true

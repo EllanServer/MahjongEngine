@@ -7,9 +7,9 @@ import top.ellan.mahjong.plugin.command.CommandSupport;
 import top.ellan.mahjong.plugin.command.SubcommandHandler;
 
 /**
- * v1.5-compatible reload entry point. 2.0 reloads the bounded runtime indexes that are safe to
- * refresh without replacing the composition root; rule-pack activation and core configuration
- * changes remain restart-scoped by design.
+ * Reload entry point aligned with the 1.5.0 contract. 2.0 reloads the bounded runtime indexes that
+ * are safe to refresh without replacing the composition root; rule-pack activation and core
+ * configuration changes remain restart-scoped by design.
  */
 public final class ReloadCommandHandler implements SubcommandHandler {
     private final CommandSupport support;

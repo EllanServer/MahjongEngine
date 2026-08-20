@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 
 class CommandHelpCatalogTest {
     @Test
-    void legacyEntriesKeepTheV15OrderAndPageBoundaries() {
+    void entriesKeepThe1_5_0AlignedOrderAndPageBoundaries() {
         List<String> names =
                 CommandHelpCatalog.ENTRIES.stream()
                         .map(CommandHelpCatalog.HelpEntry::canonicalName)

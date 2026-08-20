@@ -50,7 +50,7 @@ public final class TableDialogHandler implements SubcommandHandler {
         }
     }
 
-    /** v1.5 form: /mahjong table owner <seat|player> [table-id]. */
+    /** 1.5.0-aligned form: /mahjong table owner <seat|player> [table-id]. */
     private void transferOwner(CommandSender sender, Player player, String[] arguments) {
         if (arguments.length < 3 || arguments.length > 4) {
             throw CommandSupport.usage("/mahjong table owner <seat|player> [table-id]");

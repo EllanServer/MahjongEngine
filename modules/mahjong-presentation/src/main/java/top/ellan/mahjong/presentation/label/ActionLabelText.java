@@ -34,18 +34,8 @@ public final class ActionLabelText {
         if (separator < 0) {
             return new ParsedLabel(labelKey, new String[0]);
         }
-        String base = labelKey.substring(0, separator);
-        int argumentsStart = separator + 1;
-        // Compatibility for the 2.0 preview format action.respond:<reaction>:<choice>.
-        if (base.equals("action.respond")) {
-            int next = labelKey.indexOf(':', argumentsStart);
-            String reaction = next < 0
-                    ? labelKey.substring(argumentsStart)
-                    : labelKey.substring(argumentsStart, next);
-            base = "action." + reaction;
-            argumentsStart = next < 0 ? labelKey.length() : next + 1;
-        }
-        return new ParsedLabel(base, arguments(labelKey, argumentsStart));
+        return new ParsedLabel(
+                labelKey.substring(0, separator), arguments(labelKey, separator + 1));
     }
 
     private static String[] arguments(String labelKey, int start) {

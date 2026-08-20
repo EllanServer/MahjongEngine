@@ -24,3 +24,7 @@ replay_pid*.log
 __pycache__/
 *.py[cod]
 /perf/live/client/node_modules/
+
+# Local analysis artifacts, not part of the build
+_code_index.txt
+audit/

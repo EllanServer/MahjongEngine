@@ -51,7 +51,8 @@ class RulePackLoaderBoundaryTest {
                         sha,
                         SpiVersion.CURRENT,
                         ">=2.0.0",
-                        Files.size(jar));
+                        Files.size(jar),
+                        java.util.Optional.empty());
 
         RulePackException failure =
                 assertThrows(
@@ -144,7 +145,8 @@ class RulePackLoaderBoundaryTest {
                 Hashing.sha256(jar),
                 SpiVersion.CURRENT,
                 ">=2.0.0",
-                Files.size(jar));
+                Files.size(jar),
+                java.util.Optional.empty());
     }
 
     private static void add(ZipOutputStream zip, String name, byte[] content) throws Exception {

@@ -25,6 +25,8 @@ import org.bukkit.plugin.Plugin;
 import top.ellan.mahjong.application.concurrent.BoundedDeadlineScheduler;
 import top.ellan.mahjong.application.automation.PlayerPresencePort;
 import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
+import top.ellan.mahjong.application.feedback.HumanDecisionWarningPort;
+import top.ellan.mahjong.plugin.feedback.HumanDecisionWarningPresenter;
 import top.ellan.mahjong.application.interaction.InteractionRouter;
 import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.table.TableActionResult;
@@ -78,6 +80,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
     private final CraftEngineSceneBackend sceneBackend;
     private final LatestSceneProjector sceneProjector;
     private final TablePresentationCuePort presentationCues;
+    private final HumanDecisionWarningPort decisionWarnings;
     private final CraftEngineOpeningPresenter openingPresentations;
     private final PaperRuleSoundCatalog soundCatalog = new PaperRuleSoundCatalog();
     private final AtomicBoolean bundleInstalled = new AtomicBoolean();
@@ -110,6 +113,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
         mutations = new DirectCraftEngineMutationGateway(plugin, anchors, privateProjection);
         PaperSoundDispatcher sounds = new PaperSoundDispatcher(plugin);
         presentationCues = new PaperTableSoundGateway(sounds, soundCatalog);
+        decisionWarnings = new HumanDecisionWarningPresenter(plugin, this.messages);
         sceneBackend =
                 new CraftEngineSceneBackend(
                         mutations,
@@ -231,6 +235,10 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
 
     public TablePresentationCuePort presentationCues() {
         return presentationCues;
+    }
+
+    public HumanDecisionWarningPort decisionWarnings() {
+        return decisionWarnings;
     }
 
     public TableOpeningPresentationPort openingPresentations() {

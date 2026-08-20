@@ -27,7 +27,10 @@ public final class RulePackAdminHandler implements SubcommandHandler {
     @Override
     public void execute(CommandSender sender, String[] arguments) {
         if (arguments.length < 2 || "list".equalsIgnoreCase(arguments[1])) {
-            support.complete(sender, support.runtime().listRules(), RulePackAdminHandler::inventory);
+            support.complete(
+                    sender,
+                    support.runtime().ruleAdmin().listRules(),
+                    RulePackAdminHandler::inventory);
             return;
         }
         support.requireAdmin(sender);
@@ -41,7 +44,7 @@ public final class RulePackAdminHandler implements SubcommandHandler {
             case "gc" ->
                     support.complete(
                             sender,
-                            support.runtime().collectRuleGarbage(),
+                            support.runtime().ruleAdmin().collectRuleGarbage(),
                             value -> CommandSupport.message(
                                     "mahjongpaper.command.rules_quarantined",
                                     "Quarantined %s rule-pack versions.",
@@ -96,7 +99,7 @@ public final class RulePackAdminHandler implements SubcommandHandler {
                 arguments.length == 4 ? Optional.of(arguments[3]) : Optional.empty();
         support.complete(
                 sender,
-                support.runtime().installRule(CommandSupport.ruleId(arguments[2]), version),
+                support.runtime().ruleAdmin().installRule(CommandSupport.ruleId(arguments[2]), version),
                 value -> CommandSupport.message(
                         "mahjongpaper.command.rule_installed", "Installed %s.", value));
     }
@@ -111,7 +114,7 @@ public final class RulePackAdminHandler implements SubcommandHandler {
                         : Optional.empty();
         support.complete(
                 sender,
-                support.runtime().verifyRules(ruleId),
+                support.runtime().ruleAdmin().verifyRules(ruleId),
                 RulePackAdminHandler::verification);
     }
 
@@ -122,6 +125,7 @@ public final class RulePackAdminHandler implements SubcommandHandler {
         support.complete(
                 sender,
                 support.runtime()
+                        .ruleAdmin()
                         .activateRule(CommandSupport.ruleId(arguments[2]), arguments[3]),
                 value -> CommandSupport.message(
                         "mahjongpaper.command.rule_activation_pending",
@@ -136,7 +140,7 @@ public final class RulePackAdminHandler implements SubcommandHandler {
         }
         support.complete(
                 sender,
-                support.runtime().swapRule(CommandSupport.ruleId(arguments[2]), arguments[3]),
+                support.runtime().ruleAdmin().swapRule(CommandSupport.ruleId(arguments[2]), arguments[3]),
                 value -> CommandSupport.message(
                         "mahjongpaper.command.rule_swapped",
                         "Rule pack swapped for new matches: %s",
@@ -151,8 +155,8 @@ public final class RulePackAdminHandler implements SubcommandHandler {
         support.complete(
                 sender,
                 deactivate
-                        ? support.runtime().deactivateRule(ruleId)
-                        : support.runtime().rollbackRule(ruleId),
+                        ? support.runtime().ruleAdmin().deactivateRule(ruleId)
+                        : support.runtime().ruleAdmin().rollbackRule(ruleId),
                 value -> CommandSupport.message(
                         deactivate
                                 ? "mahjongpaper.command.rule_deactivated"

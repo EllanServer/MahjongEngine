@@ -1,6 +1,7 @@
 package top.ellan.mahjong.persistence.sql.history;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.ByteBuffer;
@@ -76,8 +77,14 @@ class JdbcPlayerRecordQueryTest {
         var ranking = query.ranking(SECOND, new RuleId("riichi"), 1, 1);
         assertEquals("riichi.mahjong-soul.v1", ranking.rankSystem().orElseThrow());
         assertEquals(FIRST, ranking.entries().getFirst().playerId());
+        assertEquals(1, ranking.entries().getFirst().position());
         assertTrue(ranking.hasNext());
         assertEquals(2, ranking.ownEntry().orElseThrow().position());
+
+        var secondPage = query.ranking(SECOND, new RuleId("riichi"), 2, 1);
+        assertEquals(SECOND, secondPage.entries().getFirst().playerId());
+        assertEquals(2, secondPage.entries().getFirst().position());
+        assertFalse(secondPage.hasNext());
     }
 
     /**

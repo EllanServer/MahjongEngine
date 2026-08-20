@@ -12,7 +12,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import top.ellan.mahjong.craftengine.port.PlayerTextResolver;
 import top.ellan.mahjong.presentation.node.HudNode;
 
-/** Builds the compact v1.5-style round/turn/wall BossBar from one viewer's HUD nodes. */
+/** Builds the 1.5.0-aligned compact round/turn/wall BossBar from one viewer's HUD nodes. */
 final class HudTextFormatter {
     private static final Pattern VALUE_KEY_UNSAFE = Pattern.compile("[^a-z0-9_.-]");
     private static final Pattern CAMEL_CASE = Pattern.compile("([a-z])([A-Z])");

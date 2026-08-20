@@ -280,7 +280,7 @@ final class GameRoomExitController implements Listener, AutoCloseable {
     }
 
     /**
-     * One timer per table serves both expiry and the v1.5 warning cadence: every 15 seconds
+     * One timer per table serves both expiry and the 1.5.0-aligned warning cadence: every 15 seconds
      * before the final ten, then 10, 8, 6, 5, 4, 3, 2, and 1 seconds.
      */
     private void fire(TableId tableId, MatchBinding binding, long generation) {
@@ -395,7 +395,7 @@ final class GameRoomExitController implements Listener, AutoCloseable {
                                 messages.resolve(
                                         player.locale(),
                                         "mahjongpaper.gameroom.exit_warning",
-                                        "You left the game room during an active match! Return within %s seconds or the match will be forced to end."),
+                                        "You left game room %s during an active match! Return within %s seconds or the match will be forced to end."),
                                 room.name(),
                                 settings.leaveCountdownSeconds()),
                         NamedTextColor.RED));

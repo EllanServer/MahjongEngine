@@ -22,7 +22,7 @@ import top.ellan.mahjong.spi.ProfileId;
 import top.ellan.mahjong.spi.RuleId;
 import top.ellan.mahjong.spi.SeatId;
 
-/** v1.5-compatible four-bot demo match; the creator is attached as its spectator. */
+/** Four-bot demo match aligned with the 1.5.0 contract; the creator is attached as its spectator. */
 public final class BotMatchHandler implements SubcommandHandler {
     private static final List<String> PRESETS =
             List.of(

@@ -18,8 +18,6 @@ import top.ellan.mahjong.spi.RulePackRef;
 
 /** Atomic activation state that distinguishes plugin reload from a full JVM restart. */
 public final class RuleActivationStore {
-    private static final java.util.Set<String> LEGACY_FIELDS =
-            java.util.Set.of("format", "active", "pending", "pendingJvmStartMillis");
     private static final java.util.Set<String> CURRENT_FIELDS =
             java.util.Set.of("format", "active", "pending", "pendingJvmStartMillis", "previous");
 
@@ -156,8 +154,7 @@ public final class RuleActivationStore {
         }
         Object parsed = MiniJson.parse(Files.readString(stateFile));
         Map<String, Object> root = object(parsed, "activation root");
-        // Format 1 predates rollback support, so "previous" is accepted but not required.
-        if (!root.keySet().equals(LEGACY_FIELDS) && !root.keySet().equals(CURRENT_FIELDS)) {
+        if (!root.keySet().equals(CURRENT_FIELDS)) {
             throw new RulePackException("Invalid activation-state fields");
         }
         if (integer(root.get("format"), "format") != 1) {
@@ -165,9 +162,7 @@ public final class RuleActivationStore {
         }
         Map<RuleId, RulePackRef> active = references(root.get("active"), "active");
         Map<RuleId, RulePackRef> pending = references(root.get("pending"), "pending");
-        Map<RuleId, RulePackRef> previous = root.containsKey("previous")
-                ? references(root.get("previous"), "previous")
-                : Map.of();
+        Map<RuleId, RulePackRef> previous = references(root.get("previous"), "previous");
         long epoch = integer(root.get("pendingJvmStartMillis"), "pendingJvmStartMillis");
         try {
             return new RuleActivationState(active, pending, epoch, previous);

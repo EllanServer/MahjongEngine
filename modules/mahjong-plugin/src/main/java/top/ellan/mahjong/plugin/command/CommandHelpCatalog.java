@@ -5,8 +5,8 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Immutable paged command help catalog in the v1.5 reading order. Entries for commands beyond
- * the v1.5 flow are appended after it so the original page boundaries stay intact.
+ * Immutable paged command help catalog in the 1.5.0-aligned reading order. Entries for commands
+ * beyond the 1.5.0 flow are appended after it so the original page boundaries stay intact.
  */
 final class CommandHelpCatalog {
     static final int HELP_PAGE_SIZE = 10;
@@ -143,7 +143,7 @@ final class CommandHelpCatalog {
                     help(
                             "rank",
                             "/mahjong rank [riichi|mcr|sichuan] [page]",
-                            "Show your Mahjong Soul-style rank progress.",
+                            "Show your rank-point standing, match count and total score for one mode.",
                             false,
                             "ranking"),
                     help(

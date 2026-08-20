@@ -19,6 +19,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import top.ellan.mahjong.application.history.RankProgressionPort;
 import top.ellan.mahjong.application.persistence.EventStorePort;
 import top.ellan.mahjong.application.persistence.MatchEventRecord;
 import top.ellan.mahjong.application.persistence.MatchWriteBatch;
@@ -31,11 +32,21 @@ import top.ellan.mahjong.spi.RuleMatchResult;
 public final class JdbcEventStore implements EventStorePort {
     private final SqlConnectionFactory connections;
     private final Executor ioExecutor;
+    private final RankProgressionPort progression;
     private final AtomicBoolean available = new AtomicBoolean(true);
 
+    /** Records results without moving anyone along the rank ladder. */
     public JdbcEventStore(SqlConnectionFactory connections, Executor ioExecutor) {
+        this(connections, ioExecutor, RankProgressionPort.NONE);
+    }
+
+    public JdbcEventStore(
+            SqlConnectionFactory connections,
+            Executor ioExecutor,
+            RankProgressionPort progression) {
         this.connections = Objects.requireNonNull(connections, "connections");
         this.ioExecutor = Objects.requireNonNull(ioExecutor, "ioExecutor");
+        this.progression = Objects.requireNonNull(progression, "progression");
     }
 
     @Override
@@ -121,7 +132,8 @@ public final class JdbcEventStore implements EventStorePort {
                         persistMatchResult(
                                 connection,
                                 snapshot,
-                                snapshot.matchResult().orElseThrow());
+                                snapshot.matchResult().orElseThrow(),
+                                progression);
                     }
                 }
                 updateCommittedSequence(
@@ -268,14 +280,17 @@ public final class JdbcEventStore implements EventStorePort {
     }
 
     private static void persistMatchResult(
-            Connection connection, SnapshotWrite snapshot, RuleMatchResult result)
+            Connection connection,
+            SnapshotWrite snapshot,
+            RuleMatchResult result,
+            RankProgressionPort progression)
             throws SQLException {
         String matchId = snapshot.matchId().toString();
         MatchResultRows rows = MatchResultRows.load(connection, matchId, result);
         rows.verifySeats(result);
         rows.insertPlayerResults(connection, matchId, result);
         rows.insertRankLedgers(connection, snapshot, result);
-        rows.upsertRankSummary(connection, snapshot, result);
+        rows.upsertRankSummary(connection, snapshot, result, progression);
     }
 
     private static void updateCommittedSequence(

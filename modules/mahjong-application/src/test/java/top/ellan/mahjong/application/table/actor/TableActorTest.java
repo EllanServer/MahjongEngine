@@ -27,6 +27,7 @@ import top.ellan.mahjong.application.concurrent.BoundedDeadlineScheduler;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.application.feedback.TableCueBatch;
+import top.ellan.mahjong.application.feedback.HumanDecisionWarningPort;
 import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
 import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.persistence.EventStorePort;
@@ -107,6 +108,7 @@ class TableActorTest {
                     neverRuns,
                     projections::offer,
                     TablePresentationCuePort.NONE,
+                    HumanDecisionWarningPort.NONE,
                     TableOpeningPresentationPort.NONE,
                     true,
                     MatchCompletionPort.NONE,
@@ -163,6 +165,7 @@ class TableActorTest {
                     deadlines,
                     projections::offer,
                     TablePresentationCuePort.NONE,
+                    HumanDecisionWarningPort.NONE,
                     TableOpeningPresentationPort.NONE,
                     true,
                     MatchCompletionPort.NONE,
@@ -207,6 +210,7 @@ class TableActorTest {
                     deadlines,
                     projections::offer,
                     TablePresentationCuePort.NONE,
+                    HumanDecisionWarningPort.NONE,
                     TableOpeningPresentationPort.NONE,
                     true,
                     MatchCompletionPort.NONE,
@@ -255,6 +259,7 @@ class TableActorTest {
                     deadlines,
                     projections::offer,
                     TablePresentationCuePort.NONE,
+                    HumanDecisionWarningPort.NONE,
                     TableOpeningPresentationPort.NONE,
                     true,
                     MatchCompletionPort.NONE,
@@ -310,6 +315,7 @@ class TableActorTest {
                             deadlines,
                             projections::offer,
                             TablePresentationCuePort.NONE,
+                            HumanDecisionWarningPort.NONE,
                             TableOpeningPresentationPort.NONE,
                             true,
                             MatchCompletionPort.NONE,
@@ -365,6 +371,7 @@ class TableActorTest {
                         cues.offer(batch);
                         throw new IllegalStateException("sound backend unavailable");
                     },
+                    HumanDecisionWarningPort.NONE,
                     TableOpeningPresentationPort.NONE,
                     true,
                     MatchCompletionPort.NONE,
@@ -416,6 +423,7 @@ class TableActorTest {
                             neverRuns,
                             ignored -> {},
                             TablePresentationCuePort.NONE,
+                            HumanDecisionWarningPort.NONE,
                             TableOpeningPresentationPort.NONE,
                             true,
                             MatchCompletionPort.NONE,
@@ -470,6 +478,7 @@ class TableActorTest {
                             (task, delay) -> () -> true,
                             projections::offer,
                             TablePresentationCuePort.NONE,
+                            HumanDecisionWarningPort.NONE,
                             TableOpeningPresentationPort.NONE,
                             true,
                             MatchCompletionPort.NONE,
@@ -525,6 +534,7 @@ class TableActorTest {
                     (task, delay) -> () -> true,
                     projections::offer,
                     TablePresentationCuePort.NONE,
+                    HumanDecisionWarningPort.NONE,
                     TableOpeningPresentationPort.NONE,
                     true,
                     MatchCompletionPort.NONE,
@@ -586,7 +596,7 @@ class TableActorTest {
                         new RuleId("riichi"),
                         "1.0.0",
                         SpiVersion.CURRENT,
-                        ">=1.5.0",
+                        ">=2.0.0",
                         1,
                         List.of(
                                 new RuleProfileDescriptor(

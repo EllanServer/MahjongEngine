@@ -42,24 +42,4 @@ public record RulePackRegistryEntry(
             throw new IllegalArgumentException("Artifact size is outside the 64 MiB limit");
         }
     }
-
-    /** Compatibility constructor for format-1 registries, which contained only a rule JAR. */
-    public RulePackRegistryEntry(
-            RuleId ruleId,
-            String version,
-            URI artifactUri,
-            String sha256,
-            String spiVersion,
-            String requiredCoreVersion,
-            long sizeBytes) {
-        this(
-                ruleId,
-                version,
-                artifactUri,
-                sha256,
-                spiVersion,
-                requiredCoreVersion,
-                sizeBytes,
-                Optional.empty());
-    }
 }

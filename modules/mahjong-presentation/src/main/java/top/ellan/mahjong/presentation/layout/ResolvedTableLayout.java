@@ -20,5 +20,8 @@ public interface ResolvedTableLayout {
 
     SceneTransform viewControl(SeatId seat);
 
+    /** Centre pose for the enlarged copy of the most recent discard. */
+    SceneTransform lastDiscardHighlight();
+
     SceneTransform overheadCamera(SeatId seat, double height);
 }

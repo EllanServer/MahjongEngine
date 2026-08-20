@@ -13,6 +13,7 @@ import top.ellan.mahjong.application.concurrent.RulePackCircuitOpenException;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.application.automation.TableAutomationEndpoint;
 import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
+import top.ellan.mahjong.application.feedback.HumanDecisionWarningPort;
 import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.persistence.OutboxHealth;
 import top.ellan.mahjong.application.persistence.PersistenceOutbox;
@@ -60,6 +61,7 @@ public final class TableActor
             TaskScheduler deadlineScheduler,
             SceneProjectionPort projector,
             TablePresentationCuePort cuePort,
+            HumanDecisionWarningPort warningPort,
             TableOpeningPresentationPort openingPort,
             boolean presentInitialOpening,
             MatchCompletionPort completionPort,
@@ -100,7 +102,11 @@ public final class TableActor
                 lastEventSequence,
                 scheduledActions);
         automation = new TableActorAutomationController(
-                aggregate.participants(), deadlineScheduler, inbox, this::scheduleDrain);
+                aggregate.participants(),
+                deadlineScheduler,
+                inbox,
+                this::scheduleDrain,
+                Objects.requireNonNull(warningPort, "warningPort"));
         ruleTasks = new TableRuleTaskLauncher(
                 Objects.requireNonNull(ruleExecutor, "ruleExecutor"),
                 Objects.requireNonNull(automationExecutor, "automationExecutor"),

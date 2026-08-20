@@ -32,7 +32,8 @@ class OfficialRulePackCompatibilityTest {
                 sha256,
                 manifest.spiVersion(),
                 manifest.requiredCoreVersion(),
-                Files.size(artifact));
+                Files.size(artifact),
+                java.util.Optional.empty());
 
         try (LoadedRulePack loaded = new RulePackLoader("2.0.0").load(artifact, expected)) {
             assertEquals(manifest.ruleId(), loaded.reference().ruleId());

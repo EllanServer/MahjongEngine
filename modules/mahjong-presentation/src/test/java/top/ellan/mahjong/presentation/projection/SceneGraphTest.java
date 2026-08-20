@@ -3,6 +3,8 @@ package top.ellan.mahjong.presentation.projection;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -120,7 +122,28 @@ class SceneGraphTest {
     }
 
     @Test
+    void newestDiscardIsEchoedAtTableCentreLikeV15() {
+        RuleViewTile discard = tile(7, "riichi:tile/m5_red", RuleViewZone.DISCARD, 0, true, 0);
+
+        SceneGraph withHighlight =
+                mapper().map(discardProjection(Optional.of(new TileInstanceId(7)), discard));
+        FurnitureNode highlight = (FurnitureNode)
+                withHighlight.nodes().get(new SceneNodeId("furniture/last-discard"));
+        assertNotNull(highlight);
+        // 1.5.0 floated a double-size copy dead centre at y 0.68.
+        assertEquals(new SceneTransform(0, 0.68D, 0, 0, 0, 0, 2.0D), highlight.transform());
+        assertTrue(highlight.visibility().isPublic());
+
+        // Without a pending discard the node is absent, so the differ retires it.
+        assertNull(mapper()
+                .map(discardProjection(Optional.empty(), discard))
+                .nodes()
+                .get(new SceneNodeId("furniture/last-discard")));
+    }
+
+    @Test
     void mapperKeepsSecretFacesOutOfWorldBackedNodes() {
+
         SceneGraph graph = mapper().map(projection(TableId.random(), 4, "playing"));
 
         assertTrue(
@@ -951,6 +974,26 @@ class SceneGraphTest {
                 Math.toIntExact(id - 1),
                 true,
                 presentation);
+    }
+
+    /** One face-up discard, with the table optionally nominating it as the newest discard. */
+    private static TableProjection discardProjection(
+            Optional<TileInstanceId> lastDiscard, RuleViewTile discard) {
+        RuleTablePresentation table = new RuleTablePresentation(
+                4,
+                new RuleWallPresentation(
+                        List.of(17, 17, 17, 17), 0, RuleWallDirection.CLOCKWISE),
+                6,
+                Optional.of(SEAT_ZERO),
+                Optional.of(SEAT_ZERO),
+                lastDiscard);
+        return new TableProjection(
+                TableId.random(),
+                9,
+                TableLifecycle.ACTIVE,
+                new PublicRuleView(9, "playing", List.of(discard), Map.of(), table),
+                Map.of(),
+                Map.of());
     }
 
     private static RuleTablePresentation table(int wallCapacity) {

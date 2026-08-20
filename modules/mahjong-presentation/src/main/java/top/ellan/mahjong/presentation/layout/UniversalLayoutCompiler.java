@@ -4,9 +4,9 @@ import top.ellan.mahjong.presentation.node.SceneTransform;
 
 /** Cold-path compiler that turns rule-declared table dimensions into immutable lookup arrays. */
 final class UniversalLayoutCompiler {
-    /** v1.5 ViewerOverlayRenderer pulls the action row 0.42 blocks toward the table. */
+    /** 1.5.0-aligned viewer overlay pulls the action row 0.42 blocks toward the table. */
     private static final double ACTION_ROW_OUTWARD_INSET = 0.42D;
-    /** v1.5 OVERLAY_ACTION_Y_OFFSET above the display center surface. */
+    /** 1.5.0-aligned OVERLAY_ACTION_Y_OFFSET above the display center surface. */
     private static final double ACTION_ROW_Y_OFFSET = 0.36D;
 
     private final TableGeometry geometry;

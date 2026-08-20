@@ -15,20 +15,24 @@ import top.ellan.mahjong.persistence.sql.lobby.JdbcTableLobbyRepository;
 import top.ellan.mahjong.persistence.sql.history.JdbcPlayerRecordQuery;
 import top.ellan.mahjong.persistence.sql.connection.SqlConnectionFactory;
 import top.ellan.mahjong.persistence.sql.schema.SqlSchemaMigrator;
+import top.ellan.mahjong.application.history.RankProgressionPort;
 import top.ellan.mahjong.plugin.config.PluginConfiguration;
 
 /** Opens, migrates and probes SQL without leaking JDBC setup into the composition root. */
 public final class DatabaseBootstrap {
     private final PluginConfiguration.Database configuration;
     private final Executor ioExecutor;
+    private final RankProgressionPort progression;
     private final Logger logger;
 
     public DatabaseBootstrap(
             PluginConfiguration.Database configuration,
             Executor ioExecutor,
+            RankProgressionPort progression,
             Logger logger) {
         this.configuration = Objects.requireNonNull(configuration, "configuration");
         this.ioExecutor = Objects.requireNonNull(ioExecutor, "ioExecutor");
+        this.progression = Objects.requireNonNull(progression, "progression");
         this.logger = Objects.requireNonNull(logger, "logger");
     }
 
@@ -38,7 +42,7 @@ public final class DatabaseBootstrap {
             dataSource = new HikariDataSource(hikariConfiguration());
             SqlConnectionFactory connections = dataSource::getConnection;
             new SqlSchemaMigrator(connections).migrate();
-            JdbcEventStore events = new JdbcEventStore(connections, ioExecutor);
+            JdbcEventStore events = new JdbcEventStore(connections, ioExecutor, progression);
             if (!events.probe()) {
                 throw new SQLException("Database probe failed");
             }

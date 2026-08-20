@@ -53,6 +53,42 @@ public final class SqlSchemaMigrator {
         }
     }
 
+    /**
+     * Adds the rank-ladder stage columns. A tier is stored twice: by name for readability and by
+     * ordinal so the leaderboard can be ordered by an index rather than by alphabetised tier names,
+     * which would rank Adept above Celestial.
+     *
+     * <p>Every column carries a default matching {@code RankProfile.initial()}, so an existing
+     * database upgrades without a backfill pass: rows simply start at Novice 1.
+     */
+    private static void upgradeRankLadder(Connection connection, Map<String, String> tables)
+            throws SQLException {
+        ensureColumn(
+                connection, tables, "player_rank_summary", "tier", "VARCHAR(16) NOT NULL DEFAULT 'NOVICE'");
+        ensureColumn(
+                connection, tables, "player_rank_summary", "tier_ordinal", "INT NOT NULL DEFAULT 0");
+        ensureColumn(connection, tables, "player_rank_summary", "tier_level", "INT NOT NULL DEFAULT 1");
+        ensureColumn(
+                connection, tables, "player_rank_summary", "stage_points", "INT NOT NULL DEFAULT 0");
+        for (String place : List.of("first_places", "second_places", "third_places", "fourth_places")) {
+            ensureColumn(connection, tables, "player_rank_summary", place, "BIGINT NOT NULL DEFAULT 0");
+        }
+        ensureIndex(
+                connection,
+                tables,
+                "player_rank_summary",
+                "idx_rank_summary_ladder",
+                // Must list every ORDER BY key in order. Omitting total_score made the index diverge
+                // from the leaderboard ordering at its fourth key, so no planner could ever use it.
+                //
+                // Declared ascending on purpose. The leaderboard orders every key descending, which a
+                // plain ascending index serves by scanning backwards on every supported engine. Asking
+                // for a descending index would instead depend on real descending-index support, and
+                // MySQL before 8.0 and MariaDB parse the keyword but ignore it.
+                "rule_id, rank_system, tier_ordinal, tier_level, stage_points, "
+                        + "total_score, player_id");
+    }
+
     private static void upgradeResultProjection(
             Connection connection, Map<String, String> tables) throws SQLException {
         ensureColumn(
@@ -67,6 +103,7 @@ public final class SqlSchemaMigrator {
                 "rank_ledger",
                 "ranking_points_milli",
                 "BIGINT NOT NULL DEFAULT 0");
+        upgradeRankLadder(connection, tables);
         ensureIndex(
                 connection,
                 tables,
@@ -336,6 +373,14 @@ public final class SqlSchemaMigrator {
                         + "ranking_points_milli BIGINT NOT NULL DEFAULT 0, "
                         + "total_score BIGINT NOT NULL DEFAULT 0, "
                         + "match_count BIGINT NOT NULL DEFAULT 0, "
+                        + "tier VARCHAR(16) NOT NULL DEFAULT 'NOVICE', "
+                        + "tier_ordinal INT NOT NULL DEFAULT 0, "
+                        + "tier_level INT NOT NULL DEFAULT 1, "
+                        + "stage_points INT NOT NULL DEFAULT 0, "
+                        + "first_places BIGINT NOT NULL DEFAULT 0, "
+                        + "second_places BIGINT NOT NULL DEFAULT 0, "
+                        + "third_places BIGINT NOT NULL DEFAULT 0, "
+                        + "fourth_places BIGINT NOT NULL DEFAULT 0, "
                         + "updated_at TIMESTAMP(6) NOT NULL, "
                         + "PRIMARY KEY (rule_id, rank_system, player_id))");
     }

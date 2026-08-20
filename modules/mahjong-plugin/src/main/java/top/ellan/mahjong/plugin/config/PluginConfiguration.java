@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
+import top.ellan.mahjong.domain.match.RankRoom;
 
 /** Validated restart-scoped configuration. */
 public record PluginConfiguration(
@@ -14,7 +15,8 @@ public record PluginConfiguration(
         CraftEngineAssets craftEngineAssets,
         LayoutGeometry layoutGeometry,
         ViewSettings viewSettings,
-        OpeningSettings openingSettings) {
+        OpeningSettings openingSettings,
+        RankingSettings ranking) {
     public PluginConfiguration {
         Objects.requireNonNull(database, "database");
         registryUrl = Objects.requireNonNull(registryUrl, "registryUrl").trim();
@@ -24,6 +26,7 @@ public record PluginConfiguration(
         Objects.requireNonNull(layoutGeometry, "layoutGeometry");
         Objects.requireNonNull(viewSettings, "viewSettings");
         Objects.requireNonNull(openingSettings, "openingSettings");
+        Objects.requireNonNull(ranking, "ranking");
     }
 
     public static PluginConfiguration load(JavaPlugin plugin) {
@@ -111,7 +114,21 @@ public record PluginConfiguration(
                         config.getInt("presentation.overhead.transition-ticks", 16)),
                 new OpeningSettings(
                         config.getInt("presentation.opening.roll-ticks", 20),
-                        config.getInt("presentation.opening.reveal-ticks", 12)));
+                        config.getInt("presentation.opening.reveal-ticks", 12)),
+                new RankingSettings(
+                        config.getBoolean("ranking.enabled", true),
+                        rankRoom(config.getString("ranking.east-room", "SILVER"), "east-room"),
+                        rankRoom(config.getString("ranking.south-room", "GOLD"), "south-room")));
+    }
+
+    /** An unknown room name must fail the load rather than silently rank everyone in silver. */
+    private static RankRoom rankRoom(String raw, String label) {
+        try {
+            return RankRoom.parse(raw);
+        } catch (IllegalArgumentException unknown) {
+            throw new IllegalArgumentException(
+                    "ranking." + label + " must be BRONZE, SILVER, GOLD, JADE or THRONE", unknown);
+        }
     }
 
     private static String requireToken(String value, String label) {
@@ -191,6 +208,17 @@ public record PluginConfiguration(
             if (rollTicks < 1 || rollTicks > 200 || revealTicks < 1 || revealTicks > 200) {
                 throw new IllegalArgumentException("opening timings must be between 1 and 200 ticks");
             }
+        }
+    }
+
+    /**
+     * Room tiers the shared rank ladder awards points from, one per match length. 1.5.0 defaulted
+     * east-only games to the silver room and full east-south games to gold.
+     */
+    public record RankingSettings(boolean enabled, RankRoom eastRoom, RankRoom southRoom) {
+        public RankingSettings {
+            Objects.requireNonNull(eastRoom, "eastRoom");
+            Objects.requireNonNull(southRoom, "southRoom");
         }
     }
 

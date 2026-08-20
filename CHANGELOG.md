@@ -2,6 +2,99 @@
 
 ## 2.0.0 - Unreleased
 
+### Performance
+
+- Fixed `idx_rank_summary_ladder`, which omitted `total_score` and so diverged from the leaderboard
+  `ORDER BY` at its fourth key. A production-shaped H2 probe then exposed a second problem hidden by
+  the original player-id-only test: fetching every display column made the optimizer choose the
+  primary key and sort the entire leaderboard partition even after the index itself was corrected.
+- Changed leaderboard paging to one bounded two-stage SQL statement. Its covered inner query uses the
+  narrow ladder index to select at most fifty-one ids and sort keys; the outer primary-key lookup fetches
+  their display rows and can sort only that bounded page. This avoids both a partition-wide sort and a
+  hundreds-of-bytes-per-player covering index.
+- Added `RankingQueryPlanTest`, which reads index metadata and a production-shaped H2 plan, and
+  `ExternalRankingQueryPlanTest`, enabled by GitHub's real MySQL 8.4 and MariaDB 11.4 services. The
+  external gate migrates fresh schemas, populates 20,000 analysed rows, checks the actual seven-column
+  ascending index, and rejects an inner full scan, filesort, or any plan not using the ladder index.
+- Made the leaderboard ordering uniformly descending and declared the ladder index ascending, so the
+  inner page can use a portable backward scan instead of depending on descending-index definitions.
+  H2 is verified locally; the first real MySQL/MariaDB result is produced after this change is pushed.
+- Recorded the measured baseline and hot-path attribution in `docs/performance-notes.zh-CN.md`,
+  including the paths deliberately left alone: scene projection is event-driven rather than per tick
+  and already carries four bounded caches, and bot decisions run on a dedicated bounded executor at
+  roughly 0.08% of a core.
+- Added `TableActorThroughputTest`, a 64-table baseline for the actor pipeline itself — mailbox
+  handoff, fair-executor dispatch, projection rebuild, token issue and outbox append — measured over a
+  trivial rule provider. It asserts only correctness and prints throughput, because a timing threshold
+  on shared CI hardware fails for reasons unrelated to this code.
+- Gated scene projection against regressions with a `scene-projection-regression` pull-request job
+  that measures the candidate and its base commit on the same runner, comparing them through
+  `.github/scripts/compare-scene-benchmark.py`. Allocation carries the tight bound because it barely
+  moves between runs on one host, while wall time gets a loose one: two runs of identical code drifted
+  19.2% in `ns/op` but only 1.0% in `bytes/op`. A vanished measurement also fails the gate.
+
+### 1.5.0 parity pass
+
+- Restored bot and trustee playing strength: all three rule packs now call melds, declare kongs and
+  choose discards from a ting/shanten-aware evaluation mirroring the 1.5.0 scoring
+  (`1_000_000 + bestFan*10_000 + qualifyingWaits*100 + totalFan`). Riichi keeps the 1.5.0
+  eleven-distinct-kind threshold for the nine-terminals abort. Kongs are now declared whenever they
+  do not worsen the hand, instead of only when they create a ready hand.
+- Added bot decision-quality regression tests that drive complete automated matches per rule pack;
+  the previous smoke tests only asserted that *some* legal action came back, which is why the
+  regression above was invisible to CI.
+- Fixed three Riichi defects the bot regression had been masking: a reaction window kept offering
+  actions to players who had already answered, a chii meld whose claimed tile was not its lowest
+  made scoring throw `invalid sequence group`, and a declared riichi hand offered every tile as a
+  legal discard instead of only the drawn one.
+- Aligned non-discard decision timing with 1.5.0: a 5-second base plus a 20-second extra pool
+  shared by all of one player's non-discard decisions within a hand, replacing a flat 25 seconds
+  per decision. The 60/30/15/10-second discard anti-idle ladder is unchanged.
+- Restored the 1.5.0 warning shown before a seat is played automatically. 2.0 auto-played silently;
+  a second bounded per-table timer now fires five seconds early through a new
+  `HumanDecisionWarningPort`, and the plugin puts `Auto-discard in 5s` on the player's action bar.
+- Restored the 1.5.0 centre highlight of the newest discard: an enlarged public copy floats above
+  the table so every seat can read the tile a call would be made on. All three packs already
+  reported `RuleTablePresentation.lastDiscard`; nothing consumed it.
+- Restored the land-protection soft-dependency declarations in both plugin manifests. AntiGriefLib
+  binds its provider adapters when `ProtectionService` is constructed, so a protection plugin that
+  loaded later went undetected.
+- Fixed the game-room exit warning, which passed both the room name and the countdown into a message
+  with a single placeholder and so told players to "return within &lt;room name&gt; seconds".
+- Added a locale gate asserting every message key carries the same placeholder count in all six
+  locales; a locale with a surplus placeholder throws `MissingFormatArgumentException` at runtime.
+- Corrected the `/mahjong rank` help text, which advertised "Mahjong Soul-style rank progress" while
+  the command only reports rank points, match count and total score.
+- Ported the 1.5.0 Mahjong Soul rank ladder as portable, tested domain logic: the authoritative stage
+  table, room awards, uma, stage penalties, promotion carry-over, demotion borrowing, the
+  no-demotion floor for Novice and Adept 1, open-ended Celestial SP levels and the bounded
+  stronger-table bonus.
+- Placed rank progression in the core rather than in the rule packs, because it is common to every
+  variant: a pack reports only the rule-specific placement and score. All three packs reported
+  `rankingPointsMilli` as their score restated in thousandths, which carries no ladder information,
+  so it no longer drives progression. `RankProgression` is stateless and operates on immutable
+  values, so the terminal-result transaction can apply it on whichever thread already owns it.
+- Extended `player_rank_summary` with the stage columns and a ladder-ordered index. A tier is stored
+  both by name and by ordinal, since ordering by name would rank Adept above Celestial. Every column
+  defaults to the Novice 1 starting profile, so an existing database upgrades without a backfill.
+- Wired the ladder end to end. A new `RankProgressionPort` lets the plugin supply the configured room
+  and match length while the persistence layer keeps the I/O: the terminal-result transaction reads
+  every seat's profile in one indexed query, applies the port, and writes the result back without
+  opening a second transaction or thread. The existing "skip seats whose ledger row already exists"
+  guard means a retried result can never promote anyone twice.
+- Added `ranking.enabled`, `ranking.east-room` and `ranking.south-room`. An unknown room name fails
+  the config load rather than silently ranking everyone in the silver room.
+- `/mahjong rank` now reports tier, level, points against the next threshold (Celestial as
+  `x.x/20.0 SP`), average place and the first, top-two and fourth-place rates. The leaderboard is
+  ordered by ladder standing instead of accumulated score, with score only breaking ties inside one
+  stage.
+- Removed every remaining backward-compatibility path: SPI now accepts only `SpiVersion.CURRENT`,
+  the activation store only the current field set, the rule registry only its current entry format,
+  and `ActionLabelText` only the current label key format. The registry format-1 convenience
+  constructor and the stale 1.5.0 version strings in CI workflows and test fixtures are gone.
+
+### Architecture
+
 - Replaced the 1.x runtime with a Java 21 portable core and Java 25,
   CraftEngine-first Paper/Folia adapters.
 - Removed every embedded rules implementation, Kotlin production rule path, GB JNI/native code,

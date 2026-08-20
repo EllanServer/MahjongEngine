@@ -124,6 +124,119 @@ jobs:
           path: gradle-*-${{ matrix.repository }}.log
           if-no-files-found: ignore
 
+  # Measures the scene projection twice on ONE runner: this pull request, then the base commit
+  # it merges into. Pairing both measurements on the same machine is what makes this a gate
+  # instead of noise, because the harness is not JMH and the ubuntu-latest pool drifts between
+  # runner sizes, so a stored baseline would compare unrelated hardware.
+  scene-projection-regression:
+    if: github.event_name == 'pull_request'
+    needs: wrapper-validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the candidate
+        uses: actions/checkout@v7
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - run: chmod +x ./gradlew
+      - name: Measure the candidate
+        shell: bash
+        run: |
+          bash .github/scripts/gradle-with-transient-retry.sh perf-candidate.log -- \
+            ./gradlew :mahjong-presentation:sceneProjectionBenchmark --no-daemon --stacktrace
+      - name: Checkout the base commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          persist-credentials: false
+      - name: Measure the base commit on the same runner
+        working-directory: base
+        shell: bash
+        run: |
+          chmod +x ./gradlew
+          bash "$GITHUB_WORKSPACE/.github/scripts/gradle-with-transient-retry.sh" \
+            "$GITHUB_WORKSPACE/perf-base.log" -- \
+              ./gradlew :mahjong-presentation:sceneProjectionBenchmark --no-daemon --stacktrace
+      - name: Gate on the comparison
+        shell: bash
+        run: python3 .github/scripts/compare-scene-benchmark.py perf-candidate.log perf-base.log
+      - name: Upload both measurements
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: scene-projection-ab
+          path: perf-*.log
+          if-no-files-found: ignore
+
+  # H2 cannot prove what another optimizer chooses. These disposable services run the same
+  # migration and EXPLAIN assertions against both external dialects the plugin advertises.
+  external-sql-plans:
+    needs: wrapper-validation
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: mahjong
+          MYSQL_USER: mahjong
+          MYSQL_PASSWORD: mahjong
+        ports:
+          - 13306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: mahjong
+          MARIADB_USER: mahjong
+          MARIADB_PASSWORD: mahjong
+        ports:
+          - 13307:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    env:
+      MAHJONG_MYSQL_TEST_URL: "jdbc:mysql://127.0.0.1:13306/mahjong?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&rewriteBatchedStatements=true"
+      MAHJONG_MARIADB_TEST_URL: "jdbc:mariadb://127.0.0.1:13307/mahjong?useBulkStmts=true"
+      MAHJONG_SQL_TEST_USER: mahjong
+      MAHJONG_SQL_TEST_PASSWORD: mahjong
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - run: chmod +x ./gradlew
+      - name: Verify real MySQL and MariaDB leaderboard plans
+        shell: bash
+        run: |
+          bash .github/scripts/gradle-with-transient-retry.sh external-sql-plans.log -- \
+            ./gradlew :mahjong-persistence-sql:test \
+              --tests '*ExternalRankingQueryPlanTest*' \
+              --no-daemon --stacktrace
+      - name: Upload external SQL plan reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: external-sql-plan-reports
+          path: |
+            modules/mahjong-persistence-sql/build/reports/tests/test/**
+            external-sql-plans.log
+          if-no-files-found: ignore
+
   artifact-contract:
     needs: verify
     runs-on: ubuntu-latest

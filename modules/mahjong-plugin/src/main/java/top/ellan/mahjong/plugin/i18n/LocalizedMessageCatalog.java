@@ -67,7 +67,7 @@ public final class LocalizedMessageCatalog implements PlayerTextResolver {
                 List.copyOf(arguments).toArray());
     }
 
-    /** Returns the v1.5-compatible button width for a semantic label in one player's locale. */
+    /** Returns the 1.5.0-aligned button width for a semantic label in one player's locale. */
     public double actionButtonWidth(Locale locale, String labelKey) {
         Objects.requireNonNull(labelKey, "labelKey");
         String localeId = localeId(locale);

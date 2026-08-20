@@ -11,6 +11,7 @@ import java.util.concurrent.Executor;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
 import top.ellan.mahjong.application.concurrent.TaskScheduler;
 import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
+import top.ellan.mahjong.application.feedback.HumanDecisionWarningPort;
 import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.persistence.PersistenceOutbox;
 import top.ellan.mahjong.application.projection.SceneProjectionPort;
@@ -44,6 +45,7 @@ final class MatchActorFactory {
     private final JdbcEventStore events;
     private final SceneProjectionPort projector;
     private final TablePresentationCuePort presentationCues;
+    private final HumanDecisionWarningPort decisionWarnings;
     private final TableOpeningPresentationPort openingPresentations;
     private final Clock clock;
     private final MatchCompletionPort completions;
@@ -59,6 +61,7 @@ final class MatchActorFactory {
             JdbcEventStore events,
             SceneProjectionPort projector,
             TablePresentationCuePort presentationCues,
+            HumanDecisionWarningPort decisionWarnings,
             TableOpeningPresentationPort openingPresentations,
             MatchCompletionPort completions,
             Clock clock) {
@@ -72,6 +75,7 @@ final class MatchActorFactory {
         this.events = Objects.requireNonNull(events, "events");
         this.projector = Objects.requireNonNull(projector, "projector");
         this.presentationCues = Objects.requireNonNull(presentationCues, "presentationCues");
+        this.decisionWarnings = Objects.requireNonNull(decisionWarnings, "decisionWarnings");
         this.openingPresentations = Objects.requireNonNull(
                 openingPresentations, "openingPresentations");
         this.completions = Objects.requireNonNull(completions, "completions");
@@ -151,6 +155,7 @@ final class MatchActorFactory {
                         deadlines,
                         projector,
                         presentationCues,
+                        decisionWarnings,
                         openingPresentations,
                         presentInitialOpening,
                         completions,

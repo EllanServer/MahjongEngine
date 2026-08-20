@@ -11,8 +11,8 @@ import top.ellan.mahjong.plugin.i18n.LocalizedMessageCatalog;
 import top.ellan.mahjong.spi.PlayerId;
 
 /**
- * v1.5 countdown warning cadence for game-room departures: every 15 seconds before the final
- * ten, then 10, 8, 6, 5, 4, 3, 2, and 1 seconds. The controller keeps one timer per table.
+ * 1.5.0-aligned countdown warning cadence for game-room departures: every 15 seconds before the
+ * final ten, then 10, 8, 6, 5, 4, 3, 2, and 1 seconds. The controller keeps one timer per table.
  */
 final class GameRoomCountdownPresenter {
     private GameRoomCountdownPresenter() {}

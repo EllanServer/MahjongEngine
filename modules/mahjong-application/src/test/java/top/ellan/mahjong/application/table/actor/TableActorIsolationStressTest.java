@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.application.concurrent.BoundedDeadlineScheduler;
 import top.ellan.mahjong.application.concurrent.FairRuleExecutor;
+import top.ellan.mahjong.application.feedback.HumanDecisionWarningPort;
 import top.ellan.mahjong.application.feedback.TablePresentationCuePort;
 import top.ellan.mahjong.application.opening.TableOpeningPresentationPort;
 import top.ellan.mahjong.application.persistence.EventStorePort;
@@ -109,6 +110,7 @@ class TableActorIsolationStressTest {
                         deadlines,
                         firstProjection::complete,
                         TablePresentationCuePort.NONE,
+                        HumanDecisionWarningPort.NONE,
                         TableOpeningPresentationPort.NONE,
                         true,
                         MatchCompletionPort.NONE,
@@ -207,7 +209,7 @@ class TableActorIsolationStressTest {
                 new RuleId("riichi"),
                 "1.0.0",
                 SpiVersion.CURRENT,
-                ">=1.5.0",
+                ">=2.0.0",
                 1,
                 List.of(new RuleProfileDescriptor(
                         new ProfileId("standard"), "Standard", "{}")),

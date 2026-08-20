@@ -135,4 +135,74 @@ class LocalizedMessageCatalogTest {
                         "mahjongpaper.profile.mahjong-soul",
                         "missing"));
     }
+
+    /**
+     * A locale carrying more placeholders than the caller supplies arguments for throws
+     * {@link java.util.MissingFormatArgumentException} at runtime, and one carrying fewer silently
+     * drops information. Every locale must therefore agree on the placeholder count for a key.
+     */
+    @Test
+    void everyLocaleAgreesOnPlaceholderCountPerKey() {
+        java.util.Map<String, java.util.Map<String, Integer>> counts =
+                new java.util.LinkedHashMap<>();
+        for (String locale : List.of("en_us", "zh_cn", "zh_tw", "zh_hk", "zh_mo", "ja_jp")) {
+            readLocale(locale)
+                    .forEach((key, value) -> counts
+                            .computeIfAbsent(key, ignored -> new java.util.LinkedHashMap<>())
+                            .put(locale, placeholders(value)));
+        }
+        List<String> disagreements = counts.entrySet().stream()
+                .filter(entry -> java.util.Set.copyOf(entry.getValue().values()).size() > 1)
+                .map(entry -> entry.getKey() + " " + entry.getValue())
+                .sorted()
+                .toList();
+        assertEquals(List.of(), disagreements, "Placeholder counts differ between locales");
+    }
+
+    private static int placeholders(String value) {
+        int total = 0;
+        for (int index = 0; index < value.length() - 1; index++) {
+            if (value.charAt(index) != '%') {
+                continue;
+            }
+            if (value.charAt(index + 1) == '%') {
+                index++;
+            } else {
+                total++;
+            }
+        }
+        return total;
+    }
+
+    /** Minimal reader for the flat, one-entry-per-line locale files the build ships. */
+    private static java.util.Map<String, String> readLocale(String locale) {
+        String resource =
+                "craftengine/mahjongpaper/resourcepack/assets/mahjongcraft/lang/"
+                        + locale
+                        + ".json";
+        java.util.LinkedHashMap<String, String> entries = new java.util.LinkedHashMap<>();
+        java.util.regex.Pattern entry =
+                java.util.regex.Pattern.compile("^\\s*\"([^\"]+)\"\\s*:\\s*\"(.*)\",?\\s*$");
+        try (java.io.InputStream stream =
+                        LocalizedMessageCatalogTest.class
+                                .getClassLoader()
+                                .getResourceAsStream(resource);
+                java.io.BufferedReader reader =
+                        new java.io.BufferedReader(
+                                new java.io.InputStreamReader(
+                                        java.util.Objects.requireNonNull(stream, resource),
+                                        java.nio.charset.StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                java.util.regex.Matcher matcher = entry.matcher(line);
+                if (matcher.matches()) {
+                    entries.put(matcher.group(1), matcher.group(2));
+                }
+            }
+        } catch (java.io.IOException failure) {
+            throw new java.io.UncheckedIOException(failure);
+        }
+        assertTrue(entries.size() > 300, resource + " looks truncated");
+        return entries;
+    }
 }

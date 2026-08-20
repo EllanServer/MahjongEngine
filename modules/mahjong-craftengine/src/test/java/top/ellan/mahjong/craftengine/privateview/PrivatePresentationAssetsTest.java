@@ -41,7 +41,7 @@ class PrivatePresentationAssetsTest {
         ActionLabelNode label = new ActionLabelNode(
                 new SceneNodeId("label/respond"),
                 SceneVisibility.privateTo(VIEWER),
-                "action.respond:pon:one.two",
+                "action.pon:one.two",
                 TRANSFORM,
                 true);
 

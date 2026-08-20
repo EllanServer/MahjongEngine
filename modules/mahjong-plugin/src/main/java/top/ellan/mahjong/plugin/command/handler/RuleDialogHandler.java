@@ -10,7 +10,7 @@ import top.ellan.mahjong.plugin.command.CommandSupport;
 import top.ellan.mahjong.plugin.command.SubcommandHandler;
 import top.ellan.mahjong.spi.PlayerId;
 
-/** v1.5-compatible rule entry point backed by the native rule-settings dialog. */
+/** Rule entry point aligned with the 1.5.0 contract, backed by the native rule-settings dialog. */
 public final class RuleDialogHandler implements SubcommandHandler {
     private final CommandSupport support;
 

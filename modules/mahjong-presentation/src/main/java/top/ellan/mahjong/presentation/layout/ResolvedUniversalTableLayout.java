@@ -47,6 +47,11 @@ record ResolvedUniversalTableLayout(
     }
 
     @Override
+    public SceneTransform lastDiscardHighlight() {
+        return plan.lastDiscardHighlight();
+    }
+
+    @Override
     public SceneTransform overheadCamera(SeatId seat, double height) {
         return plan.overheadCamera(seat, height);
     }

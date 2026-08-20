@@ -10,6 +10,7 @@ import top.ellan.mahjong.application.history.PlayerMatchHistoryEntry;
 import top.ellan.mahjong.application.history.PlayerMatchOutcome;
 import top.ellan.mahjong.application.history.PlayerRankingEntry;
 import top.ellan.mahjong.application.history.PlayerRankingPage;
+import top.ellan.mahjong.domain.match.RankProfile;
 import top.ellan.mahjong.plugin.command.CommandSupport;
 import top.ellan.mahjong.plugin.command.SubcommandHandler;
 import top.ellan.mahjong.spi.PlayerId;
@@ -117,7 +118,7 @@ public final class PlayerRecordHandler implements SubcommandHandler {
         queryRanking(sender, playerId, ruleId, page);
     }
 
-    /** v1.5 leaderboard entry point: rule may be omitted and defaults to the current table. */
+    /** Leaderboard entry point aligned with the 1.5.0 contract: rule may be omitted and defaults to the current table. */
     private void leaderboard(CommandSender sender, PlayerId playerId, String[] arguments) {
         if (arguments.length > 3) {
             throw CommandSupport.usage("/mahjong leaderboard [riichi|mcr|sichuan] [page]");
@@ -213,6 +214,7 @@ public final class PlayerRecordHandler implements SubcommandHandler {
 
     private void rankingEntry(
             CommandSender sender, PlayerRankingEntry entry, boolean own) {
+        RankProfile profile = entry.profile();
         support.reply(
                 sender,
                 CommandSupport.message(
@@ -220,13 +222,27 @@ public final class PlayerRecordHandler implements SubcommandHandler {
                                 ? "mahjongpaper.command.ranking_own_entry"
                                 : "mahjongpaper.command.ranking_entry",
                         own
-                                ? "You: #%s - %s - %s points - %s matches - score %s"
-                                : "#%s - %s - %s points - %s matches - score %s",
+                                ? "You: #%s - %s - %s %s (%s) - %s matches"
+                                        + " - avg place %s - 1st %s, top2 %s, 4th %s"
+                                : "#%s - %s - %s %s (%s) - %s matches"
+                                        + " - avg place %s - 1st %s, top2 %s, 4th %s",
                         entry.position(),
                         entry.playerId(),
-                        points(entry.rankingPointsMilli()),
+                        tierLabel(sender, profile),
+                        profile.level(),
+                        stageProgress(profile),
                         entry.matchCount(),
-                        entry.totalScore()));
+                        averagePlace(profile),
+                        percent(profile.firstRate()),
+                        percent(profile.topTwoRate()),
+                        percent(profile.fourthRate())));
+    }
+
+    /** Tier names are resolved in the sender's locale, like every other command string. */
+    private String tierLabel(CommandSender sender, RankProfile profile) {
+        String tier = profile.tier().name();
+        return support.text(
+                sender, "mahjongpaper.rank.tier." + tier.toLowerCase(Locale.ROOT), tier);
     }
 
     private void fail(CommandSender sender, Throwable failure) {
@@ -249,6 +265,25 @@ public final class PlayerRecordHandler implements SubcommandHandler {
 
     private static String points(long milli) {
         return String.format(Locale.ROOT, "%.3f", milli / 1_000.0d);
+    }
+
+    /** Celestial counts SP out of 20.0; every promotable stage counts points to its threshold. */
+    private static String stageProgress(RankProfile profile) {
+        if (profile.isCelestial()) {
+            return String.format(Locale.ROOT, "%.1f/20.0 SP", profile.points() / 10.0D);
+        }
+        return profile.points() + "/" + profile.nextThreshold();
+    }
+
+    private static String averagePlace(RankProfile profile) {
+        java.util.OptionalDouble average = profile.averagePlace();
+        return average.isPresent()
+                ? String.format(Locale.ROOT, "%.2f", average.getAsDouble())
+                : "-";
+    }
+
+    private static String percent(double rate) {
+        return String.format(Locale.ROOT, "%.1f%%", rate);
     }
 
     @Override

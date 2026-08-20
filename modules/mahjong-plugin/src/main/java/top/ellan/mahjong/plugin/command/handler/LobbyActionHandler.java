@@ -163,8 +163,8 @@ public final class LobbyActionHandler implements SubcommandHandler {
     }
 
     /**
-     * v1.5-compatible start: an owner whose lobby is fully ready starts it, everyone else
-     * toggles their own ready state just like the old /mahjong start command.
+     * Aligns with the 1.5.0 start contract: an owner whose lobby is fully ready starts it,
+     * everyone else toggles their own ready state.
      */
     private CompletionStage<TableActionResult> start(String[] arguments, PlayerId actor) {
         requireLength(arguments, 1, "/mahjong start");
@@ -177,7 +177,7 @@ public final class LobbyActionHandler implements SubcommandHandler {
         return support.runtime().lobbyUseCases().toggleReady(actor);
     }
 
-    /** v1.5-compatible join: with no seat argument the first empty seat is selected. */
+    /** Aligns with the 1.5.0 join contract: with no seat argument the first empty seat is selected. */
     private CompletionStage<TableActionResult> join(String[] arguments, PlayerId actor) {
         if (arguments.length == 3) {
             return support.runtime()
@@ -209,7 +209,7 @@ public final class LobbyActionHandler implements SubcommandHandler {
         throw CommandSupport.usage("/mahjong join <table-id> [seat]");
     }
 
-    /** v1.5-compatible bot commands: add fills the first empty seat, remove clears the first bot. */
+    /** Aligns with the 1.5.0 bot contract: add fills the first empty seat, remove clears the first bot. */
     private CompletionStage<TableActionResult> bot(
             String[] arguments, PlayerId actor, boolean add) {
         String command = add ? "/mahjong addbot" : "/mahjong removebot";

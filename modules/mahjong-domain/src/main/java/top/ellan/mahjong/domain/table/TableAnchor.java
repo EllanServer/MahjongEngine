@@ -2,7 +2,7 @@ package top.ellan.mahjong.domain.table;
 
 import java.util.Objects;
 
-/** Platform-neutral location of one physical table in the fixed v1.5 world frame. */
+/** Platform-neutral location of one physical table in the 1.5.0-aligned world frame. */
 public record TableAnchor(
         TableId tableId,
         String worldId,
