@@ -11,11 +11,11 @@
 - 快照可恢复并重放到相同状态哈希；
 - 支付与排名投影遵守玩法自己的守恒约束。
 
-SDK 发布工作流位于 `.github/workflows/rule-sdk.yml`。规则 thin JAR 必须保持零第三方运行时依赖并排除 SPI，让核心 classloader 提供唯一协议类型。
+SDK 发布工作流位于 `.github/workflows/rule-sdk.yml`。规则 thin JAR 必须保持零第三方运行时依赖并排除 SPI，让核心 classloader 提供唯一协议类型。完整的建仓、provider、TCK、资源 ZIP 与签名发布步骤见[自定义规则包开发教程](rule-pack-authoring.zh-CN.md)。
 
 ## 桌面呈现契约
 
-SPI 1.5 不允许规则包传入自由格式坐标或让核心猜测某种麻将记谱。规则包输出规范化的 `TileVisualId`、`RuleTablePresentation`、`RuleTilePresentation` 与 `ActionPresentation`：
+SPI 1.6 不允许规则包传入自由格式坐标或让核心猜测某种麻将记谱。规则包输出规范化的 `TileVisualId`、`RuleTablePresentation`、`RuleTilePresentation` 与 `ActionPresentation`：
 
 - `RuleWallPresentation` 声明每边墩数、开门墩和摸牌方向；
 - `RuleDiceRoll` 与 `RuleOpeningPresentation` 只声明确定性骰点、手序号、开门座位和断墙栈；模型、坐标与动画始终由 CraftEngine/平台实现；

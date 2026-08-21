@@ -2,9 +2,11 @@
 
 三个规则仓独立维护并通过同一 `mahjong-rule-spi`/TCK 接入：
 
-- `EllanServer/riichi-mahjong-java`
-- `EllanServer/mahjong-mcr-java`
-- `EllanServer/sichuan-mahjong-java`
+- [`EllanStudio/riichi-mahjong-java`](https://github.com/EllanStudio/riichi-mahjong-java)
+- [`EllanStudio/mahjong-mcr-java`](https://github.com/EllanStudio/mahjong-mcr-java)
+- [`EllanStudio/sichuan-mahjong-java`](https://github.com/EllanStudio/sichuan-mahjong-java)
+
+自己实现 provider、TCK、thin JAR 和独立资源 ZIP 的步骤见[自定义规则包开发教程](rule-pack-authoring.zh-CN.md)。原版运行时的固定 ID 与签名限制同样适用。
 
 规则包负责完整比赛，不只是计分：牌墙、发牌、摸牌、合法动作、反应优先级、计分支付、局次推进和比赛结束都必须封装在 provider 的不可变 `RuleState` 中。
 
@@ -47,4 +49,4 @@
 
 被取代的版本在最后一局结束后自动卸载，并校验 classloader 已被回收。因此规则包不应使用 ThreadLocal、注册 JDBC driver 或 MBean，也不得在 JAR 中打包 `top.ellan.mahjong.spi` 之外的核心类——这三类做法都会让 classloader 无法回收，加载期即被拒绝。
 
-GitHub 已发布三个官方 [`v2.0.1`](https://github.com/EllanServer/riichi-mahjong-java/releases/tag/v2.0.1) 规则包（[MCR](https://github.com/EllanServer/mahjong-mcr-java/releases/tag/v2.0.1)、[四川](https://github.com/EllanServer/sichuan-mahjong-java/releases/tag/v2.0.1)）和中央 [`rule-registry-v2026.08.10.1`](https://github.com/EllanServer/MahjongEngine/releases/tag/rule-registry-v2026.08.10.1)。发布流水线已逐字节验证五个稳定版本条目的大小与 SHA-256，并完成 Ed25519 签名/公钥反验。规则包发布完成不等于核心 2.0 已发布稳定版；核心正式 Release、Paper/Folia/CE 实服矩阵和长期观察窗仍分别验收。
+GitHub 已发布三个官方 [`v2.0.1`](https://github.com/EllanStudio/riichi-mahjong-java/releases/tag/v2.0.1) 规则包（[MCR](https://github.com/EllanStudio/mahjong-mcr-java/releases/tag/v2.0.1)、[四川](https://github.com/EllanStudio/sichuan-mahjong-java/releases/tag/v2.0.1)）和中央 [`rule-registry-v2026.08.10.1`](https://github.com/EllanStudio/MahjongEngine/releases/tag/rule-registry-v2026.08.10.1)。发布流水线已逐字节验证五个稳定版本条目的大小与 SHA-256，并完成 Ed25519 签名/公钥反验。规则包发布完成不等于核心 2.0 已发布稳定版；核心正式 Release、Paper/Folia/CE 实服矩阵和长期观察窗仍分别验收。

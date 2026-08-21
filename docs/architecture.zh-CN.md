@@ -81,7 +81,7 @@ application/
 6. 接受的状态先在内存生效，再进入该桌独立 outbox。
 7. 最新投影异步变为 `SceneGraph`，被新 revision 覆盖的旧帧直接丢弃。
 
-SPI 1.5 的 `ScheduledRuleAction` 由规则包为不可变状态给出已入座 actor、可重放动作、延迟和原因码。系统推进来自 `scheduledAction`，机器人与玩家托管来自 `automatedAction`；后者只能从核心已计算的 `AutomatedPlayerActions` 中选取合法动作。核心比较两者后只安装一个任务，并按输入到达序把玩家动作与 deadline 排序；先到者获胜。任务只绑定一个 revision，状态推进、托管切换、持久化暂停、关闭或规则故障都会取消它，迟到回调只被丢弃，不会遍历全部牌桌，也不会在 timer 线程调用规则。
+SPI 1.6 的 `ScheduledRuleAction` 由规则包为不可变状态给出已入座 actor、可重放动作、延迟和原因码。系统推进来自 `scheduledAction`，机器人与玩家托管来自 `automatedAction`；后者只能从核心已计算的 `AutomatedPlayerActions` 中选取合法动作。核心比较两者后只安装一个任务，并按输入到达序把玩家动作与 deadline 排序；先到者获胜。任务只绑定一个 revision，状态推进、托管切换、持久化暂停、关闭或规则故障都会取消它，迟到回调只被丢弃，不会遍历全部牌桌，也不会在 timer 线程调用规则。
 
 ## CraftEngine 边界
 
