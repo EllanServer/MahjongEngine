@@ -16,13 +16,13 @@
 
 | 能力 | 旧版基线 | 2.0 契约 | 当前状态 | 验收证据 |
 | --- | --- | --- | --- | --- |
-| 暗手出牌 | 首击选牌、再击确认；选中牌上抬 | 三玩法共用同一选择器；上抬 `0.06`；40ms 重复事件抑制；Shift 取消 | 已对齐 | interaction 单元测试与 CE 私有投影测试 |
+| 暗手出牌 | 首击选牌、再击确认；选中牌上抬 | 三玩法共用同一选择器；Java 只切换 `ground/selected` 语义 variant，资源包定义 `0.06` 上抬；40ms 重复事件抑制；Shift 取消 | 已对齐 | interaction 单元测试与 CE 条件家具测试 |
 | 看牌方式 | 座位内进入桌面俯视，Shift 返回 | 高度 `4.5`、16 tick 过渡、只读、离座/离线强制清理；默认由客户端完成后 10 tick 插值，协议不兼容时退回 16 个服务端关键帧 | 已对齐 | overhead camera 生命周期、插值成员选择与到达时序测试 |
 | 桌面几何 | 四向现实麻将桌、手牌/牌河/副露相对座位排列 | 唯一 `UniversalTableLayout`；规则只提供牌数、墙长、语义顺序 | 已对齐 | 三规则表面适配器和布局缓存测试 |
-| 布局尺寸 | `TableRenderConstants` 的牌宽高厚、间距、桌半长、抬升、动作行距 | 同值改为 `config.yml` 的 `layout.geometry`，12 项与 1.5.0 逐一相同；牌河仍为每行 6 张，动作按钮仍为每行 4 个 | 已对齐 | `SceneGraphTest`（含 `discardRiverWrapsAfterSixTiles`）、`ActionLabelPolicy.BUTTONS_PER_ROW` |
+| 布局尺寸 | `TableRenderConstants` 的牌宽高厚、间距、桌半长、抬升、动作行距 | 同值写入 CE bundle 的 `mahjong_presentation.properties`，不再暴露插件兼容配置；12 项与 1.5.0 逐一相同，牌河仍每行 6 张、动作按钮仍每行 4 个 | 已对齐 | `CorePresentationResourcesTest`、`SceneGraphTest`（含 `discardRiverWrapsAfterSixTiles`） |
 | 最新弃牌提示 | 桌心悬浮一张 2 倍大的最新弃牌，便于全场判断是否鸣牌 | 同样在桌心 `y=0.68`、`scale=2.0` 投影一份公开副本；无待处理弃牌时节点缺席由 differ 回收 | 已对齐 | `SceneGraphTest.newestDiscardIsEchoedAtTableCentreLikeV15` |
 | 桌椅牌资产 | 同一套桌、椅、麻将牌与点棒 | 全玩法复用 CraftEngine furniture/item；静态 pose、hitbox、culling 留在 YAML | 已对齐 | bundle manifest 与 CE 配置契约测试 |
-| 私有信息 | 本人看正面，其他人看牌背 | 世界实体永不包含暗手正面；仅授权客户端收到私有投影 | 已改正并对齐手感 | 私有场景授权测试 |
+| 私有信息 | 本人看正面，其他人看牌背 | 每张暗手由一个持久 CE 家具承载；未授权玩家只收到反向条件的牌背元素，授权玩家只收到正面元素。观众表为并发 O(1) 查询且缺失即隐藏，正面 item 数据不会发给未授权客户端 | 已改正并对齐手感 | CE 条件注册、观众隔离、资源定义与场景授权测试 |
 | 动作按钮 | 吃、碰、杠、和、跳过等按当前玩法出现 | 规则包产生合法动作和稳定排序；核心只使用通用槽位 | 已对齐主链路 | rule-pack TCK、action projection 测试 |
 | 房主离桌 | 控制权转给仍在座的真人 | 同一 lobby revision 原子转给座位序最前的剩余玩家；空桌保留持久桌所有者直到清理 | 已对齐 | `LobbyReducerTest` |
 | 房主主动转让 | 可在开局前把房主交给另一名玩家 | 仅当前房主可转给在线真人；命令和 revision-bound 桌面动作都进入同一 lobby actor，不允许机器人或离线座位接管 | 已对齐 | `LobbyReducerTest`、locale/bundle 门禁 |
@@ -33,7 +33,7 @@
 | 机器人牌力 | 会吃碰杠、按听牌/番数取舍、九种九牌满 11 种才流局 | 三规则包各自实现听牌感知大脑，镜像 1.5.0 打分 `1_000_000 + 最大番*10_000 + 合法听牌数*100 + 番数合计`，鸣牌只在严格优于过牌时成立；杠改为「不使手牌变差即杠」（1.5.0 只在杠能制造听牌时才杠，实际几乎永不杠） | 已对齐并有意超越一处 | `McrAutomationQualityTest`、`RiichiAutomationQualityTest`、`SichuanAutomationQualityTest`（各驱动 6~8 局全自动对局并断言确有鸣牌与杠） |
 | 思考时间手感 | 出牌 60/30/15/10 秒防挂机阶梯；其他决策 5 秒基础 + 每手 20 秒共享加时池 | 出牌阶梯一致；其他决策同样为 5 秒基础加 20 秒**按手共享**加时池，答得快不扣池，池耗尽后只剩基础时间 | 已对齐 | `HumanDecisionDeadlineControllerTest`（池扣减、快答免扣、超时清池、按手重置） |
 | 自动代打预警 | 行动栏倒计时 `Auto-discard in <n>s` / `Auto-skip in <n>s`，不会无声被代打 | 同一桌第二个有界定时器在截止前 5 秒通过 `HumanDecisionWarningPort` 发出预警，插件投递到玩家自己的调度器；窗口本身不长于 5 秒时不预警 | 已对齐 | `HumanDecisionDeadlineControllerTest.aSeatIsWarnedBeforeItIsPlayedAutomatically`、`aWindowNoLongerThanTheWarningLeadIsNotWarnedAbout` |
-| 领地保护 | 通过 AntiGriefLib 适配约 30 个领地插件，并以 `load: BEFORE` 软依赖保证先于本插件加载 | 同一 AntiGriefLib（1.0.16）适配器 + fail-closed；两份清单均恢复全部软依赖声明，否则后加载的领地插件不会被识别 | 已对齐 | `paper-plugin.yml` / `plugin.yml` 软依赖清单与 `ProtectionService` |
+| 领地保护 | 通过 AntiGriefLib 适配约 30 个领地插件，并以 `load: BEFORE` 软依赖保证先于本插件加载 | 同一 AntiGriefLib（1.0.17）适配器 + fail-closed；两份清单均恢复全部软依赖声明，否则后加载的领地插件不会被识别 | 已对齐 | `paper-plugin.yml` / `plugin.yml` 软依赖清单与 `ProtectionService` |
 | 命令体验 | 创建、加入、观战、房主转让、机器人、规则、排行、管理命令 | 命令只调用 application use case；房主转让和旧规则别名已保留，不绕过 actor | 主链路已对齐；排行入口另见排名行 | lobby reducer、异步命令边界、locale/bundle 门禁 |
 | 多语言提示 | 完整中文/英文/日文消息键 | 命令、动作与交互反馈使用客户端翻译；内置简中、繁中、英文、日文，控制台英文回退 | 已实现核心链路 | 构建期 locale 键集与占位符完整性门禁 |
 | 排名与历史 | 对局结果、排行与个人查询 | `/mahjong history [page]` 与 `/mahjong rank [rule] [page]` 走只读异步 SQL projection；不得在 region/actor 线程同步查询 | 已实现玩家入口 | `JdbcPlayerRecordQueryTest`、SQL schema/event-store 测试、locale 键集门禁 |
@@ -85,7 +85,7 @@ CELESTIAL      起始分 100，升级阈值 200（超出部分结转）
 
 2.0 不保留任何面向旧契约的兼容分支：SPI 只接受 `SpiVersion.CURRENT`，激活状态文件只接受当前字段集，注册表只接受当前格式，动作标签只解析当前键格式，CI 只放行当前 SPI 版本。旧版本号字符串不得残留在生产代码、测试夹具或工作流中。
 
-以下不属于「旧兼容代码」，刻意保留：MCR `Tile.code()` / `Tile.parse(String)` 是 Green Book 文本记号（全部 81 番金标测试依赖它）；`CraftEngineVersion` 是现役 26.7+ 版本门禁；各处 `1.5.0-aligned` 文档注释用于记录对齐目标。
+以下不属于「旧兼容代码」，刻意保留：MCR `Tile.code()` / `Tile.parse(String)` 是 Green Book 文本记号（全部 81 番金标测试依赖它）；`CraftEngineVersion` 是锁定 26.8 内部 API 线的现役门禁；各处 `1.5.0-aligned` 文档注释用于记录对齐目标。
 
 ## 完成定义
 

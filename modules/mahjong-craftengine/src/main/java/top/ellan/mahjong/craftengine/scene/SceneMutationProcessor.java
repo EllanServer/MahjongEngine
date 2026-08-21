@@ -164,13 +164,17 @@ final class SceneMutationProcessor {
 
     void finishClosedTable(TableId tableId, CraftEngineTableState table) {
         installBindingsIfReady(tableId, table);
+        boolean removed = false;
         synchronized (table) {
             if (table.closed
                     && table.actual.isEmpty()
                     && table.dirty.isEmpty()
                     && table.inFlight.isEmpty()) {
-                tables.remove(tableId, table);
+                removed = tables.remove(tableId, table);
             }
+        }
+        if (removed) {
+            gateway.tableClosed(tableId);
         }
     }
 

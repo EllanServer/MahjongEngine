@@ -1,9 +1,9 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import java.util.zip.ZipFile
+import org.gradle.jvm.tasks.Jar
 import top.ellan.mahjong.build.CraftEngineBundleGenerator
 
 plugins {
     java
-    id("com.gradleup.shadow")
 }
 
 java {
@@ -17,6 +17,32 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 val generatedResources = layout.buildDirectory.dir("generated/resources/mahjong")
+val bundleVersion = version.toString()
+val internalProjectPaths =
+    listOf(
+        ":mahjong-rule-spi",
+        ":mahjong-domain",
+        ":mahjong-application",
+        ":mahjong-rule-runtime",
+        ":mahjong-presentation",
+        ":mahjong-persistence-sql",
+        ":mahjong-platform-paper",
+        ":mahjong-craftengine",
+    )
+val internalProjects = internalProjectPaths.map { project(it) }
+val runtimeLibraries =
+    listOf(
+        "com.zaxxer:HikariCP:7.1.0",
+        "com.h2database:h2:2.4.240",
+        "org.mariadb.jdbc:mariadb-java-client:3.5.9",
+        "com.mysql:mysql-connector-j:9.7.0",
+        "net.momirealms:antigrieflib:1.0.17",
+        "net.momirealms:sparrow-minimessage:0.5",
+        "net.momirealms:sparrow-reflection:0.34",
+        "net.momirealms:sparrow-yaml:1.0.12",
+        "org.ow2.asm:asm:9.10.1",
+        "org.ow2.asm:asm-tree:9.10.1",
+    )
 val generateCraftEngineBundle =
     tasks.register("generateCraftEngineBundle") {
         val resourcepackDir = rootProject.layout.projectDirectory.dir("resourcepack").asFile
@@ -26,6 +52,7 @@ val generateCraftEngineBundle =
         inputs.dir(configurationDir)
         inputs.dir(resourcepackDir)
         inputs.file(attribution)
+        inputs.property("bundleVersion", bundleVersion)
         outputs.dir(generatedResources.map { it.dir("craftengine") })
         doLast {
             CraftEngineBundleGenerator.writeCraftEngineBundle(
@@ -33,7 +60,7 @@ val generateCraftEngineBundle =
                 resourcepackDir,
                 attribution,
                 generatedResources.get().asFile,
-                project.version.toString(),
+                bundleVersion,
             )
         }
     }
@@ -54,42 +81,59 @@ val generateRuleTrustRoot =
             target.writeText(rulePackPublicKey.get().trim() + "\n", Charsets.UTF_8)
         }
     }
+val generateRuntimeLibraryCatalog =
+    tasks.register("generateRuntimeLibraryCatalog") {
+        val output = generatedResources.map { it.file("META-INF/mahjong-runtime-libraries.txt") }
+        inputs.property("runtimeLibraries", runtimeLibraries)
+        outputs.file(output)
+        doLast {
+            val target = output.get().asFile
+            target.parentFile.mkdirs()
+            target.writeText(runtimeLibraries.joinToString("\n", postfix = "\n"), Charsets.UTF_8)
+        }
+    }
 
 dependencies {
-    implementation(project(":mahjong-rule-spi"))
-    implementation(project(":mahjong-domain"))
-    implementation(project(":mahjong-application"))
-    implementation(project(":mahjong-rule-runtime"))
-    implementation(project(":mahjong-presentation"))
-    implementation(project(":mahjong-persistence-sql"))
-    implementation(project(":mahjong-platform-paper"))
-    implementation(project(":mahjong-craftengine"))
+    internalProjectPaths.forEach { implementation(project(it)) }
 
     compileOnly("io.papermc.paper:paper-api:26.2.build.111-stable")
-    compileOnly("net.momirealms:craft-engine-core:26.7")
-    compileOnly("net.momirealms:craft-engine-bukkit:26.7")
+    testImplementation("io.papermc.paper:paper-api:26.2.build.111-stable")
+    compileOnly("net.momirealms:craft-engine-core:26.8")
+    compileOnly("net.momirealms:craft-engine-bukkit:26.8")
 
-    implementation("com.zaxxer:HikariCP:7.1.0")
-    implementation("com.h2database:h2:2.4.240")
-    implementation("org.mariadb.jdbc:mariadb-java-client:3.5.9")
-    implementation("com.mysql:mysql-connector-j:9.7.0")
-    implementation("net.momirealms:antigrieflib:1.0.16")
-    implementation("net.momirealms:sparrow-heart:0.72")
-    implementation("net.momirealms:sparrow-reflection:0.33")
-    implementation("net.momirealms:sparrow-yaml:1.0.7")
-    implementation("org.ow2.asm:asm:9.10.1")
+    runtimeLibraries.forEach { implementation(it) }
 }
+
+val perfTest = sourceSets.create("perfTest")
+perfTest.compileClasspath += sourceSets.main.get().output
+perfTest.runtimeClasspath += sourceSets.main.get().output
+
+configurations[perfTest.implementationConfigurationName].extendsFrom(
+    configurations.testImplementation.get(),
+)
+configurations[perfTest.runtimeOnlyConfigurationName].extendsFrom(
+    configurations.testRuntimeOnly.get(),
+)
 
 sourceSets.main {
     resources.srcDir(generatedResources)
 }
 
+tasks.register<JavaExec>("messageRenderingBenchmark") {
+    group = "verification"
+    description = "Compares direct, Kyori and Sparrow Adventure message rendering."
+    dependsOn(perfTest.classesTaskName)
+    classpath = perfTest.runtimeClasspath
+    mainClass.set("top.ellan.mahjong.plugin.perf.MessageRenderingBenchmark")
+    jvmArgs("-Xms256m", "-Xmx256m", "-XX:+UseG1GC")
+}
+
 tasks.processResources {
-    dependsOn(generateCraftEngineBundle, generateRuleTrustRoot)
+    dependsOn(generateCraftEngineBundle, generateRuleTrustRoot, generateRuntimeLibraryCatalog)
     filteringCharset = "UTF-8"
-    inputs.property("version", project.version)
+    inputs.property("version", bundleVersion)
     filesMatching(listOf("plugin.yml", "paper-plugin.yml")) {
-        expand("version" to project.version.toString())
+        expand("version" to bundleVersion)
     }
     from(rootProject.file("LICENSE")) {
         into("META-INF/licenses")
@@ -107,15 +151,59 @@ tasks.processResources {
     }
 }
 
+tasks.named<Jar>("sourcesJar") {
+    dependsOn(generateCraftEngineBundle, generateRuleTrustRoot, generateRuntimeLibraryCatalog)
+}
+
 tasks.jar {
-    archiveClassifier.set("dev")
-}
-
-tasks.named<ShadowJar>("shadowJar") {
     archiveClassifier.set("")
-    mergeServiceFiles()
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+    internalProjects.forEach { internalProject ->
+        val internalJar = internalProject.tasks.named<Jar>("jar")
+        dependsOn(internalJar)
+        from(internalJar.map { zipTree(it.archiveFile.get().asFile) }) {
+            exclude("META-INF/MANIFEST.MF", "module-info.class")
+        }
+    }
+    manifest {
+        attributes(
+            "Implementation-Title" to "MahjongPaper",
+            "Implementation-Version" to bundleVersion,
+        )
+    }
 }
 
-tasks.assemble {
-    dependsOn(tasks.shadowJar)
+val pluginJar = tasks.named<Jar>("jar")
+val verifyThinJar =
+    tasks.register("verifyThinJar") {
+        group = "verification"
+        description = "Rejects bundled third-party classes and validates Paper's runtime loader."
+        dependsOn(pluginJar)
+        val archive = pluginJar.flatMap { it.archiveFile }
+        inputs.file(archive)
+        doLast {
+            ZipFile(archive.get().asFile).use { zip ->
+                val entries = zip.entries().asSequence().map { it.name }.toList()
+                val foreignClasses =
+                    entries.filter { it.endsWith(".class") && !it.startsWith("top/ellan/mahjong/") }
+                check(foreignClasses.isEmpty()) {
+                    "Thin plugin contains third-party classes: ${foreignClasses.take(20)}"
+                }
+                check(entries.none { it.endsWith(".jar") }) {
+                    "Thin plugin must not contain nested JARs"
+                }
+                listOf(
+                    "paper-plugin.yml",
+                    "META-INF/mahjong-runtime-libraries.txt",
+                    "top/ellan/mahjong/plugin/loader/MahjongPaperLoader.class",
+                    "top/ellan/mahjong/domain/table/TableId.class",
+                ).forEach { required ->
+                    check(required in entries) { "Thin plugin is missing $required" }
+                }
+            }
+        }
+    }
+
+tasks.check {
+    dependsOn(verifyThinJar)
 }

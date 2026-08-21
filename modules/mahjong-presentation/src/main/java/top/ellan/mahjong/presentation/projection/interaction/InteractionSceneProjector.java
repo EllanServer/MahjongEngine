@@ -9,7 +9,7 @@ import top.ellan.mahjong.application.projection.TableProjection;
 import top.ellan.mahjong.presentation.asset.TableSceneAssets;
 import top.ellan.mahjong.presentation.label.ActionLabelPolicy;
 import top.ellan.mahjong.presentation.layout.ResolvedTableLayout;
-import top.ellan.mahjong.presentation.node.ActionLabelNode;
+import top.ellan.mahjong.presentation.node.ActionLabelNodes;
 import top.ellan.mahjong.presentation.node.InteractionNode;
 import top.ellan.mahjong.presentation.node.SceneNode;
 import top.ellan.mahjong.presentation.node.SceneNodeId;
@@ -168,7 +168,7 @@ public final class InteractionSceneProjector {
                         transform));
         nodes.put(
                 labelId,
-                new ActionLabelNode(
+                ActionLabelNodes.create(
                         labelId,
                         SceneVisibility.privateTo(player),
                         "action.view_river",

@@ -23,6 +23,7 @@ import top.ellan.mahjong.presentation.scene.SceneDiff;
 public final class CraftEngineSceneBackend implements SceneBackendPort {
     private final ConcurrentHashMap<TableId, CraftEngineTableState> tables =
             new ConcurrentHashMap<>();
+    private final CraftEngineMutationGateway gateway;
     private final InteractionRouter interactions;
     private final CraftEngineBackendConfig config;
     private final Consumer<CraftEngineTableFailure> failureSink;
@@ -37,11 +38,12 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
             InteractionRouter interactions,
             CraftEngineBackendConfig config,
             Consumer<CraftEngineTableFailure> failureSink) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway");
         this.interactions = Objects.requireNonNull(interactions, "interactions");
         this.config = Objects.requireNonNull(config, "config");
         this.failureSink = Objects.requireNonNull(failureSink, "failureSink");
         mutations = new SceneMutationProcessor(
-                Objects.requireNonNull(gateway, "gateway"),
+                this.gateway,
                 interactions,
                 tables,
                 ready::get,
@@ -168,6 +170,7 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
 
     /** Called only after CraftEngineReloadEvent confirms the atomically installed bundle is live. */
     public void onCraftEngineReloaded() {
+        gateway.definitionsReloaded();
         ready.set(true);
         tables.forEach(
                 (tableId, table) -> {

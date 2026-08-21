@@ -1,9 +1,7 @@
 package top.ellan.mahjong.plugin.platform;
 
 import static top.ellan.mahjong.plugin.platform.CraftEnginePlatformMappings.ruleBundleFolder;
-import static top.ellan.mahjong.plugin.platform.CraftEnginePlatformMappings.sceneAssets;
 import static top.ellan.mahjong.plugin.platform.CraftEnginePlatformMappings.soundBinding;
-import static top.ellan.mahjong.plugin.platform.CraftEnginePlatformMappings.tableGeometry;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -12,13 +10,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import net.momirealms.craftengine.bukkit.api.CraftEngineItems;
+import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
+import net.momirealms.craftengine.core.plugin.config.Config;
+import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.plugin.Plugin;
@@ -38,10 +39,12 @@ import top.ellan.mahjong.craftengine.interaction.CraftEngineInteractionListener;
 import top.ellan.mahjong.craftengine.opening.CraftEngineOpeningAnimationConfig;
 import top.ellan.mahjong.craftengine.opening.CraftEngineOpeningPresenter;
 import top.ellan.mahjong.craftengine.bundle.CraftEngineReloadListener;
+import top.ellan.mahjong.craftengine.bundle.CraftEngineResourceReloader;
 import top.ellan.mahjong.craftengine.scene.CraftEngineSceneBackend;
 import top.ellan.mahjong.craftengine.bundle.CraftEngineVersion;
 import top.ellan.mahjong.craftengine.scene.DirectCraftEngineMutationGateway;
-import top.ellan.mahjong.craftengine.privateview.SparrowPrivateProjectionGateway;
+import top.ellan.mahjong.craftengine.privateview.CraftEnginePrivateProjectionGateway;
+import top.ellan.mahjong.craftengine.privateview.PrivateFurnitureVisibility;
 import top.ellan.mahjong.craftengine.port.PlayerTextResolver;
 import top.ellan.mahjong.craftengine.port.TableDialogPort;
 import top.ellan.mahjong.domain.table.TableId;
@@ -72,9 +75,11 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
     private final BoundedPlatformExecutors executors;
     private final Plugin craftEngine;
     private final PlayerTextResolver messages;
+    private final CraftEngineResourceReloader resourceReloader;
     private final PaperTableAnchorRegistry anchors = new PaperTableAnchorRegistry();
     private final PaperTableAnchorService anchorService;
-    private final SparrowPrivateProjectionGateway privateProjection;
+    private final CraftEnginePrivateProjectionGateway privateProjection;
+    private final PrivateFurnitureVisibility privateVisibility;
     private final InteractionRouter interactions;
     private final DirectCraftEngineMutationGateway mutations;
     private final CraftEngineSceneBackend sceneBackend;
@@ -101,16 +106,28 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
         Objects.requireNonNull(deadlines, "deadlines");
         Objects.requireNonNull(actors, "actors");
         craftEngine = requireCraftEngine();
+        if (!Config.delayConfigurationLoad()) {
+            throw new IllegalStateException(
+                    "CraftEngine misc.delay-configuration-load must remain true so MahjongPaper can register its CE extensions before resource parsing");
+        }
+        resourceReloader =
+                new CraftEngineResourceReloader(plugin, BukkitCraftEngine.instance());
+        CorePresentationResources presentation =
+                CorePresentationResources.load(plugin.getClass().getClassLoader());
+        privateVisibility = new PrivateFurnitureVisibility();
         anchorService = new PaperTableAnchorService(plugin, anchors);
         privateProjection =
-                new SparrowPrivateProjectionGateway(
+                new CraftEnginePrivateProjectionGateway(
                         plugin,
                         anchors,
-                        configuration.layoutGeometry().emphasisRaise(),
                         configuration.viewSettings().transitionTicks(),
                         messages);
-        interactions = new InteractionRouter(actors, privateProjection, privateProjection);
-        mutations = new DirectCraftEngineMutationGateway(plugin, anchors, privateProjection);
+        mutations = new DirectCraftEngineMutationGateway(
+                plugin,
+                anchors,
+                privateProjection,
+                privateVisibility);
+        interactions = new InteractionRouter(actors, mutations, privateProjection);
         PaperSoundDispatcher sounds = new PaperSoundDispatcher(plugin);
         presentationCues = new PaperTableSoundGateway(sounds, soundCatalog);
         decisionWarnings = new HumanDecisionWarningPresenter(plugin, this.messages);
@@ -132,9 +149,8 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                 new LatestSceneProjector(
                         executors.render(),
                         new DefaultTableSceneMapper(
-                                new UniversalTableLayout(
-                                        tableGeometry(configuration.layoutGeometry())),
-                                sceneAssets(configuration.craftEngineAssets()),
+                                new UniversalTableLayout(presentation.geometry()),
+                                presentation.assets(),
                                 configuration.viewSettings().overheadHeight(),
                                 configuration.viewSettings().overheadEnabled(),
                                 (player, labelKey) ->
@@ -143,14 +159,14 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                         sceneBackend,
                         new SceneGraphDiffer(),
                         deadlines);
-        PluginConfiguration.OpeningSettings opening = configuration.openingSettings();
         openingPresentations = new CraftEngineOpeningPresenter(
                 deadlines,
                 sceneBackend,
                 new CraftEngineOpeningAnimationConfig(
-                        configuration.craftEngineAssets().openingDieSlotPrefix(),
-                        Duration.ofMillis(Math.multiplyExact(opening.rollTicks(), 50L)),
-                        Duration.ofMillis(Math.multiplyExact(opening.revealTicks(), 50L))),
+                        presentation.openingDieSlotPrefix(),
+                        Duration.ofMillis(Math.multiplyExact(presentation.openingRollTicks(), 50L)),
+                        Duration.ofMillis(
+                                Math.multiplyExact(presentation.openingRevealTicks(), 50L))),
                 new PaperOpeningSoundGateway(
                         sounds,
                         soundCatalog));
@@ -185,9 +201,8 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
         }
         soundCatalog.replaceAll(profiles);
         if (changed) {
-            plugin.getLogger()
-                    .info(
-                            "Rule resources updated; their sounds become available after CraftEngine reload.");
+            plugin.getLogger().info("Rule resources updated; reloading CE resources and pack.");
+            resourceReloader.requestWhenReady();
         }
     }
 
@@ -262,6 +277,11 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
         return anchors.location(Objects.requireNonNull(tableId, "tableId"));
     }
 
+    /** Arms fail-closed cleanup after durable lobby and match recovery has completed. */
+    public void reconcileManagedFurniture(Set<TableId> knownTables) {
+        mutations.reconcileKnownTables(knownTables);
+    }
+
     public void removeTable(TableId tableId) {
         Objects.requireNonNull(tableId, "tableId");
         openingPresentations.clear(tableId);
@@ -274,32 +294,26 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
             SeatInteractionPort seatInteractions,
             PlayerPresencePort playerPresence,
             TableDialogPort tableDialogs) {
-        plugin.getServer()
-                .getPluginManager()
-                .registerEvents(
-                        new CraftEngineInteractionListener(
-                                plugin,
-                                interactions,
-                                (player, result, failure) -> {
-                                    Component message = interactionFeedback(
-                                            messages, player.locale(), result, failure);
-                                    if (message == null) {
-                                        return;
-                                    }
-                                    player.getScheduler()
-                                            .run(
-                                                    plugin,
-                                                    ignored -> player.sendActionBar(message),
-                                                    null);
-                                },
-                                seatInteractions,
-                                playerPresence,
-                                tableDialogs,
-                                mutations.managedKey(),
-                                mutations.tableKey(),
-                                mutations.nodeKey(),
-                                mutations.interactionKey()),
-                        plugin);
+        CraftEngineInteractionListener interactionListener = new CraftEngineInteractionListener(
+                plugin,
+                interactions,
+                (player, result, failure) -> {
+                    Component message =
+                            interactionFeedback(messages, player.locale(), result, failure);
+                    if (message == null) {
+                        return;
+                    }
+                    player.getScheduler()
+                            .run(
+                                    plugin,
+                                    ignored -> player.sendActionBar(message),
+                                    null);
+                },
+                seatInteractions,
+                playerPresence,
+                tableDialogs);
+        mutations.bindInteraction(interactionListener::onFurnitureUse);
+        plugin.getServer().getPluginManager().registerEvents(interactionListener, plugin);
         plugin.getServer()
                 .getPluginManager()
                 .registerEvents(
@@ -386,8 +400,8 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                                 bundleInstalled.set(true);
                                 if (result.changed()) {
                                     plugin.getLogger()
-                                            .info(
-                                                    "CraftEngine bundle updated; scenes remain closed until CraftEngineReloadEvent.");
+                                            .info("CraftEngine bundle updated; reloading CE resources and pack.");
+                                    resourceReloader.requestWhenReady();
                                 } else {
                                     activateInstalledBundle();
                                 }
@@ -411,7 +425,10 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                             plugin,
                             () -> {
                                 try {
-                                    if (CraftEngineItems.byId("mahjongpaper:table_visual") != null) {
+                                    if (BukkitCraftEngine.instance()
+                                            .furnitureManager()
+                                            .furnitureById(Key.of("mahjongpaper:table_visual"))
+                                            .isPresent()) {
                                         sceneBackend.onCraftEngineReloaded();
                                     } else {
                                         plugin.getLogger()
@@ -439,7 +456,9 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
     @Override
     public void close() {
         if (closed.compareAndSet(false, true)) {
+            resourceReloader.close();
             openingPresentations.close();
+            mutations.close();
             privateProjection.close();
         }
     }

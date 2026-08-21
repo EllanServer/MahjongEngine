@@ -329,6 +329,23 @@ class CraftEngineSceneBackendTest {
         assertFalse(gateway.live.get(table).containsKey(die));
     }
 
+    @Test
+    void closingTableReleasesPersistentLifecycleMembershipAfterRemoval() {
+        ManualRegionScheduler scheduler = new ManualRegionScheduler();
+        RecordingGateway gateway = new RecordingGateway();
+        CraftEngineSceneBackend backend = backend(gateway, scheduler, ignored -> {});
+        TableId table = TableId.random();
+        backend.submit(diff(table, 2));
+        backend.onCraftEngineReloaded();
+        scheduler.runUntilIdle(REGION, 10);
+
+        backend.removeTable(table);
+        scheduler.runUntilIdle(REGION, 10);
+
+        assertEquals(List.of(table), gateway.closedTables);
+        assertFalse(gateway.live.containsKey(table));
+    }
+
     private static CraftEngineSceneBackend backend(
             RecordingGateway gateway,
             ManualRegionScheduler scheduler,
@@ -417,6 +434,7 @@ class CraftEngineSceneBackendTest {
     private static final class RecordingGateway implements CraftEngineMutationGateway {
         private final Map<TableId, Integer> upserted = new HashMap<>();
         private final Map<TableId, Map<SceneNodeId, SceneNode>> live = new HashMap<>();
+        private final List<TableId> closedTables = new ArrayList<>();
         private TableId broken;
         private Runnable duringFirstUpsert;
         private CompletableFuture<Void> delayNextUpsert;
@@ -447,6 +465,12 @@ class CraftEngineSceneBackendTest {
         public CompletionStage<Void> remove(TableId tableId, SceneNodeId nodeId) {
             live.computeIfAbsent(tableId, ignored -> new HashMap<>()).remove(nodeId);
             return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public void tableClosed(TableId tableId) {
+            closedTables.add(tableId);
+            live.remove(tableId);
         }
     }
 }

@@ -22,19 +22,10 @@ class CraftEngineSeatResolverTest {
     }
 
     @Test
-    void configuredChairOffsetsUseEastSouthWestNorth() {
-        assertEquals(
-                new SeatId(0),
-                CraftEngineSeatResolver.resolveConfiguredPosition(2.125F, 0).orElseThrow());
-        assertEquals(
-                new SeatId(1),
-                CraftEngineSeatResolver.resolveConfiguredPosition(0, 2.125F).orElseThrow());
-        assertEquals(
-                new SeatId(2),
-                CraftEngineSeatResolver.resolveConfiguredPosition(-2.125F, 0).orElseThrow());
-        assertEquals(
-                new SeatId(3),
-                CraftEngineSeatResolver.resolveConfiguredPosition(0, -2.125F).orElseThrow());
-        assertTrue(CraftEngineSeatResolver.resolveConfiguredPosition(0, 0).isEmpty());
+    void resolverDoesNotInferLegacySeatsFromTheTableHitbox() {
+        CraftEngineSeatResolver resolver = new CraftEngineSeatResolver();
+
+        assertTrue(resolver.resolve("furniture/table").isEmpty());
+        assertTrue(resolver.resolve(null).isEmpty());
     }
 }

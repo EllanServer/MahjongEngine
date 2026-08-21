@@ -8,7 +8,7 @@ import top.ellan.mahjong.application.projection.TableProjection;
 import top.ellan.mahjong.presentation.layout.ResolvedTableLayout;
 import top.ellan.mahjong.presentation.node.CameraNode;
 import top.ellan.mahjong.presentation.node.HudNode;
-import top.ellan.mahjong.presentation.node.PrivateItemNode;
+import top.ellan.mahjong.presentation.node.PrivateFurnitureNode;
 import top.ellan.mahjong.presentation.node.SceneNode;
 import top.ellan.mahjong.presentation.node.SceneNodeId;
 import top.ellan.mahjong.presentation.node.SceneVisibility;
@@ -117,10 +117,13 @@ public final class PrivateSceneProjector {
             if (publiclyRevealedHands.contains(tile.instanceId())) {
                 continue;
             }
+            // One CE furniture now owns both the public back and this viewer's conditional face.
+            // Remove the duplicate public-back furniture when the private representation exists.
+            nodes.remove(SceneNodeIdentity.publicTile(tile.instanceId().value()));
             SceneNodeId id = SceneNodeIdentity.privateTile(viewerKey, tile.instanceId().value());
             nodes.put(
                     id,
-                    new PrivateItemNode(
+                    new PrivateFurnitureNode(
                             id,
                             visibility,
                             tile.instanceId(),

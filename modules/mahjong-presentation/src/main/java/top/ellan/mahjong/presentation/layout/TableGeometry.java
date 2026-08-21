@@ -1,6 +1,6 @@
 package top.ellan.mahjong.presentation.layout;
 
-/** Reusable physical dimensions shared by every rule mode and supplied by plugin configuration. */
+/** Reusable physical dimensions shared by every rule mode and supplied by the CE resource pack. */
 public record TableGeometry(
         double tileWidth,
         double tileHeight,

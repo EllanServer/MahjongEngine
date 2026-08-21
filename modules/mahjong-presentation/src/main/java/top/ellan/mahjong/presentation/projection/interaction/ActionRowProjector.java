@@ -8,7 +8,7 @@ import top.ellan.mahjong.application.projection.TableProjection;
 import top.ellan.mahjong.presentation.asset.TableSceneAssets;
 import top.ellan.mahjong.presentation.label.ActionLabelPolicy;
 import top.ellan.mahjong.presentation.layout.ResolvedTableLayout;
-import top.ellan.mahjong.presentation.node.ActionLabelNode;
+import top.ellan.mahjong.presentation.node.ActionLabelNodes;
 import top.ellan.mahjong.presentation.node.InteractionNode;
 import top.ellan.mahjong.presentation.node.SceneNode;
 import top.ellan.mahjong.presentation.node.SceneNodeId;
@@ -143,7 +143,7 @@ final class ActionRowProjector {
         if (nodes.putIfAbsent(id, interaction) != null) {
             throw new IllegalArgumentException("duplicate action interaction node");
         }
-        ActionLabelNode label = new ActionLabelNode(
+        SceneNode label = ActionLabelNodes.create(
                 labelId,
                 SceneVisibility.privateTo(player),
                 action.legalAction().actionPresentation().labelKey(),

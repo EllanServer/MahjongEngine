@@ -6,7 +6,6 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
-import net.momirealms.sparrow.heart.feature.entity.display.FakeItemDisplay;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -24,7 +23,7 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
     private final Plugin plugin;
     private final TableAnchorLookup anchors;
     private final PlayerRegionTaskScheduler tasks;
-    private final SparrowDisplayGateway displays;
+    private final CraftEngineClientDisplayGateway displays;
     private final CameraProjectionCallbacks callbacks;
     private final ClientCameraPacketSender cameraPackets;
     private final int transitionTicks;
@@ -37,7 +36,7 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
             Plugin plugin,
             TableAnchorLookup anchors,
             PlayerRegionTaskScheduler tasks,
-            SparrowDisplayGateway displays,
+            CraftEngineClientDisplayGateway displays,
             CameraProjectionCallbacks callbacks,
             int transitionTicks) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
@@ -174,7 +173,7 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
         }
         Location start = player.getEyeLocation().clone();
         Location target = PrivateSceneGeometry.localToWorld(anchor, camera.transform());
-        FakeItemDisplay display = null;
+        ClientItemDisplay display = null;
         ActiveCamera next = null;
         boolean cameraTargeted = false;
         try {
@@ -182,10 +181,10 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
             display.item(new ItemStack(Material.AIR));
             display.spawn(player);
             int clientTicks = OverheadCameraPath.clientInterpolationTicks(transitionTicks);
-            Object interpolation = displays.interpolationPacket(display.entityID(), clientTicks);
-            Object cameraPacket = cameraPackets.createPacket(display.entityID());
+            Object interpolation = displays.interpolationPacket(display.entityId(), clientTicks);
+            Object cameraPacket = cameraPackets.createPacket(display.entityId());
             if (cameraPacket == null) {
-                displays.destroyItem(player, display);
+                display.destroy(player);
                 return ToggleResult.UNAVAILABLE;
             }
             boolean clientInterpolation = interpolation != null;
@@ -194,7 +193,7 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
             next = new ActiveCamera(tableId, display, start, target, serverKeyframes);
             ActiveCamera raced = active.putIfAbsent(playerId, next);
             if (raced != null) {
-                displays.destroyItem(player, display);
+                display.destroy(player);
                 return ToggleResult.UNAVAILABLE;
             }
             List<Object> setupPackets = interpolation == null
@@ -202,7 +201,7 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
                     : List.of(interpolation, cameraPacket);
             if (!displays.sendPackets(player, setupPackets)) {
                 active.remove(playerId, next);
-                displays.destroyItem(player, display);
+                display.destroy(player);
                 return ToggleResult.UNAVAILABLE;
             }
             cameraTargeted = true;
@@ -214,7 +213,7 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
             if (next != null && active.remove(playerId, next) && cameraTargeted) {
                 restore(player, playerId, next, 3);
             } else if (display != null) {
-                displays.destroyItem(player, display);
+                display.destroy(player);
             }
             throw failure;
         }
@@ -233,7 +232,7 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
                     player,
                     OverheadCameraPath.frame(
                             camera.start(), camera.target(), frame, camera.frames()),
-                    camera.display().entityID());
+                    camera.display().entityId());
             if (frame < camera.frames()) {
                 tasks.executeLater(
                         player,
@@ -266,7 +265,7 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
         if (restoreView) {
             tasks.execute(player, () -> restore(player, playerId, camera, 3));
         } else {
-            tasks.execute(player, () -> displays.destroyItem(player, camera.display()));
+            tasks.execute(player, () -> camera.display().destroy(player));
         }
         return true;
     }
@@ -292,9 +291,9 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
             int attemptsRemaining) {
         ActiveCamera current = active.get(playerId);
         int targetEntityId =
-                current == null ? player.getEntityId() : current.display().entityID();
+                current == null ? player.getEntityId() : current.display().entityId();
         if (cameraPackets.pointAt(player, targetEntityId)) {
-            displays.destroyItem(player, camera.display());
+            camera.display().destroy(player);
             if (current == null) {
                 callbacks.restoreAfterCamera(player, playerId);
             }
@@ -307,7 +306,7 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
                     1L);
             return;
         }
-        displays.destroyItem(player, camera.display());
+        camera.display().destroy(player);
         if (current == null) {
             callbacks.restoreAfterCamera(player, playerId);
         }
@@ -336,7 +335,7 @@ final class OverheadCameraController implements OverheadViewPort, AutoCloseable 
 
     private record ActiveCamera(
             TableId tableId,
-            FakeItemDisplay display,
+            ClientItemDisplay display,
             Location start,
             Location target,
             int frames) {}

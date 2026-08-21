@@ -26,12 +26,12 @@ import top.ellan.mahjong.presentation.asset.TableSceneAssets;
 import top.ellan.mahjong.presentation.layout.ResolvedTableLayout;
 import top.ellan.mahjong.presentation.layout.TableGeometry;
 import top.ellan.mahjong.presentation.layout.UniversalTableLayout;
-import top.ellan.mahjong.presentation.node.ActionLabelNode;
+import top.ellan.mahjong.presentation.node.ActionFurnitureNode;
 import top.ellan.mahjong.presentation.node.CameraNode;
 import top.ellan.mahjong.presentation.node.FurnitureNode;
 import top.ellan.mahjong.presentation.node.HudNode;
 import top.ellan.mahjong.presentation.node.InteractionNode;
-import top.ellan.mahjong.presentation.node.PrivateItemNode;
+import top.ellan.mahjong.presentation.node.PrivateFurnitureNode;
 import top.ellan.mahjong.presentation.node.SceneNode;
 import top.ellan.mahjong.presentation.node.SceneNodeId;
 import top.ellan.mahjong.presentation.node.SceneTransform;
@@ -142,15 +142,10 @@ class SceneGraphTest {
     }
 
     @Test
-    void mapperKeepsSecretFacesOutOfWorldBackedNodes() {
-
+    void mapperUsesOneConditionalCeFurnitureForBackAndSecretFace() {
         SceneGraph graph = mapper().map(projection(TableId.random(), 4, "playing"));
 
-        assertTrue(
-                graph.nodes().values().stream()
-                        .filter(SceneNode::worldBacked)
-                        .allMatch(node -> node.visibility().isPublic()));
-        assertTrue(
+        assertFalse(
                 graph.nodes().values().stream()
                         .filter(FurnitureNode.class::isInstance)
                         .map(FurnitureNode.class::cast)
@@ -163,25 +158,25 @@ class SceneGraphTest {
                         .count());
         assertTrue(
                 graph.nodes().values().stream()
-                        .filter(PrivateItemNode.class::isInstance)
-                        .map(PrivateItemNode.class::cast)
-                        .anyMatch(node -> node.visualId().value().equals("riichi:tile/m5_red")));
+                        .filter(PrivateFurnitureNode.class::isInstance)
+                        .map(PrivateFurnitureNode.class::cast)
+                        .anyMatch(node -> node.worldBacked()
+                                && node.visualId().value().equals("riichi:tile/m5_red")));
         assertEquals(1, graph.interactionBindings().size());
         assertEquals(4, graph.interactionBindings().getFirst().actionToken().revision());
     }
 
     @Test
-    void privateFaceSitsJustOutsideTheReusablePublicBack() {
+    void conditionalFurnitureReplacesTheDuplicatePublicBack() {
         SceneGraph graph = mapper().map(projection(TableId.random(), 4, "playing"));
-        FurnitureNode publicBack = (FurnitureNode) graph.nodes().get(
-                new SceneNodeId("tile/public/1"));
         String viewer = PLAYER.toString().replace("-", "");
-        PrivateItemNode privateFace = (PrivateItemNode) graph.nodes().get(
-                new SceneNodeId("tile/private/" + viewer + "/1"));
 
-        assertEquals(publicBack.transform().z(), privateFace.transform().z());
-        assertTrue(privateFace.transform().x() > publicBack.transform().x());
-        assertTrue(privateFace.transform().x() - publicBack.transform().x() < 0.01D);
+        assertNull(graph.nodes().get(new SceneNodeId("tile/public/1")));
+        PrivateFurnitureNode furniture = (PrivateFurnitureNode) graph.nodes().get(
+                new SceneNodeId("tile/private/" + viewer + "/1"));
+        assertNotNull(furniture);
+        assertTrue(furniture.worldBacked());
+        assertEquals(SceneVisibility.privateTo(PLAYER), furniture.visibility());
     }
 
     @Test
@@ -205,7 +200,7 @@ class SceneGraphTest {
         SceneGraph graph = mapper().map(projection);
 
         assertTrue(graph.nodes().values().stream()
-                .noneMatch(PrivateItemNode.class::isInstance));
+                .noneMatch(PrivateFurnitureNode.class::isInstance));
         assertTrue(graph.nodes().values().stream()
                 .filter(FurnitureNode.class::isInstance)
                 .map(FurnitureNode.class::cast)
@@ -298,9 +293,9 @@ class SceneGraphTest {
     @Test
     void directHandActionReusesThePrivateTileTransform() {
         SceneGraph graph = mapper().map(projection(TableId.random(), 7, "playing"));
-        PrivateItemNode privateTile = graph.nodes().values().stream()
-                .filter(PrivateItemNode.class::isInstance)
-                .map(PrivateItemNode.class::cast)
+        PrivateFurnitureNode privateTile = graph.nodes().values().stream()
+                .filter(PrivateFurnitureNode.class::isInstance)
+                .map(PrivateFurnitureNode.class::cast)
                 .findFirst()
                 .orElseThrow();
         InteractionNode interaction = graph.nodes().values().stream()
@@ -338,9 +333,9 @@ class SceneGraphTest {
                 .map(InteractionNode.class::cast)
                 .findFirst()
                 .orElseThrow();
-        ActionLabelNode label = mapper().map(rowAction).nodes().values().stream()
-                .filter(ActionLabelNode.class::isInstance)
-                .map(ActionLabelNode.class::cast)
+        ActionFurnitureNode label = mapper().map(rowAction).nodes().values().stream()
+                .filter(ActionFurnitureNode.class::isInstance)
+                .map(ActionFurnitureNode.class::cast)
                 .findFirst()
                 .orElseThrow();
 
@@ -360,9 +355,9 @@ class SceneGraphTest {
                 .filter(node -> node.id().value().startsWith("interaction/view/"))
                 .findFirst()
                 .orElseThrow();
-        ActionLabelNode label = graph.nodes().values().stream()
-                .filter(ActionLabelNode.class::isInstance)
-                .map(ActionLabelNode.class::cast)
+        ActionFurnitureNode label = graph.nodes().values().stream()
+                .filter(ActionFurnitureNode.class::isInstance)
+                .map(ActionFurnitureNode.class::cast)
                 .filter(node -> node.labelKey().equals("action.view_river"))
                 .findFirst()
                 .orElseThrow();
@@ -378,7 +373,7 @@ class SceneGraphTest {
 
         assertTrue(view.worldBacked());
         assertTrue(view.visibility().isPublic());
-        assertFalse(label.worldBacked());
+        assertTrue(label.worldBacked());
         assertEquals(Optional.of(PLAYER), label.visibility().singleViewer());
         assertEquals(Optional.of(PLAYER), camera.visibility().singleViewer());
         assertEquals(4.5D, camera.transform().y());

@@ -1,10 +1,7 @@
 package top.ellan.mahjong.plugin.gameroom;
 
 import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -20,9 +17,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 import org.bukkit.Location;
-import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.InvalidConfigurationException;
-import org.bukkit.configuration.file.YamlConfiguration;
 
 /** Durable room catalog with immutable chunk-bucket snapshots for hot-path point queries. */
 public final class GameRoomRegistry {
@@ -32,6 +26,7 @@ public final class GameRoomRegistry {
 
     private final Path storageFile;
     private final Executor ioExecutor;
+    private final GameRoomFileCodec fileCodec = new GameRoomFileCodec();
     private final Object mutationLock = new Object();
     private final AtomicReference<Snapshot> current =
             new AtomicReference<>(Snapshot.empty());
@@ -196,86 +191,21 @@ public final class GameRoomRegistry {
     }
 
     private NavigableMap<String, GameRoom> readRooms() {
-        TreeMap<String, GameRoom> rooms = new TreeMap<>();
-        if (!Files.exists(storageFile)) {
-            return rooms;
-        }
-        YamlConfiguration yaml = new YamlConfiguration();
         try {
-            yaml.load(storageFile.toFile());
-        } catch (IOException | InvalidConfigurationException failure) {
+            NavigableMap<String, GameRoom> rooms = fileCodec.read(storageFile);
+            if (rooms.size() > MAX_ROOMS) {
+                throw new IllegalStateException("Game-room limit exceeded");
+            }
+            return rooms;
+        } catch (IOException failure) {
             throw new IllegalStateException("Cannot load game rooms", failure);
         }
-        ConfigurationSection root = yaml.getConfigurationSection("rooms");
-        if (root == null) {
-            return rooms;
-        }
-        for (String rawId : root.getKeys(false)) {
-            ConfigurationSection section = root.getConfigurationSection(rawId);
-            if (section == null) {
-                throw new IllegalStateException("Invalid game-room entry: " + rawId);
-            }
-            String owner = section.getString("owner");
-            GameRoom room =
-                    new GameRoom(
-                            rawId,
-                            section.getString("name", rawId),
-                            UUID.fromString(Objects.requireNonNull(section.getString("world-id"))),
-                            Objects.requireNonNull(section.getString("world-name")),
-                            section.getInt("min-x"),
-                            section.getInt("min-y"),
-                            section.getInt("min-z"),
-                            section.getInt("max-x"),
-                            section.getInt("max-y"),
-                            section.getInt("max-z"),
-                            owner == null || owner.isBlank() ? null : UUID.fromString(owner));
-            if (rooms.putIfAbsent(room.id(), room) != null) {
-                throw new IllegalStateException("Duplicate game-room id: " + room.id());
-            }
-        }
-        if (rooms.size() > MAX_ROOMS) {
-            throw new IllegalStateException("Game-room limit exceeded");
-        }
-        return rooms;
     }
 
     private void writeRooms(NavigableMap<String, GameRoom> rooms) {
-        YamlConfiguration yaml = new YamlConfiguration();
-        yaml.set("format-version", 1);
-        rooms.forEach(
-                (id, room) -> {
-                    String base = "rooms." + id;
-                    yaml.set(base + ".name", room.name());
-                    yaml.set(base + ".world-id", room.worldId().toString());
-                    yaml.set(base + ".world-name", room.worldName());
-                    yaml.set(base + ".min-x", room.minX());
-                    yaml.set(base + ".min-y", room.minY());
-                    yaml.set(base + ".min-z", room.minZ());
-                    yaml.set(base + ".max-x", room.maxX());
-                    yaml.set(base + ".max-y", room.maxY());
-                    yaml.set(base + ".max-z", room.maxZ());
-                    yaml.set(base + ".owner", room.ownerId() == null ? null : room.ownerId().toString());
-                });
-        Path parent = storageFile.getParent();
-        Path temporary = storageFile.resolveSibling(storageFile.getFileName() + ".tmp");
         try {
-            Files.createDirectories(parent);
-            yaml.save(temporary.toFile());
-            try {
-                Files.move(
-                        temporary,
-                        storageFile,
-                        StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException unsupported) {
-                Files.move(temporary, storageFile, StandardCopyOption.REPLACE_EXISTING);
-            }
+            fileCodec.write(storageFile, rooms);
         } catch (IOException failure) {
-            try {
-                Files.deleteIfExists(temporary);
-            } catch (IOException cleanupFailure) {
-                failure.addSuppressed(cleanupFailure);
-            }
             throw new CompletionException("Cannot save game rooms", failure);
         }
     }

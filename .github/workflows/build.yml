@@ -253,17 +253,19 @@ jobs:
         shell: bash
         run: |
           bash .github/scripts/gradle-with-transient-retry.sh gradle-artifact.log -- \
-            ./gradlew :mahjong-plugin:shadowJar --no-daemon --stacktrace
+            ./gradlew :mahjong-plugin:jar :mahjong-plugin:verifyThinJar --no-daemon --stacktrace
       - name: Verify Java 25 and legacy-free artifact
         shell: bash
         run: |
           set -euo pipefail
-          JAR="$(find modules/mahjong-plugin/build/libs -maxdepth 1 -name '*.jar' ! -name '*-dev.jar' ! -name '*-sources.jar' -print -quit)"
+          JAR="$(find modules/mahjong-plugin/build/libs -maxdepth 1 -name '*.jar' ! -name '*-sources.jar' -print -quit)"
           test -n "$JAR"
           mkdir inspect
-          (cd inspect && jar xf "$GITHUB_WORKSPACE/$JAR" plugin.yml paper-plugin.yml)
-          grep -q 'api-version: "1.20"' inspect/plugin.yml
-          grep -q 'CraftEngine' inspect/plugin.yml
+          (cd inspect && jar xf "$GITHUB_WORKSPACE/$JAR" paper-plugin.yml META-INF/mahjong-runtime-libraries.txt)
+          grep -q 'api-version: "1.20"' inspect/paper-plugin.yml
+          grep -q 'loader: top.ellan.mahjong.plugin.loader.MahjongPaperLoader' inspect/paper-plugin.yml
+          grep -q 'CraftEngine' inspect/paper-plugin.yml
+          grep -q 'net.momirealms:sparrow-yaml:1.0.12' inspect/META-INF/mahjong-runtime-libraries.txt
           python3 - "$JAR" <<'PY'
           import struct, sys, zipfile
 
@@ -277,12 +279,18 @@ jobs:
           )
           bad_classes = []
           bad_entries = []
+          foreign_classes = []
+          nested_jars = []
           with zipfile.ZipFile(jar) as archive:
               for name in archive.namelist():
                   if name.startswith(forbidden):
                       bad_entries.append(name)
+                  if name.endswith(".jar"):
+                      nested_jars.append(name)
                   if not name.endswith(".class"):
                       continue
+                  if not name.startswith("top/ellan/mahjong/"):
+                      foreign_classes.append(name)
                   header = archive.read(name)[:8]
                   if len(header) == 8 and header[:4] == b"\xca\xfe\xba\xbe":
                       major = struct.unpack(">H", header[6:8])[0]
@@ -290,13 +298,19 @@ jobs:
                           bad_classes.append((name, major))
           if bad_entries:
               raise SystemExit(f"legacy/forbidden artifact entries: {bad_entries[:20]}")
+          if foreign_classes:
+              raise SystemExit(f"thin JAR contains third-party classes: {foreign_classes[:20]}")
+          if nested_jars:
+              raise SystemExit(f"thin JAR contains nested JARs: {nested_jars[:20]}")
           if bad_classes:
               raise SystemExit(f"classes newer than Java 25: {bad_classes[:20]}")
-          print("Artifact is Java 25 and contains no legacy rule/native path")
+          print("Artifact is a Java 25 thin JAR with no legacy/native path")
           PY
       - name: Upload core plugin
         uses: actions/upload-artifact@v7
         with:
           name: MahjongPaper-2.0
-          path: modules/mahjong-plugin/build/libs/*.jar
+          path: |
+            modules/mahjong-plugin/build/libs/*.jar
+            !modules/mahjong-plugin/build/libs/*-sources.jar
           if-no-files-found: error

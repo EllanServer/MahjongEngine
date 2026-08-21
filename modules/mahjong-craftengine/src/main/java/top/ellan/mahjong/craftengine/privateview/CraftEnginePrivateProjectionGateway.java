@@ -18,7 +18,6 @@ import org.bukkit.event.player.PlayerLocaleChangeEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.plugin.Plugin;
-import top.ellan.mahjong.application.interaction.HandTileSelectionPort;
 import top.ellan.mahjong.application.interaction.OverheadViewPort;
 import top.ellan.mahjong.craftengine.port.PrivateProjectionGateway;
 import top.ellan.mahjong.craftengine.port.PlayerTextResolver;
@@ -32,17 +31,15 @@ import top.ellan.mahjong.presentation.node.HudNode;
 import top.ellan.mahjong.presentation.node.SceneNode;
 import top.ellan.mahjong.presentation.node.SceneNodeId;
 import top.ellan.mahjong.spi.PlayerId;
-import top.ellan.mahjong.spi.TileInstanceId;
 
 /**
- * Thin port facade for client-private projection.
+ * CE packet-proxy facade for only the client-private channels CE furniture cannot model.
  *
- * <p>Concurrent indexes, display rendering, selection and camera state are owned by separate
+ * <p>Concurrent indexes, dynamic display rendering and camera state are owned by separate
  * components; this class only translates lifecycle and port calls.</p>
  */
-public final class SparrowPrivateProjectionGateway
+public final class CraftEnginePrivateProjectionGateway
         implements PrivateProjectionGateway,
-                HandTileSelectionPort,
                 OverheadViewPort,
                 Listener,
                 AutoCloseable {
@@ -52,41 +49,22 @@ public final class SparrowPrivateProjectionGateway
     private final PrivateNodeRenderer renderer;
     private final OverheadCameraController cameras;
 
-    public SparrowPrivateProjectionGateway(
-            Plugin plugin, TableAnchorLookup anchors, double selectionRaise) {
-        this(plugin, anchors, selectionRaise, 16, PlayerTextResolver.fallbackOnly());
-    }
-
-    public SparrowPrivateProjectionGateway(
+    public CraftEnginePrivateProjectionGateway(
             Plugin plugin,
             TableAnchorLookup anchors,
-            double selectionRaise,
-            int cameraTransitionTicks) {
-        this(
-                plugin,
-                anchors,
-                selectionRaise,
-                cameraTransitionTicks,
-                PlayerTextResolver.fallbackOnly());
-    }
-
-    public SparrowPrivateProjectionGateway(
-            Plugin plugin,
-            TableAnchorLookup anchors,
-            double selectionRaise,
             int cameraTransitionTicks,
             PlayerTextResolver messages) {
         Objects.requireNonNull(plugin, "plugin");
         Objects.requireNonNull(anchors, "anchors");
         Objects.requireNonNull(messages, "messages");
         tasks = new PlayerRegionTaskScheduler(plugin);
-        SparrowDisplayGateway displays = new SparrowDisplayGateway(plugin.getLogger());
+        CraftEngineClientDisplayGateway displays =
+                new CraftEngineClientDisplayGateway(plugin.getLogger());
         renderer = new PrivateNodeRenderer(
                 anchors,
                 state,
                 tasks,
                 displays,
-                selectionRaise,
                 this::cameraViewing,
                 messages);
         cameras = new OverheadCameraController(
@@ -223,12 +201,6 @@ public final class SparrowPrivateProjectionGateway
         if (event.getEntity() instanceof Player player) {
             exit(new PlayerId(player.getUniqueId()));
         }
-    }
-
-    @Override
-    public void showSelection(
-            TableId tableId, PlayerId playerId, Optional<TileInstanceId> selectedTile) {
-        renderer.showSelection(tableId, playerId, selectedTile);
     }
 
     @Override

@@ -6,7 +6,7 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 import top.ellan.mahjong.presentation.label.ActionLabelPolicy;
 
-/** Restart-scoped CraftEngine asset references; geometry remains in CraftEngine configuration. */
+/** CraftEngine asset references loaded from the verified core resource-pack descriptor. */
 public record TableSceneAssets(
         String tableFurniture,
         String seatFurniture,

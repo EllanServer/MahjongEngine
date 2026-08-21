@@ -1,48 +1,36 @@
 package top.ellan.mahjong.craftengine.privateview;
 
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Predicate;
-import net.momirealms.craftengine.bukkit.api.CraftEngineItems;
-import net.momirealms.craftengine.bukkit.item.BukkitItemDefinition;
-import net.momirealms.sparrow.heart.feature.entity.display.FakeItemDisplay;
-import net.momirealms.sparrow.heart.feature.entity.display.FakeTextDisplay;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
 import top.ellan.mahjong.craftengine.port.PlayerTextResolver;
 import top.ellan.mahjong.platform.paper.anchor.TableAnchorLookup;
-import top.ellan.mahjong.craftengine.privateview.PrivateProjectionState.ActiveItem;
 import top.ellan.mahjong.craftengine.privateview.PrivateProjectionState.ActiveLabel;
 import top.ellan.mahjong.craftengine.privateview.PrivateProjectionState.DesiredNode;
 import top.ellan.mahjong.craftengine.privateview.PrivateProjectionState.NodeKey;
-import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.presentation.node.ActionLabelNode;
 import top.ellan.mahjong.presentation.node.CameraNode;
 import top.ellan.mahjong.presentation.node.HudNode;
-import top.ellan.mahjong.presentation.node.PrivateItemNode;
 import top.ellan.mahjong.spi.PlayerId;
-import top.ellan.mahjong.spi.TileInstanceId;
 
-/** Region-thread renderer for private items, labels and HUD state. */
+/** Region-thread renderer for dynamic-argument labels and HUD channels CE cannot express. */
 final class PrivateNodeRenderer implements AutoCloseable {
     private final TableAnchorLookup anchors;
     private final PrivateProjectionState state;
     private final PlayerRegionTaskScheduler tasks;
-    private final SparrowDisplayGateway displays;
+    private final CraftEngineClientDisplayGateway displays;
     private final Predicate<PlayerId> cameraViewing;
     private final PlayerTextResolver messages;
     private final HudTextFormatter hudText;
     private final ViewerHudBars hudBars = new ViewerHudBars();
-    private final HandTileSelectionController selections;
 
     PrivateNodeRenderer(
             TableAnchorLookup anchors,
             PrivateProjectionState state,
             PlayerRegionTaskScheduler tasks,
-            SparrowDisplayGateway displays,
-            double selectionRaise,
+            CraftEngineClientDisplayGateway displays,
             Predicate<PlayerId> cameraViewing,
             PlayerTextResolver messages) {
         this.anchors = anchors;
@@ -52,7 +40,6 @@ final class PrivateNodeRenderer implements AutoCloseable {
         this.cameraViewing = cameraViewing;
         this.messages = messages;
         hudText = new HudTextFormatter(messages);
-        selections = new HandTileSelectionController(tasks, this::moveHandTile, selectionRaise);
     }
 
     void apply(Player player, NodeKey key, long expectedGeneration) {
@@ -75,22 +62,18 @@ final class PrivateNodeRenderer implements AutoCloseable {
             applyLabel(player, key, expectedGeneration, label);
             return;
         }
-        applyItem(player, key, expectedGeneration, (PrivateItemNode) target.node());
+        throw new IllegalArgumentException(
+                "Unsupported client-private scene node: " + target.node().getClass());
     }
 
     void remove(Player player, NodeKey key) {
-        ActiveItem active = state.removeActiveItem(key);
-        if (active != null) {
-            displays.destroyItem(player, active.display());
-        }
         ActiveLabel label = state.removeActiveLabel(key);
         if (label != null) {
-            displays.destroyText(player, label.display());
+            label.display().destroy(player);
         }
     }
 
     void forget(NodeKey key) {
-        state.removeActiveItem(key);
         state.removeActiveLabel(key);
     }
 
@@ -103,14 +86,9 @@ final class PrivateNodeRenderer implements AutoCloseable {
         hudBars.refresh(player, viewer, hudText.format(player.locale(), nodes));
     }
 
-    void showSelection(
-            TableId tableId, PlayerId playerId, Optional<TileInstanceId> selectedTile) {
-        selections.showSelection(tableId, playerId, selectedTile);
-    }
-
     void hideActionLabels(Player player, PlayerId viewer) {
         for (ActiveLabel label : state.removeActiveLabels(viewer)) {
-            displays.destroyText(player, label.display());
+            label.display().destroy(player);
         }
     }
 
@@ -127,68 +105,20 @@ final class PrivateNodeRenderer implements AutoCloseable {
 
     void onQuit(PlayerId viewer) {
         state.forgetActivity(viewer);
-        selections.onQuit(viewer);
         hudBars.forget(viewer);
     }
 
     @Override
     public void close() {
-        for (PrivateProjectionState.ViewerItems viewer : state.activeItemSnapshot()) {
-            Player player = Bukkit.getPlayer(viewer.viewer().value());
-            if (player != null) {
-                for (ActiveItem item : viewer.items()) {
-                    tasks.execute(player, () -> displays.destroyItem(player, item.display()));
-                }
-            }
-        }
         for (PrivateProjectionState.ViewerLabels viewer : state.activeLabelSnapshot()) {
             Player player = Bukkit.getPlayer(viewer.viewer().value());
             if (player != null) {
                 for (ActiveLabel label : viewer.labels()) {
-                    tasks.execute(player, () -> displays.destroyText(player, label.display()));
+                    tasks.execute(player, () -> label.display().destroy(player));
                 }
             }
         }
-        selections.clear();
         hudBars.close(tasks);
-    }
-
-    private void applyItem(
-            Player player,
-            NodeKey key,
-            long expectedGeneration,
-            PrivateItemNode item) {
-        Location anchor = anchors.location(key.tableId())
-                .orElseThrow(
-                        () -> new IllegalStateException("No anchor for table " + key.tableId()));
-        Location location = PrivateSceneGeometry.localToWorld(
-                anchor,
-                selections.presentedTransform(key.tableId(), key.viewer(), item));
-        String asset = PrivatePresentationAssets.itemAsset(item);
-        ActiveItem active = state.activeItem(key);
-        if (active != null
-                && PrivatePresentationAssets.itemAsset(active.node()).equals(asset)) {
-            displays.teleport(player, location, active.display().entityID());
-            state.putActiveItem(
-                    key, new ActiveItem(expectedGeneration, active.display(), item));
-            removeIfStale(player, key, expectedGeneration);
-            return;
-        }
-        remove(player, key);
-        BukkitItemDefinition definition = CraftEngineItems.byId(asset);
-        if (definition == null) {
-            throw new IllegalStateException("Missing CraftEngine item " + asset);
-        }
-        ItemStack stack = definition.buildBukkitItem(player);
-        FakeItemDisplay display = displays.createItem(location);
-        display.item(stack);
-        display.spawn(player);
-        ActiveItem replaced =
-                state.putActiveItem(key, new ActiveItem(expectedGeneration, display, item));
-        if (replaced != null && replaced.display() != display) {
-            displays.destroyItem(player, replaced.display());
-        }
-        removeIfStale(player, key, expectedGeneration);
     }
 
     private void applyLabel(
@@ -204,7 +134,7 @@ final class PrivateNodeRenderer implements AutoCloseable {
         ActiveLabel active = state.activeLabel(key);
         if (active != null
                 && active.content().equals(content)) {
-            displays.teleport(player, location, active.display().entityID());
+            displays.teleport(player, location, active.display().entityId());
             state.putActiveLabel(
                     key,
                     new ActiveLabel(
@@ -216,8 +146,7 @@ final class PrivateNodeRenderer implements AutoCloseable {
             return;
         }
         remove(player, key);
-        FakeTextDisplay display = displays.createText(
-                location);
+        ClientTextDisplay display = displays.createText(location);
         display.name(content);
         display.rgba(0, 0, 0, 60);
         display.spawn(player);
@@ -226,7 +155,7 @@ final class PrivateNodeRenderer implements AutoCloseable {
                         key,
                         new ActiveLabel(expectedGeneration, display, label, content));
         if (replaced != null && replaced.display() != display) {
-            displays.destroyText(player, replaced.display());
+            replaced.display().destroy(player);
         }
         removeIfStale(player, key, expectedGeneration);
     }
@@ -238,36 +167,4 @@ final class PrivateNodeRenderer implements AutoCloseable {
         }
     }
 
-    private void moveHandTile(
-            Player player,
-            TableId tableId,
-            PlayerId viewer,
-            TileInstanceId tileInstanceId) {
-        if (tileInstanceId == null || !player.isOnline()) {
-            return;
-        }
-        NodeKey key = state.handTile(tableId, viewer, tileInstanceId);
-        if (key == null) {
-            return;
-        }
-        DesiredNode desired = state.desiredNode(viewer, key);
-        if (desired == null || !(desired.node() instanceof PrivateItemNode item)) {
-            return;
-        }
-        ActiveItem active = state.activeItem(key);
-        if (active == null || active.generation() != desired.generation()) {
-            apply(player, key, desired.generation());
-            return;
-        }
-        Location anchor = anchors.location(tableId).orElse(null);
-        if (anchor == null) {
-            return;
-        }
-        displays.teleport(
-                player,
-                PrivateSceneGeometry.localToWorld(
-                        anchor,
-                        selections.presentedTransform(key.tableId(), key.viewer(), item)),
-                active.display().entityID());
-    }
 }

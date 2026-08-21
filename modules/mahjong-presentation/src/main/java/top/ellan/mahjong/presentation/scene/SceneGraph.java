@@ -9,7 +9,9 @@ import java.util.Map;
 import java.util.Objects;
 import top.ellan.mahjong.application.interaction.InteractionHandle;
 import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.presentation.node.ActionFurnitureNode;
 import top.ellan.mahjong.presentation.node.InteractionNode;
+import top.ellan.mahjong.presentation.node.PrivateFurnitureNode;
 import top.ellan.mahjong.presentation.node.SceneNode;
 import top.ellan.mahjong.presentation.node.SceneNodeId;
 import top.ellan.mahjong.spi.PlayerId;
@@ -50,8 +52,12 @@ public final class SceneGraph {
                 throw new IllegalArgumentException("Scene node key differs from its id");
             }
             SceneNode node = entry.getValue();
-            if (node.worldBacked() && !node.visibility().isPublic()) {
-                throw new IllegalArgumentException("Private information cannot be world-backed");
+            if (node.worldBacked()
+                    && !node.visibility().isPublic()
+                    && !(node instanceof PrivateFurnitureNode)
+                    && !(node instanceof ActionFurnitureNode)) {
+                throw new IllegalArgumentException(
+                        "Only CE conditional furniture may carry private world presentation");
             }
             if (node instanceof InteractionNode interaction) {
                 handles.add(interaction.handle());

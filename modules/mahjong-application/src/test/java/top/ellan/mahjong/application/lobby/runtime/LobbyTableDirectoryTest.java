@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.application.security.SecureActionTokenIssuer;
@@ -27,6 +28,7 @@ class LobbyTableDirectoryTest {
         LobbyTableDirectory directory = new LobbyTableDirectory();
         TableLobby initial = lobby();
         assertTrue(directory.reserve(initial.tableId(), initial.ownerId()));
+        assertEquals(Set.of(initial.tableId()), directory.tableIds());
         LobbyTableActor actor = actor(initial, directory);
         HostedLobby hosted =
                 new HostedLobby(
@@ -34,6 +36,7 @@ class LobbyTableDirectoryTest {
                                 initial.tableId(), UUID.randomUUID().toString(), 0, 64, 0, 0, 0),
                         actor);
         directory.completeReservation(hosted);
+        assertEquals(Set.of(initial.tableId()), directory.tableIds());
         actor.start();
 
         actor.command(new LobbyCommand.JoinSeat(player(2), new SeatId(1)))
@@ -44,6 +47,7 @@ class LobbyTableDirectoryTest {
         assertFalse(directory.reserve(TableId.random(), player(2)));
         assertEquals(hosted, directory.remove(initial.tableId()).orElseThrow());
         assertTrue(directory.findByPlayer(player(2)).isEmpty());
+        assertTrue(directory.tableIds().isEmpty());
     }
 
     private static LobbyTableActor actor(

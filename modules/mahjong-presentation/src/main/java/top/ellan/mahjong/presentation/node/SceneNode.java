@@ -1,13 +1,14 @@
 package top.ellan.mahjong.presentation.node;
 
-/** Closed node family lets backends enforce public-world/private-client separation exhaustively. */
+/** Closed node family lets backends handle public and viewer-conditional CE state exhaustively. */
 public sealed interface SceneNode
         permits FurnitureNode,
                 InteractionNode,
-                PrivateItemNode,
+                PrivateFurnitureNode,
                 HudNode,
                 CameraNode,
-                ActionLabelNode {
+                ActionLabelNode,
+                ActionFurnitureNode {
     SceneNodeId id();
 
     SceneVisibility visibility();

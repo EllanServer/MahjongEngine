@@ -7,6 +7,7 @@
 ```powershell
 $env:GRADLE_USER_HOME='E:\project\majiang\.gradle-home'
 .\gradlew.bat :mahjong-presentation:sceneProjectionBenchmark
+.\gradlew.bat :mahjong-plugin:messageRenderingBenchmark
 ```
 
 规则包各自的冒烟基准（需先发布 SDK 到本地仓库）：
@@ -40,6 +41,9 @@ cd rule-repositories\mahjong-mcr-java
 | 四川听牌掩码 | 每次听牌查询 | 1,210 ns | `FairRuleExecutor` |
 | 四川物理弃牌转换 | 每次弃牌 | 1,551 ns | `FairRuleExecutor` |
 | actor 管道（64 桌并发） | 每次玩家动作 | 162.6 µs/动作，约 6,151 动作/秒 | 8 dispatcher + 8 rule worker |
+| 帮助富文本（Sparrow MiniMessage） | 首次 locale/权限/页组合 | 8.01–8.09 µs，23,376–23,464 B/次 | 命令所在 region/global 线程 |
+| 帮助富文本（Kyori MiniMessage 对照） | 同形基准，不用于生产 | 14.79–15.51 µs，30,936–31,440 B/次 | 基准线程 |
+| 帮助富文本（直接 Adventure 对照） | 同形基准 | 0.65–0.67 µs，4,296 B/次 | 基准线程 |
 
 三包对比值得注意：**立直与四川都有分析缓存，MCR 没有**。立直 shanten 命中缓存后是 207 ns（未命中 9,257 ns，约 45 倍差距），而 MCR 每次 `waits` 都要付满 56,692 ns。这是三包之间最大的实现差异。
 
@@ -64,9 +68,23 @@ cd rule-repositories\mahjong-mcr-java
 
 - **场景投影是事件驱动的**，不是逐 tick。`LatestSceneProjector.publish` 用 revision CAS + latest-wins 槽位合并，只在状态变更时跑。麻将桌每秒状态变化只有几次，20 µs/次可以忽略。全仓除 `PersistenceOutbox` 的 50 ms 刷盘外**没有周期性任务**。
 - **场景链路已深度优化过**，不要重复劳动：`SceneNodeIdentity` 有四层无锁有界缓存（tile id、hash 段、player key、interaction handle），`DefaultTableSceneMapper` 的 map 与 bindings 列表都按预估容量预分配，`SceneNodeId.trusted()` 跳过每帧正则校验。首次 publish 的全量排序只发生一次（`slot.applied == null`）。
+- **CE 恢复不扫描世界或实体集合**：table/node/channel/interaction/schema 随家具写入 CE `FurniturePersistentData`；CE 26.8 自己在区块装载时重建家具并调用自定义 behavior 的 `loadCustomData/onLoad`，卸载时调用 `onUnload`。插件的 O(1) 并发语义索引只由这些回调维护，不再有 anchor chunk PDC UUID 索引或 Paper entity add/remove 监听，也不会同步载入区块。私有手牌和静态动作文字均由 CE 条件家具/culling 承担，不再为每名观众维护 Sparrow display 生命周期。
 - **机器人决策不是瓶颈**。一次弃牌决策要为每个候选打分，约 14 次 `waits()` ≈ 800 µs；但它跑在**独立的 `FairRuleExecutor`**（有界公平池，含每包配额、超时、熔断），不占服务器/region 线程。按每手约 64 次决策计，CPU 占比约 0.08%。**不要为此在规则代码里加缓存换取正确性风险。**
 - **点击路由是 O(1)**。`InteractionRouteRegistry` 用 `ConcurrentHashMap<RouteKey, …>`，没有线性扫描；这是唯一跑在服务器线程上的高频路径。
-- **1.x 的头号热点在 2.0 不存在**。旧版 `LocalizedMessages` 每帧对每座位做 MiniMessage `deserialize` + `serialize`（占插件采样 11.7%）。2.0 的 `LocalizedMessageCatalog` 存纯文本，只做两次 map 查找加 `String.format`。
+- **1.x 的头号热点在 2.0 不存在**。旧版 `LocalizedMessages` 每帧对每座位做 MiniMessage `deserialize` + `serialize`（占插件采样 11.7%）。2.0 的 `LocalizedMessageCatalog` 存纯文本，只做两次 map 查找加 `String.format`。Sparrow MiniMessage 只渲染低频命令帮助页，并把最终 Component 按六种 locale、权限级别和页码有界缓存；HUD/场景路径仍是直接 builder。
+
+## Adventure 富文本实现选择
+
+`messageRenderingBenchmark` 对同一个含 5 个动态 placeholder 的帮助页模板比较三条路径。两次连续进程的 7 样本中位数均显示：Sparrow MiniMessage 相对 Paper 提供的 Kyori MiniMessage 降低约 46%–48% 延迟和约 24%–25% 分配，确认了它在模板解析器之间的优势。
+
+但解析器之间的胜出不等于能胜过无解析：视觉等价的直接 Adventure builder 仍快约 12 倍，分配约为 Sparrow 的 1/5.5。因此生产采用的是分层策略，而不是全局替换：
+
+1. 复杂、低频的分页帮助 UI 用 Sparrow，动态值必须是 `unparsed`/`component`/`styling` placeholder；
+2. 渲染结果进入最多 `7 locale key × 2 权限 × 页数` 的 `ConcurrentHashMap`，缓存值是不可变 Component 列表；
+3. 普通消息、HUD、倒计时和场景节点继续直接构造或复用 Component；
+4. 不使用 Sparrow 的 `CachingTagResolver` 作为共享对象——其源码内部是普通 `HashMap`，不是并发缓存。
+
+这些是无 fork 的本地微基准，只能证明同机同 JVM 下的实现选择，不能当作跨机器绝对性能声明。
 
 ## 已修问题
 

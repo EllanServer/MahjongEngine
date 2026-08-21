@@ -4,26 +4,27 @@ import java.util.Objects;
 import top.ellan.mahjong.spi.TileInstanceId;
 import top.ellan.mahjong.spi.TileVisualId;
 
-/** Client-only CraftEngine item projection for an authorized tile face. */
-public record PrivateItemNode(
+/** CE furniture whose public back and conditional face are selected per viewer. */
+public record PrivateFurnitureNode(
         SceneNodeId id,
         SceneVisibility visibility,
         TileInstanceId tileInstanceId,
         TileVisualId visualId,
         SceneTransform transform) implements SceneNode {
-    public PrivateItemNode {
+    public PrivateFurnitureNode {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(visibility, "visibility");
         Objects.requireNonNull(tileInstanceId, "tileInstanceId");
         Objects.requireNonNull(visualId, "visualId");
         Objects.requireNonNull(transform, "transform");
-        if (visibility.isPublic()) {
-            throw new IllegalArgumentException("Private item projection requires one viewer");
+        if (visibility.singleViewer().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "A private tile furniture requires exactly one authorized viewer");
         }
     }
 
     @Override
     public boolean worldBacked() {
-        return false;
+        return true;
     }
 }

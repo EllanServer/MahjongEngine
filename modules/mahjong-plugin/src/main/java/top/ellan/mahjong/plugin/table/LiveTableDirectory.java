@@ -132,6 +132,12 @@ public final class LiveTableDirectory {
         return tables.size();
     }
 
+    public synchronized Set<TableId> tableIds() {
+        HashSet<TableId> result = new HashSet<>(tables.keySet());
+        result.addAll(reservations.keySet());
+        return Set.copyOf(result);
+    }
+
     public synchronized Optional<StartedRulePackMatch> remove(TableId tableId) {
         StartedRulePackMatch removed = tables.remove(Objects.requireNonNull(tableId, "tableId"));
         if (removed != null) {

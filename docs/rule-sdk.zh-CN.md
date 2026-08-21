@@ -11,7 +11,7 @@
 - 快照可恢复并重放到相同状态哈希；
 - 支付与排名投影遵守玩法自己的守恒约束。
 
-SDK 发布工作流位于 `.github/workflows/rule-sdk.yml`。规则 fat JAR 必须排除 SPI，让核心 classloader 提供唯一协议类型。
+SDK 发布工作流位于 `.github/workflows/rule-sdk.yml`。规则 thin JAR 必须保持零第三方运行时依赖并排除 SPI，让核心 classloader 提供唯一协议类型。
 
 ## 桌面呈现契约
 

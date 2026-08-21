@@ -8,11 +8,31 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import net.momirealms.sparrow.yaml.SparrowYaml;
 import org.junit.jupiter.api.Test;
+import top.ellan.mahjong.presentation.node.ActionLabelNodes;
 
 class CraftEngineV15ParityTest {
     private static final String CONFIGURATION =
             "craftengine/mahjongpaper/configuration/mahjong.yml";
+
+    @Test
+    void configurationIsStrictYamlWithoutDuplicateKeys() throws IOException {
+        SparrowYaml.builder()
+                .setAllowDuplicateKeys(false)
+                .setAllowObjectKeys(false)
+                .setMaxAliasesForCollections(0)
+                .build()
+                .load(configuration());
+    }
+
+    @Test
+    void allManagedDefinitionsUseTheCeLifecycleBehavior() throws IOException {
+        String source = configuration();
+        assertEquals(10, occurrences(source, "type: mahjongpaper:managed_scene"));
+        assertFalse(source.contains("scene_ref"));
+        assertFalse(source.contains("scene_managed"));
+    }
 
     @Test
     void tableKeepsOnlyTheLoweredThreeByThreeCollisionGrid() throws IOException {
@@ -61,6 +81,47 @@ class CraftEngineV15ParityTest {
         assertTrue(variants.contains("- {size: \"220\", width: 2.2}"));
         assertTrue(variants.contains("width: \"${width}\""));
         assertTrue(variants.contains("height: 0.22"));
+    }
+
+    @Test
+    void staticActionLabelsAreCeResourceOwnedAndViewerConditional() throws IOException {
+        String labels = section(
+                configuration(),
+                "config_factory#action_labels:",
+                "config_factory#point_sticks:");
+
+        assertTrue(labels.contains("mahjongpaper:action_label_${key}:"));
+        assertTrue(labels.contains("type: text_display"));
+        assertTrue(labels.contains("<lang:mahjongpaper.action.${key}>"));
+        assertTrue(labels.contains("normal:"));
+        assertTrue(labels.contains("emphasized:"));
+        assertEquals(2, occurrences(labels, "type: mahjongpaper:private_viewer"));
+        for (String key : ActionLabelNodes.resourceLabels()) {
+            String suffix = key.substring("action.".length());
+            assertTrue(labels.contains("{key: " + suffix + '}'), "Missing CE action label " + key);
+        }
+        assertTrue(resourceExists(
+                "craftengine/mahjongpaper/resourcepack/assets/mahjongcraft/items/empty.json"));
+        assertTrue(resourceExists(
+                "craftengine/mahjongpaper/resourcepack/assets/mahjongcraft/models/item/empty.json"));
+    }
+
+    @Test
+    void privateTileFacesAndSelectionPresentationAreCeResourceOwned() throws IOException {
+        String source = configuration();
+        int start = source.indexOf("mahjongpaper:tile_private_${tile}:");
+        assertTrue(start >= 0);
+        String privateTiles = source.substring(start);
+
+        assertTrue(privateTiles.contains("item_model: mahjongcraft:mahjong_tile/back"));
+        assertTrue(privateTiles.contains("selected:"));
+        assertTrue(privateTiles.contains("position: 0,0.06,0"));
+        assertEquals(2, occurrences(privateTiles, "type: mahjongpaper:private_viewer"));
+        assertEquals(2, occurrences(privateTiles, "type: \"!mahjongpaper:private_viewer\""));
+    }
+
+    private static boolean resourceExists(String path) {
+        return CraftEngineV15ParityTest.class.getClassLoader().getResource(path) != null;
     }
 
     private static String configuration() throws IOException {

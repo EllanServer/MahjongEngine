@@ -33,6 +33,35 @@
   `.github/scripts/compare-scene-benchmark.py`. Allocation carries the tight bound because it barely
   moves between runs on one host, while wall time gets a loose one: two runs of identical code drifted
   19.2% in `ns/op` but only 1.0% in `bytes/op`. A vanished measurement also fails the gate.
+- Replaced the game-room `YamlConfiguration` field plumbing with Sparrow YAML 1.0.12 typed serializers
+  while preserving bounded input, duplicate-key rejection, one-codec confinement and atomic file
+  replacement. The dependency was already shipped but previously had no source usage.
+- Replaced the manually assembled paged command-help component tree with Sparrow MiniMessage 0.5,
+  injection-safe placeholders and a bounded locale/admin/page cache. Two consecutive benchmark runs put
+  Sparrow at 8.01–8.09 microseconds and 23,376–23,464 bytes/op versus Kyori MiniMessage at 14.79–15.51
+  microseconds and 30,936–31,440 bytes/op. A visually equivalent direct Adventure tree remains roughly
+  12 times faster, so every HUD/scene hot path stays direct.
+- Updated the Momirealms stack to CraftEngine 26.8, AntiGriefLib 1.0.17 and Sparrow Reflection 0.34.
+  Migrated world adaptation to `BukkitAdaptor`, raised the runtime gate to CE 26.8 and removed the
+  unreachable legacy table-hitbox seat inference.
+- Removed Sparrow Heart. CE furniture now owns persistent public entities, definition-reload
+  replacement, private hand back/face switching, selection variants and static action labels. Scene
+  identity lives in CE `FurniturePersistentData`; a registered CE behavior rebuilds the O(1) live index
+  through `loadCustomData/onLoad/onUnload` and owns furniture interaction/hit protection. This removes
+  the anchor-chunk UUID index and Paper entity/furniture event listeners without world, chunk-entity or
+  nearby scans. Viewer authorization remains an O(1), fail-closed plugin condition; only dynamic
+  semantic text, BossBars and the unsupported camera packet stay on the minimal packet/UI boundary.
+- Pinned the CE adapter to the exact 26.8 internal API line. Placement now goes through
+  `BukkitFurnitureManager`; changed bundles are reloaded and packed through CE's own reload and
+  `PackManager` lifecycle. Folia region/entity scheduling remains Paper-owned because CE's safe
+  operation runner is not a cross-region dispatcher.
+- Replaced the Shadow fat JAR with a verified thin plugin JAR. It merges only this repository's
+  Mahjong modules; Paper's plugin loader resolves database drivers, AntiGriefLib, Sparrow and ASM
+  into the server library cache. CI rejects every foreign class and nested JAR in the release artifact.
+- Moved CE asset IDs, shared layout dimensions/capacities and opening animation timings out of
+  `config.yml` into a validated descriptor inside the CE resource pack. Furniture geometry, conditions,
+  variants and text styling remain in CE YAML; only the unsupported overhead-camera settings stay in
+  operational plugin configuration.
 
 ### 1.5.0 parity pass
 

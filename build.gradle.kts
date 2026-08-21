@@ -1,6 +1,5 @@
 plugins {
     base
-    id("com.gradleup.shadow") version "9.6.1" apply false
 }
 
 group = "top.ellan"
@@ -315,7 +314,7 @@ val architectureCheck =
     }
 
 tasks.named("assemble") {
-    dependsOn(":mahjong-plugin:shadowJar")
+    dependsOn(":mahjong-plugin:jar")
 }
 
 tasks.named("check") {

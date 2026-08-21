@@ -12,6 +12,13 @@ class LocalizedMessageCatalogTest {
             LocalizedMessageCatalog.load(getClass().getClassLoader());
 
     @Test
+    void cacheLocaleKeysCollapseArbitraryClientLocalesToBundledFamilies() {
+        assertEquals("en_us", messages.localeKey(Locale.forLanguageTag("fr-CA")));
+        assertEquals("zh_hk", messages.localeKey(Locale.forLanguageTag("zh-Hant-HK")));
+        assertEquals("ja_jp", messages.localeKey(Locale.JAPANESE));
+    }
+
+    @Test
     void restoresEveryV15ChineseLocaleAlias() {
         assertEquals(
                 "准备",

@@ -1,5 +1,6 @@
 name: MahjongPaper
 main: top.ellan.mahjong.plugin.MahjongPaperPlugin
+loader: top.ellan.mahjong.plugin.loader.MahjongPaperLoader
 version: ${version}
 api-version: "1.20"
 folia-supported: true

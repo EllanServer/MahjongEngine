@@ -8,17 +8,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import net.momirealms.sparrow.heart.feature.entity.display.FakeItemDisplay;
-import net.momirealms.sparrow.heart.feature.entity.display.FakeTextDisplay;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.presentation.node.ActionLabelNode;
 import top.ellan.mahjong.presentation.node.CameraNode;
 import top.ellan.mahjong.presentation.node.HudNode;
-import top.ellan.mahjong.presentation.node.PrivateItemNode;
 import top.ellan.mahjong.presentation.node.SceneNode;
 import top.ellan.mahjong.presentation.node.SceneNodeId;
 import top.ellan.mahjong.spi.PlayerId;
-import top.ellan.mahjong.spi.TileInstanceId;
 
 /** Lock-free indexes for desired and active client-private nodes. */
 final class PrivateProjectionState {
@@ -26,11 +22,7 @@ final class PrivateProjectionState {
             new ConcurrentHashMap<>();
     private final ConcurrentHashMap<TableNodeKey, Set<PlayerId>> viewersByNode =
             new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<PlayerId, ConcurrentHashMap<NodeKey, ActiveItem>> activeItems =
-            new ConcurrentHashMap<>();
     private final ConcurrentHashMap<PlayerId, ConcurrentHashMap<NodeKey, ActiveLabel>> activeLabels =
-            new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<ViewerTileKey, NodeKey> handTiles =
             new ConcurrentHashMap<>();
     private final ConcurrentHashMap<CameraKey, NodeKey> cameraNodes =
             new ConcurrentHashMap<>();
@@ -134,33 +126,6 @@ final class PrivateProjectionState {
                 : Optional.empty();
     }
 
-    NodeKey handTile(TableId tableId, PlayerId viewer, TileInstanceId tileInstanceId) {
-        return handTiles.get(new ViewerTileKey(tableId, viewer, tileInstanceId));
-    }
-
-    ActiveItem activeItem(NodeKey key) {
-        Map<NodeKey, ActiveItem> items = activeItems.get(key.viewer());
-        return items == null ? null : items.get(key);
-    }
-
-    ActiveItem putActiveItem(NodeKey key, ActiveItem item) {
-        return activeItems
-                .computeIfAbsent(key.viewer(), ignored -> new ConcurrentHashMap<>())
-                .put(key, item);
-    }
-
-    ActiveItem removeActiveItem(NodeKey key) {
-        ConcurrentHashMap<NodeKey, ActiveItem> items = activeItems.get(key.viewer());
-        if (items == null) {
-            return null;
-        }
-        ActiveItem removed = items.remove(key);
-        if (items.isEmpty()) {
-            activeItems.remove(key.viewer(), items);
-        }
-        return removed;
-    }
-
     ActiveLabel putActiveLabel(NodeKey key, ActiveLabel label) {
         return activeLabels
                 .computeIfAbsent(key.viewer(), ignored -> new ConcurrentHashMap<>())
@@ -190,16 +155,7 @@ final class PrivateProjectionState {
     }
 
     void forgetActivity(PlayerId viewer) {
-        activeItems.remove(viewer);
         activeLabels.remove(viewer);
-    }
-
-    List<ViewerItems> activeItemSnapshot() {
-        List<ViewerItems> snapshot = new ArrayList<>(activeItems.size());
-        activeItems.forEach(
-                (viewer, items) ->
-                        snapshot.add(new ViewerItems(viewer, List.copyOf(items.values()))));
-        return snapshot;
     }
 
     List<ViewerLabels> activeLabelSnapshot() {
@@ -211,17 +167,14 @@ final class PrivateProjectionState {
     }
 
     void clear() {
-        activeItems.clear();
         activeLabels.clear();
-        handTiles.clear();
         cameraNodes.clear();
         viewersByNode.clear();
         desired.clear();
     }
 
     private static void requireSupported(SceneNode node) {
-        if (!(node instanceof PrivateItemNode)
-                && !(node instanceof HudNode)
+        if (!(node instanceof HudNode)
                 && !(node instanceof CameraNode)
                 && !(node instanceof ActionLabelNode)) {
             throw new IllegalArgumentException("Unsupported private node: " + node.getClass());
@@ -229,19 +182,12 @@ final class PrivateProjectionState {
     }
 
     private void addSpecialIndexes(NodeKey key, SceneNode node) {
-        if (node instanceof PrivateItemNode item) {
-            handTiles.put(
-                    new ViewerTileKey(key.tableId(), key.viewer(), item.tileInstanceId()), key);
-        } else if (node instanceof CameraNode) {
+        if (node instanceof CameraNode) {
             cameraNodes.put(new CameraKey(key.tableId(), key.viewer()), key);
         }
     }
 
     private void removeSpecialIndexes(NodeKey key, SceneNode node) {
-        if (node instanceof PrivateItemNode item) {
-            handTiles.remove(
-                    new ViewerTileKey(key.tableId(), key.viewer(), item.tileInstanceId()), key);
-        }
         if (node instanceof CameraNode) {
             cameraNodes.remove(new CameraKey(key.tableId(), key.viewer()), key);
         }
@@ -251,25 +197,19 @@ final class PrivateProjectionState {
 
     record NodeKey(TableId tableId, SceneNodeId nodeId, PlayerId viewer) {}
 
-    record ViewerTileKey(TableId tableId, PlayerId viewer, TileInstanceId tileInstanceId) {}
-
     record CameraKey(TableId tableId, PlayerId viewer) {}
 
     record DesiredNode(long generation, SceneNode node) {}
 
-    record ActiveItem(long generation, FakeItemDisplay display, PrivateItemNode node) {}
-
     record ActiveLabel(
             long generation,
-            FakeTextDisplay display,
+            ClientTextDisplay display,
             ActionLabelNode node,
             String content) {}
 
     record UpsertedNode(NodeKey key, long generation) {}
 
     record RemovedNode(NodeKey key, SceneNode node) {}
-
-    record ViewerItems(PlayerId viewer, List<ActiveItem> items) {}
 
     record ViewerLabels(PlayerId viewer, List<ActiveLabel> labels) {}
 }

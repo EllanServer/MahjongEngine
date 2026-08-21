@@ -92,6 +92,11 @@ public final class LocalizedMessageCatalog implements PlayerTextResolver {
         return width;
     }
 
+    /** Stable bounded cache key for the six bundled locale families. */
+    public String localeKey(Locale locale) {
+        return localeId(locale);
+    }
+
     static String localeId(Locale locale) {
         if (locale == null) {
             return "en_us";

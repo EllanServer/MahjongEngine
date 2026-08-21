@@ -1,0 +1,4 @@
+Sparrow YAML 1.0.12 is distributed under the GNU General Public License, version 3.
+
+The complete unmodified GPL-3.0 license text shared by the Sparrow components is packaged beside
+this notice as `sparrow-reflection-GPL-3.0.txt`.

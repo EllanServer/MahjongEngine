@@ -53,7 +53,7 @@ jobs:
         shell: bash
         run: |
           bash .github/scripts/gradle-with-transient-retry.sh gradle-release.log -- \
-            ./gradlew clean check :mahjong-plugin:shadowJar --no-daemon --stacktrace
+            ./gradlew clean check :mahjong-plugin:jar :mahjong-plugin:verifyThinJar --no-daemon --stacktrace
         env:
           MAHJONG_RULE_PACK_PUBLIC_KEY_BASE64: ${{ vars.MAHJONG_RULE_PACK_PUBLIC_KEY_BASE64 }}
       - name: Select release artifact
@@ -61,7 +61,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          JAR="$(find modules/mahjong-plugin/build/libs -maxdepth 1 -name '*.jar' ! -name '*-dev.jar' ! -name '*-sources.jar' -print -quit)"
+          JAR="$(find modules/mahjong-plugin/build/libs -maxdepth 1 -name '*.jar' ! -name '*-sources.jar' -print -quit)"
           test -n "$JAR"
           echo "jar=$JAR" >> "$GITHUB_OUTPUT"
       - name: Verify embedded trust root

@@ -21,12 +21,12 @@ final class ClientCameraPacketSender {
     private static final String CAMERA_PACKET =
             "net.minecraft.network.protocol.game.ClientboundSetCameraPacket";
 
-    private final SparrowDisplayGateway packets;
+    private final CraftEngineClientDisplayGateway packets;
     private final Logger logger;
     private volatile Access access;
     private volatile boolean unavailable;
 
-    ClientCameraPacketSender(SparrowDisplayGateway packets, Logger logger) {
+    ClientCameraPacketSender(CraftEngineClientDisplayGateway packets, Logger logger) {
         this.packets = Objects.requireNonNull(packets, "packets");
         this.logger = Objects.requireNonNull(logger, "logger");
     }

@@ -25,46 +25,12 @@ game-rooms:
   default-height: 8
   file: "game-rooms.yml"
 craftengine:
+  # Installation folder only. Asset IDs, geometry, capacities, animation timings and visual
+  # variants belong to the bundled CE resource pack, not this operational plugin config.
   bundle-folder: "mahjongpaper"
-  assets:
-    table: "mahjongpaper:table_visual"
-    seat: "mahjongpaper:seat_chair"
-    standing-back: "mahjongpaper:tile_standing_face_down_back"
-    flat-back: "mahjongpaper:tile_flat_face_down_back"
-    hand-hitbox: "mahjongpaper:hand_tile_hitbox"
-    action-hitbox: "mahjongpaper:action_button_hitbox"
-    # CE owns the width-bucket hitboxes; Java only chooses one when an action row changes.
-    action-hitbox-prefix: "mahjongpaper:action_button_hitbox_"
-    # Four fixed slot assets expose CE-owned rolling and face variants for both layouts.
-    opening-die-slot-prefix: "mahjongpaper:opening_die_slot_"
 presentation:
+  # CE 26.8 has no camera packet API, so only the camera boundary remains operational config.
   overhead:
     enabled: true
     height: 4.5
     transition-ticks: 16
-  opening:
-    # Java schedules only roll/reveal boundaries; the client resource model animates rolling.
-    roll-ticks: 20
-    reveal-ticks: 12
-  # Sounds and other rule-specific presentation resources are supplied by each rule resource ZIP.
-  # Dynamic placement dimensions shared by all rule packs. Static furniture and hitboxes stay in CE YAML.
-  geometry:
-    tile-width: 0.1125
-    tile-height: 0.15
-    tile-depth: 0.075
-    tile-gap: 0.0025
-    surface-height: 0.52
-    hand-radius: 1.225
-    wall-radius: 1.0
-    table-half-length: 1.4375
-    emphasis-raise: 0.06
-    action-column-spacing: 0.55
-    action-row-spacing: 0.24
-    secondary-action-offset: 0.34
-  capacity:
-    hand-tiles: 18
-    discards: 48
-    meld-tiles: 24
-    point-sticks: 64
-    auxiliary-tiles: 32
-    actions: 64

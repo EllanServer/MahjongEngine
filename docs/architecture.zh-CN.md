@@ -40,9 +40,9 @@ application/
 
 `MahjongRuntime` 只负责生命周期与用例委派。SQL 初始化位于 `plugin/bootstrap/sql`，规则包初始化位于 `plugin/bootstrap/rules`，CraftEngine/Paper 装配位于 `plugin/platform`，恢复位于 `plugin/recovery`。架构检查会拒绝 application 根包类、超过责任上限的 application 类，以及重新塞回 `MahjongRuntime` 的 JDBC、HTTP 或 CraftEngine 具体初始化代码。
 
-插件根包只允许保留 `MahjongPaperPlugin` 入口和 `MahjongRuntime` 装配根。配置位于 `plugin/config`，活动桌索引位于 `plugin/table`，比赛创建与恢复编排位于 `plugin/match`；其中规则初态创建、来源哈希和 actor 构造是独立组件，不再集中在一个比赛协调类中。
+插件根包只允许保留 `MahjongPaperPlugin` 入口和 `MahjongRuntime` 装配根。配置位于 `plugin/config`，活动桌索引位于 `plugin/table`，比赛创建与恢复编排位于 `plugin/match`；其中规则初态创建、来源哈希和 actor 构造是独立组件，不再集中在一个比赛协调类中。最终产物是 thin JAR：构建只合并本仓内部模块，`MahjongPaperLoader` 通过 Paper `MavenLibraryResolver` 提供第三方运行时，`verifyThinJar` 拒绝 foreign class 与 nested JAR。
 
-`mahjong-craftengine` 同样没有根包杂糅：`bundle` 只管理构建产物安装与 reload 门禁，`interaction` 只把 CE 交互转为平台中立输入，`port` 保存跨平台边界，`scene` 执行公开家具差分，`privateview` 只负责本人暗手、HUD 与相机。私有投影内部进一步把无锁目标/活动索引、region-thread 显示渲染、选牌状态和俯视相机拆成独立组件；网关只做端口及玩家生命周期转发，不再同时持有所有实现细节。公开场景后端也分为每桌目标状态、每 region 公平调度和单节点 mutation 执行器，故障与积压不会穿过该边界。CraftEngine 生产类由 CI 强制限制在 350 行以内。Paper/Folia 适配只能依赖 `port`，不能反向依赖 CE 的具体场景实现。
+`mahjong-craftengine` 同样没有根包杂糅：`bundle` 管理签名构建产物安装，并串行调用 CE 自身的 config reload、PackManager 资源包生成与 reload event；`interaction` 只把 CE 行为回调转为平台中立输入，`port` 保存跨平台边界；`scene` 分别管理公开家具和按观众条件显示的 CE 家具及选牌 variant；`privateview` 只保留 CE 无法表达的动态参数文字、BossBar 和镜头。每个场景节点把 table/node/channel/interaction/schema 写入家具自己的 `FurniturePersistentData` custom NBT；注册到 `FurnitureBehaviors` 的 `mahjongpaper:managed_scene` controller 直接接收 CE 26.8 的 `loadCustomData/onLoad/onUnload/useOnFurniture/onPlayerHit`，由 `BukkitFurnitureManager` 负责放置、区块恢复、实体索引、座位流水线与持久化。Java 只保留由这些 CE 回调实时填充的并发语义索引和权威 desired-node 集合，不再写 anchor chunk UUID 索引，也不再监听 Paper entity add/remove 或家具 interact/hit/break 事件。未知 schema、缺失回调和私有观众缺失均 fail-closed；陈旧/重复实例只在其 Folia owning region 回收。网关禁止 `getWorlds`、区块实体枚举或附近实体扫描；跨区调用仍必须经 Paper region/entity scheduler，因为 CE 的安全操作器不能替代 Folia ownership。CE 注册表跨插件 classloader reload 的旧 factory 通过只含 JDK 容器/函数接口的反射桥复用，不持有新插件类型。场景后端仍按每桌目标状态、每 region 公平调度和单节点 mutation 执行器隔离，故障与积压不会穿过该边界。CraftEngine 生产类由 CI 强制限制在 350 行以内。Paper/Folia 适配只能依赖 `port`，不能反向依赖 CE 的具体场景实现。
 
 其中 `opening` 是独立子包，只编排规则声明的有限开局阶段；它不保存模型或空间几何。骰子槽位、桌面高度、旋转、阴影、裁剪与 `single_face_*`/`double_face_*` variant 全部属于 CE YAML。开门动画只通过平台中立 `TableOpeningEffectPort` 发出有界阶段信号；Paper 的 `feedback` 适配器负责逐玩家调度声音，不能反向进入 application 或 CE 场景模块。
 
@@ -95,15 +95,15 @@ SPI 1.5 的 `ScheduledRuleAction` 由规则包为不可变状态给出已入座 
 
 Java 仅负责：
 
-- 根据公开规则视图选择稳定资产 ID；
+- 根据公开/本人规则视图选择稳定资产 ID 和语义 variant；
 - 计算节点差分；
-- 在目标 Folia region 下调用 CraftEngine `place/remove`；
-- 将授权暗手通过客户端私有投影发送给本人；
+- 在目标 Folia region 下调用 CraftEngine `place/remove/move/setVariant`；
+- 向自定义 CE condition 提交家具 UUID 对应的唯一授权玩家 UUID；
 - 将交互 handle 绑定到当前 revision 的 token。
 
-交互绑定不是在差分入队时立即开放：后端会先移除旧 token，等目标 Folia region 内该 revision 的全部 CraftEngine 节点成功应用后再原子发布新绑定。迟到的旧 epoch、CE reload 中的操作或单桌失败都不能重新开放旧动作。
+几何、模型、碰撞、culling、文字样式和选择上抬值全部位于 CE 资源包，而非插件 `config.yml`。暗手家具的真实 meta entity 只携带牌背 item；CE 对每名观众互斥求值牌背与正面虚拟元素，条件状态缺失时正面必定隐藏。授权变化先 `hide` 再 `show`，确保客户端不会保留上一次条件求值的陈旧元素。
 
-世界实体不得包含暗手正面。动态 HUD 也是逐玩家发送。
+交互绑定不是在差分入队时立即开放：后端会先移除旧 token，等目标 Folia region 内该 revision 的全部 CraftEngine 节点成功应用后再原子发布新绑定。迟到的旧 epoch、CE reload 中的操作或单桌失败都不能重新开放旧动作。带动态牌/花色参数的文字、BossBar 和 CE 未提供的 camera packet 仍逐玩家发送；无动态参数的动作文字由 CE 条件家具和客户端语言表直接呈现。
 
 ### 一套物理桌，不为玩法复制布局
 

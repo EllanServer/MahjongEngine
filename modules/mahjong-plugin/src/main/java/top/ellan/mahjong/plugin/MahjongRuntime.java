@@ -2,6 +2,7 @@ package top.ellan.mahjong.plugin;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -406,6 +407,9 @@ public final class MahjongRuntime implements AutoCloseable {
         } else {
             database.matches().ifPresent(recovery::blockRecoverableMatches);
         }
+        HashSet<TableId> knownTables = new HashSet<>(liveTables.tableIds());
+        knownTables.addAll(lobbyRuntime.directory().tableIds());
+        platform.reconcileManagedFurniture(knownTables);
     }
 
     private void updateReadyState(Optional<RulePackMatchCoordinator> coordinator) {

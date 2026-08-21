@@ -4,7 +4,7 @@ MahjongPaper 2.0 is a CraftEngine-first Mahjong core for Paper/Folia. The core s
 
 The `2.0` branch is under active development and is not a stable release yet.
 
-Implemented foundations include bounded per-table actors, a fair bounded rule CPU pool, memory-first SQL outboxes, event/snapshot recovery, signed child-first rule-pack loading, latest-only `SceneGraph` projection, and region-budgeted CraftEngine mutations. CraftEngine configuration owns furniture models, poses, hitboxes, interactions, entity culling, and opening-dice slot/face variants; Java switches stable variants instead of respawning furniture. Secret tile faces are client-only projections.
+Implemented foundations include bounded per-table actors, a fair bounded rule CPU pool, memory-first SQL outboxes, event/snapshot recovery, signed child-first rule-pack loading, latest-only `SceneGraph` projection, and region-budgeted CraftEngine mutations. The verified CraftEngine bundle owns asset IDs, layout, models, poses, hitboxes, interactions, culling, conditions, and variants rather than plugin `config.yml`. Each concealed tile is one persistent CE furniture whose mutually exclusive elements send a back to other players and a face only to its authorized viewer.
 
 The pre-match path is modular as well: immutable lobby state lives in `mahjong-domain`; lobby commands, reducer, actor, projection factory, ports, runtime index, and use cases are separated under `mahjong-application`; JDBC stores only implement the persistence port; Paper owns world-anchor conversion; CraftEngine resolves its configured chair hitboxes; and `mahjong-plugin` contains only categorized command and lifecycle integration packages. Lobby-to-match activation consumes the durable lobby and creates the pinned initial rule snapshot in one SQL transaction.
 
@@ -22,14 +22,16 @@ The plugin owns the reusable table, chairs, dice and Mahjong tile visuals. Each 
 
 The former session/controllers, mixed Java/Kotlin rule code, `mahjong-utils`, GB JNI/CMake tree, Display Entity renderer, legacy/shadow modes, and runtime fallback have been removed.
 
-Requirements: Java 25, Paper/Folia 26.2, and CraftEngine 26.7+. The portable core and external rule-pack SDK remain Java 21 contracts; only the server-facing adapters and final plugin target Java 25.
+Requirements: Java 25, Paper/Folia 26.2, and the pinned CraftEngine 26.8 API line. The portable core and external rule-pack SDK remain Java 21 contracts; only the server-facing adapters and final plugin target Java 25.
 
-See the [Chinese architecture guide](docs/architecture.zh-CN.md), [interaction contract](docs/interaction.zh-CN.md), [installation guide](docs/installation.zh-CN.md), and [rule-pack guide](docs/rule-packs.zh-CN.md).
+The release artifact is a verified thin JAR: it contains only MahjongPaper's own modules and bundle resources. Paper's plugin loader resolves database drivers, AntiGriefLib, Sparrow, and ASM into the server `libraries/` cache; no third-party classes or nested JARs are embedded.
+
+See the [Chinese architecture guide](docs/architecture.zh-CN.md), [Momirealms library audit](docs/momirealms-libraries.zh-CN.md), [interaction contract](docs/interaction.zh-CN.md), [installation guide](docs/installation.zh-CN.md), and [rule-pack guide](docs/rule-packs.zh-CN.md).
 
 GitHub Actions builds the plugin with:
 
 ```text
-./gradlew clean check :mahjong-plugin:shadowJar --no-daemon
+./gradlew clean check :mahjong-plugin:jar :mahjong-plugin:verifyThinJar --no-daemon
 ```
 
 The final artifact is produced by `modules/mahjong-plugin`.

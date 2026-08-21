@@ -17,7 +17,7 @@
 
 发布包要求：
 
-- Java 21 fat JAR，排除 SPI；
+- Java 21 thin JAR：规则生产代码零第三方运行时依赖，并排除由核心父 classloader 提供的 SPI；
 - 非 `SNAPSHOT` 语义版本；
 - `ServiceLoader` provider 与完整 descriptor；
 - JAR 与资源 ZIP 各自的 SHA-256/长度、状态 schema、核心/SPI 兼容范围；

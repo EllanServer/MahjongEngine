@@ -75,6 +75,13 @@ public final class CommandSupport {
         return message.consoleText();
     }
 
+    String messageLocaleKey(CommandSender sender) {
+        Objects.requireNonNull(sender, "sender");
+        return sender instanceof Player player
+                ? runtime.messages().localeKey(player.locale())
+                : "console";
+    }
+
     public <T> void complete(
             CommandSender sender,
             CompletionStage<T> stage,

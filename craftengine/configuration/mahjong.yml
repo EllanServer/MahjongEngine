@@ -1,4 +1,4 @@
-# CraftEngine 26.7+ owns static assets, furniture geometry, hitboxes, seats and culling.
+# Pinned CraftEngine 26.8 owns static assets, furniture geometry, hitboxes, seats and culling.
 # Java selects stable IDs and applies scene diffs; it does not recreate these definitions.
 
 templates:
@@ -26,6 +26,8 @@ templates:
           rotation: four
           alignment: center
       furniture:
+        behaviors:
+          - type: mahjongpaper:managed_scene
         settings:
           item: "${__NAMESPACE__}:${__ID__}"
         variants:
@@ -60,6 +62,8 @@ templates:
           rotation: four
           alignment: center
       furniture:
+        behaviors:
+          - type: mahjongpaper:managed_scene
         settings:
           item: "${__NAMESPACE__}:${__ID__}"
         variants:
@@ -104,6 +108,8 @@ items:
           rotation: four
           alignment: center
       furniture:
+        behaviors:
+          - type: mahjongpaper:managed_scene
         settings:
           item: mahjongpaper:table_visual
           sounds:
@@ -151,6 +157,8 @@ items:
           rotation: four
           alignment: center
       furniture:
+        behaviors:
+          - type: mahjongpaper:managed_scene
         settings:
           item: mahjongpaper:hand_tile_hitbox
         variants:
@@ -192,6 +200,8 @@ items:
           rotation: four
           alignment: center
       furniture:
+        behaviors:
+          - type: mahjongpaper:managed_scene
         settings:
           item: mahjongpaper:action_button_hitbox
         variants:
@@ -242,6 +252,8 @@ items:
           rotation: four
           alignment: center
       furniture:
+        behaviors:
+          - type: mahjongpaper:managed_scene
         settings:
           item: mahjongpaper:seat_chair
         variants:
@@ -316,6 +328,8 @@ config_factory#action_button_hitboxes:
               rotation: four
               alignment: center
           furniture:
+            behaviors:
+              - type: mahjongpaper:managed_scene
             settings:
               item: mahjongpaper:action_button_hitbox_${size}
             variants:
@@ -341,6 +355,98 @@ config_factory#action_button_hitboxes:
                     blocks_building: false
                     interactive: true
                     invisible: true
+
+# Static action text is CE furniture. Labels with semantic arguments remain on the minimal packet
+# path because CE 26.8 does not pass furniture context into text replacement.
+config_factory#action_labels:
+  instances:
+    - {key: added_kong}
+    - {key: chii}
+    - {key: chow}
+    - {key: close_reactions}
+    - {key: concealed_kong}
+    - {key: declare_heavenly_missing}
+    - {key: declare_missing}
+    - {key: declare_nine_terminals}
+    - {key: declare_self_kan}
+    - {key: declare_tsumo}
+    - {key: direct_kong}
+    - {key: discard}
+    - {key: discard_riichi}
+    - {key: draw}
+    - {key: hu}
+    - {key: instant_rain}
+    - {key: leave}
+    - {key: minkan}
+    - {key: pass}
+    - {key: pon}
+    - {key: pung}
+    - {key: ready}
+    - {key: ron}
+    - {key: self_draw_win}
+    - {key: settle_exhaustion}
+    - {key: skip}
+    - {key: start}
+    - {key: start_next_hand}
+    - {key: transfer_owner_east}
+    - {key: transfer_owner_north}
+    - {key: transfer_owner_south}
+    - {key: transfer_owner_west}
+    - {key: unready}
+    - {key: view_river}
+    - {key: win}
+  blueprint:
+    items:
+      mahjongpaper:action_label_${key}:
+        material: paper
+        settings:
+          tags:
+            - mahjongpaper:private_action_label
+        data:
+          item_name: "<!i><gray>Action Label ${key}</gray>"
+        item_model: mahjongcraft:empty
+        behavior:
+          type: furniture_item
+          rules:
+            ground:
+              rotation: four
+              alignment: center
+          furniture:
+            behaviors:
+              - type: mahjongpaper:managed_scene
+            settings:
+              item: mahjongpaper:action_label_${key}
+            variants:
+              normal:
+                entity_culling:
+                  aabb_expansion: 0.25
+                  view_distance: 48
+                  ray_tracing: true
+                elements:
+                  - type: text_display
+                    text: "<aqua>[<lang:mahjongpaper.action.${key}>]</aqua>"
+                    billboard: center
+                    position: 0,0,0
+                    background_color: "#3c000000"
+                    text_opacity: -1
+                    line_width: 200
+                    conditions:
+                      - type: mahjongpaper:private_viewer
+              emphasized:
+                entity_culling:
+                  aabb_expansion: 0.25
+                  view_distance: 48
+                  ray_tracing: true
+                elements:
+                  - type: text_display
+                    text: "<gold>[<lang:mahjongpaper.action.${key}>]</gold>"
+                    billboard: center
+                    position: 0,0,0
+                    background_color: "#3c000000"
+                    text_opacity: -1
+                    line_width: 200
+                    conditions:
+                      - type: mahjongpaper:private_viewer
 
 config_factory#point_sticks:
   instances:
@@ -409,6 +515,8 @@ config_factory#opening_dice_slots:
               rotation: four
               alignment: center
           furniture:
+            behaviors:
+              - type: mahjongpaper:managed_scene
             settings:
               item: mahjongpaper:opening_die_slot_${slot}
             variants:
@@ -556,3 +664,78 @@ config_factory#tiles:
           model: mahjongcraft:mahjong_tile/back
           visual_item: mahjongpaper:back
           rotation: "90,0,0"
+      # The real CE meta entity deliberately uses the back model. The face exists only on a
+      # conditional virtual element, so a disabled hide-base-entity setting still cannot leak it.
+      mahjongpaper:tile_private_${tile}:
+        material: paper
+        settings:
+          tags:
+            - mahjongpaper:private_tile_furniture
+        data:
+          item_name: "<!i><gray>Private ${tile^} Tile</gray>"
+        item_model: mahjongcraft:mahjong_tile/back
+        behavior:
+          type: furniture_item
+          rules:
+            ground:
+              rotation: four
+              alignment: center
+          furniture:
+            behaviors:
+              - type: mahjongpaper:managed_scene
+            settings:
+              item: mahjongpaper:tile_private_${tile}
+            variants:
+              ground:
+                entity_culling:
+                  aabb_expansion: 0.25
+                  view_distance: 48
+                  ray_tracing: true
+                elements:
+                  - type: item_display
+                    item: mahjongpaper:back
+                    display_transform: none
+                    billboard: fixed
+                    position: 0,0,0
+                    translation: 0,0,0
+                    shadow_radius: 0
+                    shadow_strength: 0
+                    conditions:
+                      - type: "!mahjongpaper:private_viewer"
+                  - type: item_display
+                    item: mahjongpaper:${tile}
+                    display_transform: none
+                    billboard: fixed
+                    position: 0,0,0
+                    translation: 0,0,0
+                    shadow_radius: 0
+                    shadow_strength: 0
+                    conditions:
+                      - type: mahjongpaper:private_viewer
+              # Selection presentation is resource-owned: Java only switches the semantic variant.
+              selected:
+                entity_culling:
+                  aabb_expansion: 0.25
+                  view_distance: 48
+                  ray_tracing: true
+                elements:
+                  - type: item_display
+                    item: mahjongpaper:back
+                    display_transform: none
+                    billboard: fixed
+                    position: 0,0,0
+                    translation: 0,0,0
+                    shadow_radius: 0
+                    shadow_strength: 0
+                    conditions:
+                      - type: "!mahjongpaper:private_viewer"
+                  - type: item_display
+                    item: mahjongpaper:${tile}
+                    display_transform: none
+                    billboard: fixed
+                    position: 0,0.06,0
+                    translation: 0,0,0
+                    shadow_radius: 0
+                    shadow_strength: 0
+                    conditions:
+                      - type: mahjongpaper:private_viewer

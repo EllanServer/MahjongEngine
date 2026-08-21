@@ -104,6 +104,12 @@ public final class LobbyTableDirectory implements LobbyStateObserver {
         return lobbies.size();
     }
 
+    public synchronized Set<TableId> tableIds() {
+        HashSet<TableId> result = new HashSet<>(lobbies.keySet());
+        result.addAll(reservations.keySet());
+        return Set.copyOf(result);
+    }
+
     public synchronized Optional<HostedLobby> remove(TableId tableId) {
         Objects.requireNonNull(tableId, "tableId");
         HostedLobby removed = lobbies.remove(tableId);
