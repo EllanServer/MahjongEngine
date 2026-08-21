@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           bash .github/scripts/gradle-with-transient-retry.sh gradle-verify.log -- \
-            ./gradlew clean check :mahjong-plugin:shadowJar --no-daemon --stacktrace
+            ./gradlew clean check :mahjong-plugin:jar :mahjong-plugin:verifyThinJar --no-daemon --stacktrace
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v7
