@@ -1,5 +1,6 @@
 package top.ellan.mahjong.presentation.layout;
 
+import top.ellan.mahjong.presentation.node.InteractionBounds;
 import top.ellan.mahjong.presentation.node.SceneTransform;
 import top.ellan.mahjong.spi.ActionPlacement;
 import top.ellan.mahjong.spi.RuleViewTile;
@@ -11,6 +12,8 @@ public interface ResolvedTableLayout {
 
     /** Client-private replacement for a public tile, separated just enough to avoid z-fighting. */
     SceneTransform privateTile(RuleViewTile tile, int groupSize);
+
+    InteractionBounds handInteractionBounds();
 
     SceneTransform action(SeatId seat, ActionPlacement placement, int index);
 

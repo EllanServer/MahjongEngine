@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import top.ellan.mahjong.application.interaction.InteractionHandle;
 import top.ellan.mahjong.application.interaction.InteractionRouter;
 import top.ellan.mahjong.application.table.TableActorRegistry;
+import top.ellan.mahjong.craftengine.interaction.InteractionRayRegistry;
 import top.ellan.mahjong.craftengine.port.CraftEngineMutationGateway;
 import top.ellan.mahjong.platform.paper.region.RegionKey;
 import top.ellan.mahjong.platform.paper.region.RegionSchedulerPort;
@@ -367,6 +368,7 @@ class CraftEngineSceneBackendTest {
                 scheduler,
                 ignored -> REGION,
                 interactions,
+                new InteractionRayRegistry(ignored -> java.util.Optional.empty()),
                 new CraftEngineBackendConfig(16, 1_000_000_000L, 1_024, 256),
                 failures);
     }

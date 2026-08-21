@@ -29,8 +29,7 @@ final class UniversalLayoutCompiler {
                 precomputePointSticks(),
                 precomputeCenterRows(0.34D, geometry.maxAuxiliaryTiles()),
                 precomputeCenterRows(-0.34D, geometry.maxAuxiliaryTiles()),
-                precomputeActionRows(0.0D),
-                precomputeActionRows(geometry.secondaryActionOffset()),
+                precomputeActionRows(),
                 precomputeSeatTangentX(),
                 precomputeSeatTangentZ(),
                 precomputeViewControls(),
@@ -172,12 +171,13 @@ final class UniversalLayoutCompiler {
         return result;
     }
 
-    private SceneTransform[][] precomputeActionRows(double extraOutward) {
-        int rows = (geometry.maxActions() + 3) / 4;
+    private SceneTransform[][] precomputeActionRows() {
+        // Preserve the independent primary/secondary capacity while both placements share one rail.
+        int rows = (geometry.maxActions() * 2 + 3) / 4;
         SceneTransform[][] result = new SceneTransform[spec.seatCount()][rows];
         for (int seat = 0; seat < spec.seatCount(); seat++) {
             SeatAxis axis = axis(seat);
-            double outward = geometry.handRadius() - ACTION_ROW_OUTWARD_INSET + extraOutward;
+            double outward = geometry.handRadius() - ACTION_ROW_OUTWARD_INSET;
             for (int row = 0; row < rows; row++) {
                 result[seat][row] = transform(
                         axis.outX() * outward,

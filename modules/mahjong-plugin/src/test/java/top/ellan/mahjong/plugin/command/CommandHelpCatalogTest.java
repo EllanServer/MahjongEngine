@@ -5,10 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import top.ellan.mahjong.presentation.label.ActionLabelPolicy;
 
 class CommandHelpCatalogTest {
     @Test
-    void entriesKeepThe1_5_0AlignedOrderAndPageBoundaries() {
+    void entriesKeepStableOrderAndChatSizedPages() {
+        assertEquals(7, CommandHelpCatalog.HELP_PAGE_SIZE);
         List<String> names =
                 CommandHelpCatalog.ENTRIES.stream()
                         .map(CommandHelpCatalog.HelpEntry::canonicalName)
@@ -29,6 +31,25 @@ class CommandHelpCatalogTest {
         assertEquals("reload", names.get(32));
         assertEquals("room", names.get(33));
         assertTrue(names.indexOf("ready") > names.indexOf("room"));
+    }
+
+    @Test
+    void displayUsagesRemainCompactEnoughForTwoLineChatEntries() {
+        assertTrue(
+                CommandHelpCatalog.ENTRIES.stream()
+                        .map(CommandHelpCatalog.HelpEntry::usage)
+                        .allMatch(usage -> usage.length() <= 64));
+        assertTrue(
+                CommandHelpCatalog.ENTRIES.stream()
+                        .map(CommandHelpCatalog.HelpEntry::usage)
+                        .noneMatch(usage -> usage.contains("MAJSOUL_HANCHAN|")));
+        assertTrue(
+                CommandHelpCatalog.ENTRIES.stream()
+                        .map(CommandHelpCatalog.HelpEntry::fallbackDescription)
+                        .allMatch(description -> ActionLabelPolicy.visualUnits(description) <= 56));
+        assertEquals(
+                "/mahjong create [rule] [profile]",
+                CommandHelpCatalog.ENTRIES.get(1).usage());
     }
 
     @Test

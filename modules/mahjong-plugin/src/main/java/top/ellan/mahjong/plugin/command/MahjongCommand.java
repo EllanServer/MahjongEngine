@@ -48,9 +48,10 @@ public final class MahjongCommand implements BasicCommand {
                     + "<dark_aqua><strikethrough>------------</strikethrough></dark_aqua>";
     private static final String HELP_SUBTITLE_TEMPLATE =
             "<gray><prefix></gray><yellow><usage></yellow><gray><suffix></gray>";
-    private static final String HELP_ENTRY_TEMPLATE =
-            "<dark_aqua>  - </dark_aqua><gray><usage></gray>"
-                    + "<dark_gray> - </dark_gray><white><description></white>";
+    private static final String HELP_ENTRY_USAGE_TEMPLATE =
+            "<dark_aqua>  › </dark_aqua><usage>";
+    private static final String HELP_ENTRY_DESCRIPTION_TEMPLATE =
+            "<dark_gray>      └ </dark_gray><gray><description></gray>";
     private static final String PAGE_STATUS_TEMPLATE =
             "<dark_gray>[</dark_gray><aqua><page></aqua><gray>/</gray>"
                     + "<aqua><pages></aqua><dark_gray>] </dark_gray>"
@@ -147,7 +148,7 @@ public final class MahjongCommand implements BasicCommand {
         }
     }
 
-    /** Paginated usage-and-description help with the 1.5.0-aligned header, page status and buttons. */
+    /** Paginated two-line help sized to avoid chat-width collisions and vertical clipping. */
     private void sendHelp(CommandSender sender, int requestedPage) {
         boolean admin = sender.hasPermission("mahjongpaper.admin");
         List<CommandHelpCatalog.HelpEntry> entries = CommandHelpCatalog.ENTRIES.stream()
@@ -168,7 +169,7 @@ public final class MahjongCommand implements BasicCommand {
             int pageCount) {
         int start = (page - 1) * CommandHelpCatalog.HELP_PAGE_SIZE;
         int end = Math.min(start + CommandHelpCatalog.HELP_PAGE_SIZE, entries.size());
-        List<Component> lines = new ArrayList<>(end - start + 5);
+        List<Component> lines = new ArrayList<>((end - start) * 2 + 5);
         lines.add(render(
                 HELP_HEADER_TEMPLATE,
                 unparsed(
@@ -196,8 +197,10 @@ public final class MahjongCommand implements BasicCommand {
         for (int index = start; index < end; index++) {
             CommandHelpCatalog.HelpEntry entry = entries.get(index);
             lines.add(render(
-                    HELP_ENTRY_TEMPLATE,
-                    unparsed("usage", entry.usage()),
+                    HELP_ENTRY_USAGE_TEMPLATE,
+                    component("usage", helpUsage(sender, entry))));
+            lines.add(render(
+                    HELP_ENTRY_DESCRIPTION_TEMPLATE,
                     unparsed(
                             "description",
                             support.text(
@@ -208,6 +211,24 @@ public final class MahjongCommand implements BasicCommand {
         lines.add(helpNavigation(sender, page, pageCount));
         lines.add(HELP_FOOTER);
         return List.copyOf(lines);
+    }
+
+    private Component helpUsage(CommandSender sender, CommandHelpCatalog.HelpEntry entry) {
+        String command = "/mahjong " + entry.canonicalName() + ' ';
+        return render(
+                "<suggest><aqua><usage></aqua></suggest>",
+                styling(
+                        "suggest",
+                        ClickEvent.suggestCommand(command),
+                        HoverEvent.showText(render(
+                                "<gray><hint></gray>",
+                                unparsed(
+                                        "hint",
+                                        support.text(
+                                                sender,
+                                                "mahjongpaper.command.help.suggest",
+                                                "Click to insert this command."))))),
+                unparsed("usage", entry.usage()));
     }
 
     private Component pageStatus(CommandSender sender, int page, int pageCount, int commandCount) {

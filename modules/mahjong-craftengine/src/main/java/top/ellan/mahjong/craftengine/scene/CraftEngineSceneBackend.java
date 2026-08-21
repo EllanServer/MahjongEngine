@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import top.ellan.mahjong.application.interaction.InteractionRouteBinding;
 import top.ellan.mahjong.application.interaction.InteractionRouter;
+import top.ellan.mahjong.craftengine.interaction.InteractionRayRegistry;
 import top.ellan.mahjong.craftengine.port.CraftEngineMutationGateway;
 import top.ellan.mahjong.platform.paper.region.RegionSchedulerPort;
 import top.ellan.mahjong.platform.paper.region.TableRegionResolver;
@@ -25,6 +26,7 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
             new ConcurrentHashMap<>();
     private final CraftEngineMutationGateway gateway;
     private final InteractionRouter interactions;
+    private final InteractionRayRegistry interactionRays;
     private final CraftEngineBackendConfig config;
     private final Consumer<CraftEngineTableFailure> failureSink;
     private final AtomicBoolean ready = new AtomicBoolean();
@@ -36,15 +38,18 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
             RegionSchedulerPort scheduler,
             TableRegionResolver regionsByTable,
             InteractionRouter interactions,
+            InteractionRayRegistry interactionRays,
             CraftEngineBackendConfig config,
             Consumer<CraftEngineTableFailure> failureSink) {
         this.gateway = Objects.requireNonNull(gateway, "gateway");
         this.interactions = Objects.requireNonNull(interactions, "interactions");
+        this.interactionRays = Objects.requireNonNull(interactionRays, "interactionRays");
         this.config = Objects.requireNonNull(config, "config");
         this.failureSink = Objects.requireNonNull(failureSink, "failureSink");
         mutations = new SceneMutationProcessor(
                 this.gateway,
                 interactions,
+                this.interactionRays,
                 tables,
                 ready::get,
                 failureSink);
@@ -183,6 +188,7 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
                         table.applyEpoch++;
                         table.bindingsInstalled = false;
                         interactions.replaceBindings(tableId, List.of());
+                        interactionRays.removeTable(tableId);
                     }
                     regions.markReady(tableId, table);
                 });
@@ -197,6 +203,7 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
                         table.applyEpoch++;
                         table.bindingsInstalled = false;
                         interactions.replaceBindings(tableId, List.of());
+                        interactionRays.removeTable(tableId);
                     }
                 });
     }
@@ -206,8 +213,10 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
     }
 
     public void removeTable(TableId tableId) {
-        CraftEngineTableState table = tables.get(Objects.requireNonNull(tableId, "tableId"));
+        TableId required = Objects.requireNonNull(tableId, "tableId");
+        CraftEngineTableState table = tables.get(required);
         if (table == null) {
+            interactionRays.removeTable(required);
             return;
         }
         synchronized (table) {
@@ -216,9 +225,10 @@ public final class CraftEngineSceneBackend implements SceneBackendPort {
             table.desired.clear();
             table.dirty.addAll(table.actual.keySet());
             table.bindingsInstalled = false;
-            interactions.replaceBindings(tableId, List.of());
+            interactions.replaceBindings(required, List.of());
+            interactionRays.removeTable(required);
         }
-        regions.markReady(tableId, table);
+        regions.markReady(required, table);
     }
 
     public int trackedTables() {

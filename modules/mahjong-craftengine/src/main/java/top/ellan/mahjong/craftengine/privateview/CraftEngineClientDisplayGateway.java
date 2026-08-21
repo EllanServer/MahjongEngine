@@ -134,7 +134,7 @@ final class CraftEngineClientDisplayGateway {
 
     Object textMetadataPacket(int entityId, String json, int rgba) {
         ArrayList<Object> values = new ArrayList<>(5);
-        DisplayData.BillboardConstraints.addEntityData((byte) 3, values);
+        DisplayData.BillboardConstraints.addEntityData((byte) 0, values);
         DisplayData.TextDisplayData.Text.addEntityData(
                 ComponentUtils.jsonToMinecraft(json), values);
         DisplayData.TextDisplayData.BackgroundColor.addEntityData(rgba, values);

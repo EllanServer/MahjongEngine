@@ -92,7 +92,6 @@ class SceneGraphTest {
                     0.06D,
                     0.55D,
                     0.24D,
-                    0.34D,
                     18,
                     48,
                     24,
@@ -111,13 +110,13 @@ class SceneGraphTest {
                 new SceneTransform(2.125D, 0.9D, 0, 90, 0, 0, 1),
                 ((FurnitureNode) graph.nodes().get(new SceneNodeId("furniture/seat/0"))).transform());
         assertEquals(
-                new SceneTransform(0, 0.9D, 2.125D, 0, 0, 0, 1),
+                new SceneTransform(0, 0.9D, 2.125D, 180, 0, 0, 1),
                 ((FurnitureNode) graph.nodes().get(new SceneNodeId("furniture/seat/1"))).transform());
         assertEquals(
                 new SceneTransform(-2.125D, 0.9D, 0, 270, 0, 0, 1),
                 ((FurnitureNode) graph.nodes().get(new SceneNodeId("furniture/seat/2"))).transform());
         assertEquals(
-                new SceneTransform(0, 0.9D, -2.125D, 180, 0, 0, 1),
+                new SceneTransform(0, 0.9D, -2.125D, 0, 0, 0, 1),
                 ((FurnitureNode) graph.nodes().get(new SceneNodeId("furniture/seat/3"))).transform());
     }
 
@@ -306,6 +305,9 @@ class SceneGraphTest {
 
         assertEquals(privateTile.transform(), interaction.transform());
         assertEquals("mahjongpaper:hand_tile_hitbox", interaction.assetId());
+        assertEquals(0.1D, interaction.bounds().width(), 0.000_001D);
+        assertEquals(0.18D, interaction.bounds().height(), 0.000_001D);
+        assertEquals(GEOMETRY.tileDepth(), interaction.bounds().depth(), 0.000_001D);
         assertEquals(
                 InteractionPurpose.HAND_TILE_ACTION,
                 graph.interactionBindings().getFirst().purpose());
@@ -340,6 +342,9 @@ class SceneGraphTest {
                 .orElseThrow();
 
         assertEquals("mahjongpaper:action_button_hitbox", interaction.assetId());
+        assertEquals(0.22D, interaction.bounds().height(), 0.000_001D);
+        assertEquals(0.0D, interaction.bounds().depth(), 0.000_001D);
+        assertEquals(0.01D, interaction.bounds().centerYOffset(), 0.000_001D);
         assertEquals("action.win", label.labelKey());
         assertEquals(interaction.transform(), label.transform());
         assertEquals(GEOMETRY.surfaceHeight() + 0.36D, label.transform().y(), 0.000_001D);
@@ -466,6 +471,39 @@ class SceneGraphTest {
         assertEquals(
                 GEOMETRY.actionRowSpacing(),
                 first.transform().y() - fifth.transform().y(),
+                0.000_001D);
+    }
+
+    @Test
+    void secondaryActionsContinueDownwardInsteadOfStackingFrontToBack() {
+        TableProjection base = projection(TableId.random(), 2, "playing");
+        TableProjection rows = new TableProjection(
+                base.tableId(),
+                base.revision(),
+                base.lifecycle(),
+                base.publicView(),
+                base.privateViews(),
+                Map.of(
+                        PLAYER,
+                        List.of(
+                                action(2, "primary", ActionPresentation.actionRow("action.ready")),
+                                action(
+                                        2,
+                                        "secondary",
+                                        ActionPresentation.secondaryRow("action.leave")))));
+
+        SceneGraph graph = mapper().map(rows);
+        String player = PLAYER.toString().replace("-", "");
+        InteractionNode primary = (InteractionNode) graph.nodes().get(
+                new SceneNodeId("interaction/action/" + player + "/primary-0"));
+        InteractionNode secondary = (InteractionNode) graph.nodes().get(
+                new SceneNodeId("interaction/action/" + player + "/secondary-1"));
+
+        assertEquals(primary.transform().x(), secondary.transform().x(), 0.000_001D);
+        assertEquals(primary.transform().z(), secondary.transform().z(), 0.000_001D);
+        assertEquals(
+                GEOMETRY.actionRowSpacing(),
+                primary.transform().y() - secondary.transform().y(),
                 0.000_001D);
     }
 

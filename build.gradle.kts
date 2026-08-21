@@ -1,3 +1,5 @@
+import groovy.json.JsonSlurper
+
 plugins {
     base
 }
@@ -313,11 +315,62 @@ val architectureCheck =
         }
     }
 
+val chairModelParityCheck =
+    tasks.register("chairModelParityCheck") {
+        group = "verification"
+        description = "Verifies the editable chair source matches the shipped item model."
+        val runtimeModel = file("resourcepack/assets/mahjongcraft/models/item/seat_chair.json")
+        val blockbenchSource = file("docs/blockbench/seat_chair.bbmodel")
+        inputs.files(runtimeModel, blockbenchSource)
+        doLast {
+            fun elements(source: File): List<Map<*, *>> {
+                val root = JsonSlurper().parse(source) as Map<*, *>
+                return (root["elements"] as List<*>).map { it as Map<*, *> }
+            }
+
+            val runtimeElements = elements(runtimeModel)
+            val sourceElements = elements(blockbenchSource)
+            val sourceRoot = JsonSlurper().parse(blockbenchSource) as Map<*, *>
+            val outliner = sourceRoot["outliner"] as List<*>
+            check(runtimeElements.size == 29) { "Chair export must contain 29 elements" }
+            check(sourceElements.size == runtimeElements.size) {
+                "Blockbench chair element count differs from the runtime export"
+            }
+            check(outliner == sourceElements.map { it["name"] }) {
+                "Blockbench chair outliner differs from its element order"
+            }
+            val sourceTextures = mapOf(0 to "#wood", 1 to "#felt", 2 to "#trim", 3 to "#slot")
+            runtimeElements.indices.forEach { index ->
+                val runtime = runtimeElements[index]
+                val source = sourceElements[index]
+                check(runtime["name"] == source["name"] && runtime["from"] == source["from"] && runtime["to"] == source["to"] && runtime["rotation"] == source["rotation"]) {
+                    "Chair geometry differs at element $index (${runtime["name"]})"
+                }
+                val runtimeFaces = runtime["faces"] as Map<*, *>
+                val sourceFaces = source["faces"] as Map<*, *>
+                check(runtimeFaces.keys == sourceFaces.keys) {
+                    "Chair faces differ at element $index (${runtime["name"]})"
+                }
+                val runtimeTextureSet = runtimeFaces.values.map {
+                    (it as Map<*, *>)["texture"]
+                }.toSet()
+                val sourceTextureSet = sourceFaces.values.map {
+                    val texture = ((it as Map<*, *>)["texture"] as Number).toInt()
+                    sourceTextures.getValue(texture)
+                }.toSet()
+                check(runtimeTextureSet == sourceTextureSet) {
+                    "Chair textures differ at element $index (${runtime["name"]})"
+                }
+            }
+        }
+    }
+
 tasks.named("assemble") {
     dependsOn(":mahjong-plugin:jar")
 }
 
 tasks.named("check") {
     dependsOn(architectureCheck)
+    dependsOn(chairModelParityCheck)
     dependsOn(subprojects.map { "${it.path}:check" })
 }

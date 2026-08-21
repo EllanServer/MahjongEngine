@@ -36,6 +36,7 @@ import top.ellan.mahjong.application.lobby.port.SeatInteractionPort;
 import top.ellan.mahjong.craftengine.scene.CraftEngineBackendConfig;
 import top.ellan.mahjong.craftengine.bundle.CraftEngineBundleInstaller;
 import top.ellan.mahjong.craftengine.interaction.CraftEngineInteractionListener;
+import top.ellan.mahjong.craftengine.interaction.InteractionRayRegistry;
 import top.ellan.mahjong.craftengine.opening.CraftEngineOpeningAnimationConfig;
 import top.ellan.mahjong.craftengine.opening.CraftEngineOpeningPresenter;
 import top.ellan.mahjong.craftengine.bundle.CraftEngineReloadListener;
@@ -81,6 +82,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
     private final CraftEnginePrivateProjectionGateway privateProjection;
     private final PrivateFurnitureVisibility privateVisibility;
     private final InteractionRouter interactions;
+    private final InteractionRayRegistry interactionRays;
     private final DirectCraftEngineMutationGateway mutations;
     private final CraftEngineSceneBackend sceneBackend;
     private final LatestSceneProjector sceneProjector;
@@ -128,6 +130,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                 privateProjection,
                 privateVisibility);
         interactions = new InteractionRouter(actors, mutations, privateProjection);
+        interactionRays = new InteractionRayRegistry(anchors);
         PaperSoundDispatcher sounds = new PaperSoundDispatcher(plugin);
         presentationCues = new PaperTableSoundGateway(sounds, soundCatalog);
         decisionWarnings = new HumanDecisionWarningPresenter(plugin, this.messages);
@@ -137,6 +140,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
                         new PaperRegionScheduler(plugin),
                         anchors,
                         interactions,
+                        interactionRays,
                         CraftEngineBackendConfig.DEFAULT,
                         failure ->
                                 plugin.getLogger()
@@ -297,6 +301,7 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
         CraftEngineInteractionListener interactionListener = new CraftEngineInteractionListener(
                 plugin,
                 interactions,
+                interactionRays,
                 (player, result, failure) -> {
                     Component message =
                             interactionFeedback(messages, player.locale(), result, failure);
@@ -458,6 +463,8 @@ public final class CraftEnginePlatformRuntime implements AutoCloseable {
         if (closed.compareAndSet(false, true)) {
             resourceReloader.close();
             openingPresentations.close();
+            sceneBackend.onCraftEngineReloadStarted();
+            interactionRays.clear();
             mutations.close();
             privateProjection.close();
         }

@@ -77,7 +77,7 @@ public final class LobbyProjectionFactory {
                         new LobbyCommand.Leave(player),
                         "lobby.leave",
                         "action.leave",
-                        true,
+                        false,
                         false);
                 if (state.ownerId().equals(player) && state.readyToStart()) {
                     authorize(

@@ -23,11 +23,12 @@ import top.ellan.mahjong.spi.TileInstanceId;
 public final class PublicSceneProjector {
     private static final SceneTransform TABLE_TRANSFORM =
             new SceneTransform(0, 0.895D, 0, 0, 0, 0, 1);
+    /** Chair facing uses Bukkit yaw: every forward vector points from its seat to table centre. */
     private static final SceneTransform[] SEAT_TRANSFORMS = {
         new SceneTransform(2.125D, 0.9D, 0, 90, 0, 0, 1),
-        new SceneTransform(0, 0.9D, 2.125D, 0, 0, 0, 1),
+        new SceneTransform(0, 0.9D, 2.125D, 180, 0, 0, 1),
         new SceneTransform(-2.125D, 0.9D, 0, 270, 0, 0, 1),
-        new SceneTransform(0, 0.9D, -2.125D, 180, 0, 0, 1)
+        new SceneTransform(0, 0.9D, -2.125D, 0, 0, 0, 1)
     };
     private final TableSceneAssets assets;
     private final RuleTileFurnitureResolver furniture;

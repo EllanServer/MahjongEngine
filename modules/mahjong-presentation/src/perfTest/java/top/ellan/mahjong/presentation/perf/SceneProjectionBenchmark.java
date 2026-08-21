@@ -60,7 +60,6 @@ public final class SceneProjectionBenchmark {
             0.06D,
             0.55D,
             0.24D,
-            0.34D,
             18,
             48,
             24,

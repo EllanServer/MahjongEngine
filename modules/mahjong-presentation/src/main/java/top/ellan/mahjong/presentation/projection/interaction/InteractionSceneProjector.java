@@ -10,6 +10,7 @@ import top.ellan.mahjong.presentation.asset.TableSceneAssets;
 import top.ellan.mahjong.presentation.label.ActionLabelPolicy;
 import top.ellan.mahjong.presentation.layout.ResolvedTableLayout;
 import top.ellan.mahjong.presentation.node.ActionLabelNodes;
+import top.ellan.mahjong.presentation.node.InteractionBounds;
 import top.ellan.mahjong.presentation.node.InteractionNode;
 import top.ellan.mahjong.presentation.node.SceneNode;
 import top.ellan.mahjong.presentation.node.SceneNodeId;
@@ -116,6 +117,7 @@ public final class InteractionSceneProjector {
                         layout);
             }
         }
+        int primaryRows = actionRows.rowCount(actions, ActionPlacement.ACTION_ROW);
         double firstRowWidth = actionRows.add(
                 nodes,
                 bindings,
@@ -125,7 +127,8 @@ public final class InteractionSceneProjector {
                 playerKey,
                 privateView.seat(),
                 actions,
-                ActionPlacement.ACTION_ROW);
+                ActionPlacement.ACTION_ROW,
+                0);
         actionRows.add(
                 nodes,
                 bindings,
@@ -135,7 +138,8 @@ public final class InteractionSceneProjector {
                 playerKey,
                 privateView.seat(),
                 actions,
-                ActionPlacement.SECONDARY_ROW);
+                ActionPlacement.SECONDARY_ROW,
+                primaryRows);
         return firstRowWidth;
     }
 
@@ -165,6 +169,11 @@ public final class InteractionSceneProjector {
                         SceneVisibility.publicToAll(),
                         handle,
                         assets.actionInteractionFurniture(width),
+                        InteractionBounds.plane(
+                                width,
+                                ActionLabelPolicy.BUTTON_HEIGHT,
+                                ActionLabelPolicy.BUTTON_HEIGHT / 2.0D
+                                        - ActionLabelPolicy.LABEL_BASELINE_OFFSET),
                         transform));
         nodes.put(
                 labelId,
@@ -202,6 +211,7 @@ public final class InteractionSceneProjector {
                 SceneVisibility.publicToAll(),
                 handle,
                 assets.handInteractionFurniture(),
+                layout.handInteractionBounds(),
                 layout.privateTile(tile, counts.count(tile)));
         if (nodes.putIfAbsent(id, node) != null) {
             throw new IllegalArgumentException(

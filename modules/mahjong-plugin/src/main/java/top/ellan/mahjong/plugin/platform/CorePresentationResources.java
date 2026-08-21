@@ -63,7 +63,6 @@ record CorePresentationResources(
                 decimal(values, "geometry.emphasis-raise"),
                 decimal(values, "geometry.action-column-spacing"),
                 decimal(values, "geometry.action-row-spacing"),
-                decimal(values, "geometry.secondary-action-offset"),
                 integer(values, "capacity.hand-tiles"),
                 integer(values, "capacity.discards"),
                 integer(values, "capacity.meld-tiles"),

@@ -425,7 +425,7 @@ config_factory#action_labels:
                 elements:
                   - type: text_display
                     text: "<aqua>[<lang:mahjongpaper.action.${key}>]</aqua>"
-                    billboard: center
+                    billboard: fixed
                     position: 0,0,0
                     background_color: "#3c000000"
                     text_opacity: -1
@@ -440,7 +440,7 @@ config_factory#action_labels:
                 elements:
                   - type: text_display
                     text: "<gold>[<lang:mahjongpaper.action.${key}>]</gold>"
-                    billboard: center
+                    billboard: fixed
                     position: 0,0,0
                     background_color: "#3c000000"
                     text_opacity: -1

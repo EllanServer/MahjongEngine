@@ -1,6 +1,7 @@
 package top.ellan.mahjong.presentation.layout;
 
 import java.util.Objects;
+import top.ellan.mahjong.presentation.node.InteractionBounds;
 import top.ellan.mahjong.presentation.node.SceneTransform;
 import top.ellan.mahjong.spi.ActionPlacement;
 import top.ellan.mahjong.spi.RuleTilePresentation;
@@ -15,8 +16,11 @@ final class UniversalLayoutPlan {
     private static final double LAST_DISCARD_SCALE = 2.0D;
     /** Clears the table surface by the 1.5.0 gap, putting the tile at the historic y of 0.68. */
     private static final double LAST_DISCARD_SURFACE_GAP = 0.16D;
+    private static final double HAND_INTERACTION_WIDTH = 0.1D;
+    private static final double HAND_INTERACTION_HEIGHT = 0.18D;
 
     private final TableGeometry geometry;
+    private final InteractionBounds handInteractionBounds;
     private final UniversalLayoutSpec spec;
     private final SceneTransform[][][] hands;
     private final SceneTransform[][][] privateHands;
@@ -27,7 +31,6 @@ final class UniversalLayoutPlan {
     private final SceneTransform[][] auxiliary;
     private final SceneTransform[][] winClaims;
     private final SceneTransform[][] actions;
-    private final SceneTransform[][] secondaryActions;
     private final double[] seatTangentX;
     private final double[] seatTangentZ;
     private final SceneTransform[] viewControls;
@@ -46,12 +49,13 @@ final class UniversalLayoutPlan {
             SceneTransform[][] auxiliary,
             SceneTransform[][] winClaims,
             SceneTransform[][] actions,
-            SceneTransform[][] secondaryActions,
             double[] seatTangentX,
             double[] seatTangentZ,
             SceneTransform[] viewControls,
             SceneTransform[] wall) {
         this.geometry = geometry;
+        this.handInteractionBounds = new InteractionBounds(
+                HAND_INTERACTION_WIDTH, HAND_INTERACTION_HEIGHT, geometry.tileDepth());
         this.spec = spec;
         this.hands = hands;
         this.privateHands = privateHands;
@@ -62,7 +66,6 @@ final class UniversalLayoutPlan {
         this.auxiliary = auxiliary;
         this.winClaims = winClaims;
         this.actions = actions;
-        this.secondaryActions = secondaryActions;
         this.seatTangentX = seatTangentX;
         this.seatTangentZ = seatTangentZ;
         this.viewControls = viewControls;
@@ -108,6 +111,10 @@ final class UniversalLayoutPlan {
         return decorate(hand(privateHands, tile, groupSize), tile.presentation());
     }
 
+    InteractionBounds handInteractionBounds() {
+        return handInteractionBounds;
+    }
+
     SceneTransform action(SeatId seat, ActionPlacement placement, int index) {
         if (index < 0 || index >= geometry.maxActions()) {
             throw new IllegalArgumentException("Action index exceeds the layout capacity");
@@ -125,8 +132,7 @@ final class UniversalLayoutPlan {
             throw new IllegalArgumentException("Action row exceeds the layout capacity");
         }
         SceneTransform base = switch (Objects.requireNonNull(placement, "placement")) {
-            case ACTION_ROW -> actions[seatIndex][row];
-            case SECONDARY_ROW -> secondaryActions[seatIndex][row];
+            case ACTION_ROW, SECONDARY_ROW -> actions[seatIndex][row];
             case HAND_TILE -> throw new IllegalArgumentException(
                     "Hand-tile actions use the target tile transform");
         };

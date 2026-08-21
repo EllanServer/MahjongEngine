@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Locale;
 import org.junit.jupiter.api.Test;
+import top.ellan.mahjong.presentation.label.ActionLabelPolicy;
 
 class LocalizedMessageCatalogTest {
     private final LocalizedMessageCatalog messages =
@@ -60,7 +61,7 @@ class LocalizedMessageCatalogTest {
     @Test
     void localizesCommandPurposeAndPagedHelpChrome() {
         assertEquals(
-                "在你当前位置创建一张新牌桌。",
+                "按可选规则和 profile 在当前位置创建牌桌。",
                 messages.resolve(
                         Locale.SIMPLIFIED_CHINESE,
                         "mahjongpaper.command.help.description.create",
@@ -72,6 +73,12 @@ class LocalizedMessageCatalogTest {
                         "mahjongpaper.command.help.page_status",
                         "Page %s/%s - %s commands available",
                         List.of("1", "2", "17")));
+        assertEquals(
+                "点击填入这条命令。",
+                messages.resolve(
+                        Locale.SIMPLIFIED_CHINESE,
+                        "mahjongpaper.command.help.suggest",
+                        "missing"));
         assertEquals(
                 "ページ形式のコマンドヘルプを表示します。",
                 messages.resolve(
@@ -141,6 +148,19 @@ class LocalizedMessageCatalogTest {
                         Locale.JAPANESE,
                         "mahjongpaper.profile.mahjong-soul",
                         "missing"));
+    }
+
+    @Test
+    void helpDescriptionsStayWithinTheTwoLineEntryWidthBudget() {
+        for (String locale : List.of("en_us", "zh_cn", "zh_tw", "zh_hk", "zh_mo", "ja_jp")) {
+            readLocale(locale).forEach((key, value) -> {
+                if (key.startsWith("mahjongpaper.command.help.description.")) {
+                    assertTrue(
+                            ActionLabelPolicy.visualUnits(value) <= 56,
+                            () -> locale + ':' + key + " is too wide: " + value);
+                }
+            });
+        }
     }
 
     /**

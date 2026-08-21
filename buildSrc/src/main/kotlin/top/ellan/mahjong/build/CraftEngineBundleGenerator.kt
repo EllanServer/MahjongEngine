@@ -235,6 +235,7 @@ object CraftEngineBundleGenerator {
         }
         setOf(
             "mahjongpaper.command.help",
+            "mahjongpaper.command.help.suggest",
             "mahjongpaper.command.failed",
             "mahjongpaper.action.ready",
             "mahjongpaper.action.unready",

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
@@ -13,6 +14,7 @@ import top.ellan.mahjong.application.lobby.command.LobbyCommand;
 import top.ellan.mahjong.application.lobby.command.LobbyReducer;
 import top.ellan.mahjong.domain.lobby.TableLobby;
 import top.ellan.mahjong.domain.table.TableId;
+import top.ellan.mahjong.spi.ActionPlacement;
 import top.ellan.mahjong.spi.ActionToken;
 import top.ellan.mahjong.spi.PlayerId;
 import top.ellan.mahjong.spi.ProfileId;
@@ -57,6 +59,39 @@ class LobbyProjectionFactoryTest {
         assertTrue(frame.projection().authorizedActions().get(successor).stream()
                 .noneMatch(action ->
                         action.legalAction().key().startsWith("lobby.transfer_owner:")));
+    }
+
+    @Test
+    void readyAndLeaveShareOneSideBySideActionRow() {
+        PlayerId owner = player(10);
+        TableLobby state = TableLobby.create(
+                TableId.random(),
+                owner,
+                new RuleId("riichi"),
+                new ProfileId("mahjong-soul"),
+                Map.of(),
+                4,
+                Instant.EPOCH);
+        state = new LobbyReducer()
+                .apply(state, new LobbyCommand.JoinSeat(owner, new SeatId(0)))
+                .state();
+        AtomicLong tokens = new AtomicLong();
+
+        var actions = new LobbyProjectionFactory(
+                        (actor, revision) ->
+                                new ActionToken(new UUID(0, tokens.incrementAndGet()), actor, revision))
+                .create(state)
+                .projection()
+                .authorizedActions()
+                .get(owner);
+
+        assertEquals(
+                List.of("lobby.ready", "lobby.leave"),
+                actions.stream().map(action -> action.legalAction().key()).toList());
+        assertTrue(actions.stream()
+                .allMatch(action ->
+                        action.legalAction().actionPresentation().placement()
+                                == ActionPlacement.ACTION_ROW));
     }
 
     private static PlayerId player(long suffix) {

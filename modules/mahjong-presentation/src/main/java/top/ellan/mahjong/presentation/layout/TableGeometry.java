@@ -13,7 +13,6 @@ public record TableGeometry(
         double emphasisRaise,
         double actionColumnSpacing,
         double actionRowSpacing,
-        double secondaryActionOffset,
         int maxHandTiles,
         int maxDiscards,
         int maxMeldTiles,
@@ -32,7 +31,6 @@ public record TableGeometry(
         requireNonNegative(emphasisRaise, "emphasisRaise");
         requirePositive(actionColumnSpacing, "actionColumnSpacing");
         requirePositive(actionRowSpacing, "actionRowSpacing");
-        requireNonNegative(secondaryActionOffset, "secondaryActionOffset");
         requireCapacity(maxHandTiles, 32, "maxHandTiles");
         requireCapacity(maxDiscards, 128, "maxDiscards");
         requireCapacity(maxMeldTiles, 32, "maxMeldTiles");

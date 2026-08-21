@@ -8,6 +8,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import top.ellan.mahjong.application.interaction.InteractionRouter;
+import top.ellan.mahjong.craftengine.interaction.InteractionRayRegistry;
 import top.ellan.mahjong.craftengine.port.CraftEngineMutationGateway;
 import top.ellan.mahjong.domain.table.TableId;
 import top.ellan.mahjong.presentation.node.SceneNode;
@@ -17,6 +18,7 @@ import top.ellan.mahjong.presentation.node.SceneNodeId;
 final class SceneMutationProcessor {
     private final CraftEngineMutationGateway gateway;
     private final InteractionRouter interactions;
+    private final InteractionRayRegistry interactionRays;
     private final ConcurrentHashMap<TableId, CraftEngineTableState> tables;
     private final BooleanSupplier ready;
     private final Consumer<CraftEngineTableFailure> failureSink;
@@ -24,11 +26,13 @@ final class SceneMutationProcessor {
     SceneMutationProcessor(
             CraftEngineMutationGateway gateway,
             InteractionRouter interactions,
+            InteractionRayRegistry interactionRays,
             ConcurrentHashMap<TableId, CraftEngineTableState> tables,
             BooleanSupplier ready,
             Consumer<CraftEngineTableFailure> failureSink) {
         this.gateway = gateway;
         this.interactions = interactions;
+        this.interactionRays = interactionRays;
         this.tables = tables;
         this.ready = ready;
         this.failureSink = failureSink;
@@ -170,6 +174,8 @@ final class SceneMutationProcessor {
                     && table.actual.isEmpty()
                     && table.dirty.isEmpty()
                     && table.inFlight.isEmpty()) {
+                interactions.replaceBindings(tableId, List.of());
+                interactionRays.removeTable(tableId);
                 removed = tables.remove(tableId, table);
             }
         }
@@ -188,6 +194,7 @@ final class SceneMutationProcessor {
                     || table.bindingsInstalled) {
                 return;
             }
+            interactionRays.replace(tableId, table.desired, table.bindings);
             interactions.replaceBindings(tableId, table.bindings);
             table.bindingsInstalled = true;
         }

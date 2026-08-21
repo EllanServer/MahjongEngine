@@ -7,6 +7,8 @@ public final class ActionLabelPolicy {
     public static final int ACTION_LABEL_BUDGET = 20;
     public static final int BUTTONS_PER_ROW = 4;
     public static final double BUTTON_GAP = 0.16D;
+    public static final double BUTTON_HEIGHT = 0.22D;
+    public static final double LABEL_BASELINE_OFFSET = 0.1D;
     public static final double PINNED_BUTTON_GAP = 0.34D;
     public static final double EMPTY_ROW_PINNED_EDGE = 0.85D;
 

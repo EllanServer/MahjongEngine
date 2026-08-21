@@ -55,6 +55,18 @@ class CraftEngineV15ParityTest {
     }
 
     @Test
+    void chairModelUsesTheRemodeledUpholsteredFrame() throws IOException {
+        String chair = resourceText(
+                "craftengine/mahjongpaper/resourcepack/assets/mahjongcraft/models/item/seat_chair.json");
+
+        assertEquals(29, occurrences(chair, "\"name\":"));
+        assertTrue(chair.contains("\"name\": \"Seat Cushion\""));
+        assertTrue(chair.contains("\"name\": \"Back Cushion\""));
+        assertTrue(chair.contains("\"name\": \"Back Cushion Brass Inlay\""));
+        assertFalse(chair.contains("Foot Plate"));
+    }
+
+    @Test
     void handInteractionBoxMatchesV15Dimensions() throws IOException {
         String hand = section(configuration(), "mahjongpaper:hand_tile_hitbox:", "mahjongpaper:action_button_hitbox:");
 
@@ -95,6 +107,8 @@ class CraftEngineV15ParityTest {
         assertTrue(labels.contains("<lang:mahjongpaper.action.${key}>"));
         assertTrue(labels.contains("normal:"));
         assertTrue(labels.contains("emphasized:"));
+        assertEquals(2, occurrences(labels, "billboard: fixed"));
+        assertFalse(labels.contains("billboard: center"));
         assertEquals(2, occurrences(labels, "type: mahjongpaper:private_viewer"));
         for (String key : ActionLabelNodes.resourceLabels()) {
             String suffix = key.substring("action.".length());
@@ -125,9 +139,13 @@ class CraftEngineV15ParityTest {
     }
 
     private static String configuration() throws IOException {
+        return resourceText(CONFIGURATION);
+    }
+
+    private static String resourceText(String path) throws IOException {
         try (InputStream input = CraftEngineV15ParityTest.class
                 .getClassLoader()
-                .getResourceAsStream(CONFIGURATION)) {
+                .getResourceAsStream(path)) {
             assertNotNull(input);
             return new String(input.readAllBytes(), StandardCharsets.UTF_8);
         }

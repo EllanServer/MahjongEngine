@@ -9,6 +9,7 @@ import top.ellan.mahjong.presentation.asset.TableSceneAssets;
 import top.ellan.mahjong.presentation.label.ActionLabelPolicy;
 import top.ellan.mahjong.presentation.layout.ResolvedTableLayout;
 import top.ellan.mahjong.presentation.node.ActionLabelNodes;
+import top.ellan.mahjong.presentation.node.InteractionBounds;
 import top.ellan.mahjong.presentation.node.InteractionNode;
 import top.ellan.mahjong.presentation.node.SceneNode;
 import top.ellan.mahjong.presentation.node.SceneNodeId;
@@ -40,7 +41,11 @@ final class ActionRowProjector {
             String playerKey,
             SeatId seat,
             List<AuthorizedAction> actions,
-            ActionPlacement placement) {
+            ActionPlacement placement,
+            int rowOffset) {
+        if (rowOffset < 0) {
+            throw new IllegalArgumentException("rowOffset must be non-negative");
+        }
         AuthorizedAction[] rowActions = new AuthorizedAction[ActionLabelPolicy.BUTTONS_PER_ROW];
         int[] ordinals = new int[rowActions.length];
         double[] widths = new double[rowActions.length];
@@ -60,7 +65,7 @@ final class ActionRowProjector {
             if (count == rowActions.length) {
                 double rowWidth = addRow(
                         nodes, bindings, projection, layout, player, playerKey, seat,
-                        placement, row, rowActions, ordinals, widths, count);
+                        placement, row + rowOffset, rowActions, ordinals, widths, count);
                 if (row++ == 0) {
                     firstRowWidth = rowWidth;
                 }
@@ -70,7 +75,7 @@ final class ActionRowProjector {
         if (count > 0) {
             double rowWidth = addRow(
                     nodes, bindings, projection, layout, player, playerKey, seat,
-                    placement, row, rowActions, ordinals, widths, count);
+                    placement, row + rowOffset, rowActions, ordinals, widths, count);
             if (row == 0) {
                 firstRowWidth = rowWidth;
             }
@@ -81,6 +86,17 @@ final class ActionRowProjector {
     double width(PlayerId player, String labelKey) {
         double requested = metrics.width(player, labelKey);
         return ActionLabelPolicy.variantWidth(ActionLabelPolicy.variantIndex(requested));
+    }
+
+    int rowCount(List<AuthorizedAction> actions, ActionPlacement placement) {
+        int count = 0;
+        for (AuthorizedAction action : actions) {
+            if (action.legalAction().actionPresentation().placement() == placement) {
+                count++;
+            }
+        }
+        return (count + ActionLabelPolicy.BUTTONS_PER_ROW - 1)
+                / ActionLabelPolicy.BUTTONS_PER_ROW;
     }
 
     private double addRow(
@@ -139,6 +155,11 @@ final class ActionRowProjector {
                 SceneVisibility.publicToAll(),
                 handle,
                 assets.actionInteractionFurniture(width),
+                InteractionBounds.plane(
+                        width,
+                        ActionLabelPolicy.BUTTON_HEIGHT,
+                        ActionLabelPolicy.BUTTON_HEIGHT / 2.0D
+                                - ActionLabelPolicy.LABEL_BASELINE_OFFSET),
                 transform);
         if (nodes.putIfAbsent(id, interaction) != null) {
             throw new IllegalArgumentException("duplicate action interaction node");

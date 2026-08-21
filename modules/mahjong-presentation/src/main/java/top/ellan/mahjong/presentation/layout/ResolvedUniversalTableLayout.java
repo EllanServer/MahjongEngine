@@ -1,6 +1,7 @@
 package top.ellan.mahjong.presentation.layout;
 
 import java.util.Objects;
+import top.ellan.mahjong.presentation.node.InteractionBounds;
 import top.ellan.mahjong.presentation.node.SceneTransform;
 import top.ellan.mahjong.spi.ActionPlacement;
 import top.ellan.mahjong.spi.RuleViewTile;
@@ -28,6 +29,11 @@ record ResolvedUniversalTableLayout(
     @Override
     public SceneTransform privateTile(RuleViewTile tile, int groupSize) {
         return plan.privateTile(tile, groupSize);
+    }
+
+    @Override
+    public InteractionBounds handInteractionBounds() {
+        return plan.handInteractionBounds();
     }
 
     @Override

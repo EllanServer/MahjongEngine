@@ -4,37 +4,35 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * Immutable paged command help catalog in the 1.5.0-aligned reading order. Entries for commands
- * beyond the 1.5.0 flow are appended after it so the original page boundaries stay intact.
- */
+/** Immutable command help catalog with chat-width-safe summaries and stable reading order. */
 final class CommandHelpCatalog {
-    static final int HELP_PAGE_SIZE = 10;
+    /** Seven two-line entries plus page chrome fit the default expanded Minecraft chat height. */
+    static final int HELP_PAGE_SIZE = 7;
     static final List<HelpEntry> ENTRIES =
             List.of(
                     help(
                             "help",
                             "/mahjong help [page]",
-                            "Show this paged command help with an explanation for every command.",
+                            "Show paged help for every available command.",
                             false),
                     help(
                             "create",
-                            "/mahjong create",
-                            "Create a new table at your position.",
+                            "/mahjong create [rule] [profile]",
+                            "Create a table with an optional rule and profile.",
                             false),
                     help(
                             "botmatch",
-                            "/mahjong botmatch [MAJSOUL_HANCHAN|MAJSOUL_TONPUU|GB|SICHUAN]",
-                            "Create and start a full 4-bot test match, then spectate it.",
+                            "/mahjong botmatch [preset]",
+                            "Admin: create a four-bot test match and spectate it.",
                             true),
                     help(
                             "mode",
-                            "/mahjong mode <riichi|mcr|sichuan|MAJSOUL_HANCHAN|MAJSOUL_TONPUU|GB|SICHUAN> [profile]",
-                            "Apply a ruleset preset. Mahjong Soul Riichi is the primary gameplay; GB and Sichuan are optional.",
+                            "/mahjong mode <rule|preset> [profile]",
+                            "Change the waiting rule or preset; Tab completes values.",
                             false),
                     help(
                             "join",
-                            "/mahjong join <table-id> [seat]",
+                            "/mahjong join <table> [seat]",
                             "Join an existing table as a player.",
                             false),
                     help(
@@ -49,7 +47,7 @@ final class CommandHelpCatalog {
                             false),
                     help(
                             "spectate",
-                            "/mahjong spectate <table-id>",
+                            "/mahjong spectate <table>",
                             "Watch a table without taking a seat.",
                             false),
                     help(
@@ -59,7 +57,7 @@ final class CommandHelpCatalog {
                             false),
                     help(
                             "table",
-                            "/mahjong table [table-id]",
+                            "/mahjong table [table]",
                             "Open the table control panel.",
                             false,
                             "gui",
@@ -83,17 +81,17 @@ final class CommandHelpCatalog {
                     help(
                             "start",
                             "/mahjong start",
-                            "Toggle ready; the round auto-starts when all 4 seats are ready.",
+                            "Toggle ready; the owner starts when everyone is ready.",
                             false),
                     help(
                             "state",
-                            "/mahjong state [table-id]",
+                            "/mahjong state [table]",
                             "Show the current table and round state.",
                             false),
                     help(
                             "riichi",
                             "/mahjong riichi <index>",
-                            "Declare riichi and discard the chosen tile index. Riichi tables only.",
+                            "Declare riichi and discard a tile index. Riichi only.",
                             false),
                     help(
                             "tsumo",
@@ -133,22 +131,22 @@ final class CommandHelpCatalog {
                     help(
                             "kyuushu",
                             "/mahjong kyuushu",
-                            "Declare nine terminals and honors abortive draw. Riichi tables only.",
+                            "Declare a nine-terminals abortive draw. Riichi only.",
                             false),
                     help(
                             "settlement",
-                            "/mahjong settlement [table-id]",
+                            "/mahjong settlement [table]",
                             "Reopen the latest settlement UI for this table.",
                             false),
                     help(
                             "rank",
-                            "/mahjong rank [riichi|mcr|sichuan] [page]",
-                            "Show your rank-point standing, match count and total score for one mode.",
+                            "/mahjong rank [rule] [page]",
+                            "Show rank points, match count, and score for one mode.",
                             false,
                             "ranking"),
                     help(
                             "leaderboard",
-                            "/mahjong leaderboard [riichi|mcr|sichuan] [page]",
+                            "/mahjong leaderboard [rule] [page]",
                             "Show the ranked leaderboard for one mode.",
                             false,
                             "lb"),
@@ -160,7 +158,7 @@ final class CommandHelpCatalog {
                     help(
                             "inspect",
                             "/mahjong inspect",
-                            "Show the table's render anchor and applied scene diagnostics.",
+                            "Show the table anchor and scene diagnostics.",
                             true),
                     help(
                             "clear",
@@ -169,22 +167,22 @@ final class CommandHelpCatalog {
                             true),
                     help(
                             "forceend",
-                            "/mahjong forceend <table-id>",
-                            "Admin: force-end the current match and return the table to waiting state.",
+                            "/mahjong forceend <table>",
+                            "Admin: end the match and return its table to waiting.",
                             true),
                     help(
                             "deletetable",
-                            "/mahjong deletetable <table-id>",
-                            "Admin: delete the current or specified table immediately.",
+                            "/mahjong deletetable <table>",
+                            "Admin: immediately delete this or another table.",
                             true),
                     help(
                             "reload",
                             "/mahjong reload",
-                            "Admin: reload bounded runtime indexes; rule-pack/core changes still need a restart.",
+                            "Admin: reload rooms; other changes need a restart.",
                             true),
                     help(
                             "room",
-                            "/mahjong room <wand|create|delete|list|info> [...]",
+                            "/mahjong room <operation> [...]",
                             "Manage game rooms.",
                             true,
                             "gameroom"),
@@ -195,45 +193,45 @@ final class CommandHelpCatalog {
                             false),
                     help(
                             "owner",
-                            "/mahjong owner <east|south|west|north>",
+                            "/mahjong owner <seat>",
                             "Transfer table ownership to the selected occupied seat.",
                             false,
                             "transfer"),
                     help(
                             "bot",
                             "/mahjong bot <add|remove> <seat>",
-                            "Add or remove a bot in the selected seat before starting.",
+                            "Add or remove a bot before starting.",
                             false),
                     help(
                             "auto",
                             "/mahjong auto <on|off>",
-                            "Enable or disable automatic trustee play for your active seat.",
+                            "Toggle automatic play for your active seat.",
                             false,
                             "trustee"),
                     help(
                             "history",
                             "/mahjong history [page]",
-                            "Show your in-progress and completed match history by page.",
+                            "Show active and completed match history by page.",
                             false),
                     help(
                             "rules",
                             "/mahjong rules <operation> [...]",
-                            "List installed rule packs; admins can install, verify, activate, swap, or roll them back.",
+                            "List rule packs; admins can verify, swap, or roll back.",
                             false),
                     help(
                             "ops",
-                            "/mahjong ops <status|force-end|remove|reload-rooms> [...]",
-                            "Admin: operate one explicit table or reload the room index; never lists all tables.",
+                            "/mahjong ops <operation> [...]",
+                            "Admin: operate one table or reload the room index.",
                             true),
                     help(
                             "referee",
-                            "/mahjong referee <table-id> <operation> <seat> [ruling]",
-                            "Admin: submit an official Sichuan referee ruling for a live table.",
+                            "/mahjong referee <table> <operation> <seat> [ruling]",
+                            "Admin: submit a Sichuan ruling for a live table.",
                             true),
                     help(
                             "remove",
-                            "/mahjong remove <table-id>",
-                            "Remove your own waiting table; admins may remove any table.",
+                            "/mahjong remove <table>",
+                            "Remove your waiting table; admins may remove any.",
                             false));
 
     private static HelpEntry help(
